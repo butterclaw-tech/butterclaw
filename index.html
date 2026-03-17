@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ButterClaw 🦞</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        butter: { 400: '#facc15', 500: '#eab308' },
+                        claw: { 500: '#ef4444', 600: '#dc2626' },
+                        dark: '#0f172a'
+                    },
+                    keyframes: {
+                        'slide-down': {
+                            '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    },
+                    animation: {
+                        'slide-down': 'slide-down 0.4s ease-out forwards',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen flex overflow-hidden selection:bg-butter-400 selection:text-dark">
+
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex">
+        <div>
+            <div class="p-6 flex items-center space-x-3">
+                <span class="text-3xl">🦞</span>
+                <h1 class="text-xl font-bold tracking-tight text-dark">Butter<span class="text-butter-500">Claw</span></h1>
+            </div>
+            <nav class="px-4 space-y-2">
+                <a href="index.html" class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
+                    <span>🛡️</span><span>Shield Status</span>
+                </a>
+                <a href="#" id="vaultSidebarLink" class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition">
+                    <span>🧈</span><span>ButterVault (Keys)</span>
+                </a>
+                <a href="#oopsieSection" class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition">
+                    <span>📋</span><span>Oopsie Logs</span>
+                </a>
+                <a href="routing.html" class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition">
+                    <span>⚙️</span><span>VPS Brain Routing</span>
+                </a>
+            </nav>
+        </div>
+        <div class="p-6">
+            <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center space-x-3">
+                <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
+                <div class="text-sm font-medium text-emerald-800">Port 18789 Secured</div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-8 lg:p-12 scroll-smooth">
+        <header class="mb-10 flex justify-between items-center">
+            <div>
+                <h2 class="text-3xl font-extrabold text-dark tracking-tight">Agent Dashboard</h2>
+                <p class="text-slate-500 mt-1">Your local AI is currently protected from the Red Team from hell.</p>
+            </div>
+            <button class="bg-dark hover:bg-slate-800 text-white px-6 py-2.5 rounded-full font-medium shadow-lg transition flex items-center space-x-2">
+                <span>VPS: Connected</span> <span class="text-emerald-400">●</span>
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <div class="col-span-1 lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
+                <div class="absolute top-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-emerald-500"></div>
+                <div class="h-32 w-32 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-pointer hover:scale-105 transition-transform duration-300">
+                    <span class="text-6xl text-emerald-500">🛡️</span>
+                </div>
+                <h3 class="text-3xl font-bold text-dark mb-2">Shield is UP</h3>
+                <p class="text-slate-500 max-w-md">ButterClaw is actively monitoring localhost sniffing and API token leaks.</p>
+                <button class="mt-8 bg-slate-100 text-slate-600 font-bold py-3 px-8 rounded-full hover:bg-claw-500 hover:text-white transition duration-300">
+                    Disable Shield (Not Recommended)
+                </button>
+            </div>
+
+            <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-xl font-bold text-dark flex items-center space-x-2">
+                        <span>🦮</span><span>Paranoia Level</span>
+                    </h3>
+                    <p class="text-sm text-slate-500 mt-2">How aggressive should the VPS logic gates be?</p>
+                </div>
+                
+                <div class="mt-8">
+                    <input type="range" min="1" max="3" value="3" class="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-dark">
+                    <div class="flex justify-between text-xs font-bold text-slate-400 mt-3">
+                        <span>CHILL</span>
+                        <span>CAUTIOUS</span>
+                        <span class="text-claw-500 tracking-wider">PARANOID</span>
+                    </div>
+                </div>
+                
+                <div class="mt-6 bg-slate-50 rounded-xl p-4 border border-slate-100 paranoia-text-box">
+                    <p class="text-xs text-slate-600 font-medium leading-relaxed">
+                        <strong class="text-claw-600 block mb-1 animate-pulse">Current Mode: Butter / Kill Switch</strong>
+                        If any external origin breathes on port 18789, ButterClaw instantly rotates keys and SIGKILLs the agent.
+                    </p>
+                </div>
+            </div>
+
+            <div id="oopsieSection" class="col-span-1 lg:col-span-3 bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mt-4">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-dark flex items-center space-x-2">
+                        <span>📋</span><span>Live Oopsie Logs</span>
+                    </h3>
+                    <div class="flex space-x-3">
+                        <button id="simulateAttackBtn" class="text-xs bg-slate-100 hover:bg-claw-100 text-slate-500 hover:text-claw-600 font-bold py-1.5 px-4 rounded-full transition flex items-center space-x-1">
+                            <span>👾</span><span>Simulate Attack</span>
+                        </button>
+                        <button class="text-sm text-butter-500 font-bold hover:text-butter-400 transition">View All &rarr;</button>
+                    </div>
+                </div>
+                
+                <div id="oopsieContainer" class="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+                    </div>
+                
+                <div id="emptyLogs" class="flex flex-col items-center justify-center py-10 text-center">
+    <span class="text-4xl mb-3 opacity-50">🧈</span>
+    <p class="text-slate-400 font-medium text-sm">All quiet on the localhost front.</p>
+</div>
+            </div>
+        </div>
+    </main>
+
+    <div id="butterVaultModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+        <div id="bvContent" class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 relative">
+            
+            <button id="closeVaultBtn" class="absolute top-6 right-6 text-slate-400 hover:text-dark transition bg-slate-100 hover:bg-slate-200 rounded-full p-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+
+            <div class="flex items-center space-x-3 mb-2">
+                <span class="text-3xl">🧈</span>
+                <h3 class="text-2xl font-extrabold text-dark tracking-tight">The ButterVault</h3>
+            </div>
+            <p class="text-sm text-slate-500 mb-8 leading-relaxed">
+                Your API keys are encrypted locally. If Gate 4 detects a localhost sniff, these keys are instantly rotated via the provider's API. The Claw gets nothing.
+            </p>
+
+            <div class="space-y-4 mb-8">
+                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-blue-100 text-blue-600 p-2 rounded-lg font-bold text-xs">OR</div>
+                        <div>
+                            <h4 class="font-bold text-dark text-sm">OpenRouter</h4>
+                            <p class="text-xs text-slate-500 font-mono mt-0.5">sk-or-v1-••••••••8f9a</p>
+                        </div>
+                    </div>
+                    <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1">
+                        <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse"></span> Protected
+                    </span>
+                </div>
+
+                <div class="flex items-center justify-between p-4 bg-white rounded-2xl border border-dashed border-slate-300 hover:border-butter-400 transition cursor-pointer group">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-slate-100 text-slate-400 group-hover:bg-butter-100 group-hover:text-butter-600 transition p-2 rounded-lg font-bold text-xs">AN</div>
+                        <div>
+                            <h4 class="font-bold text-slate-600 group-hover:text-dark text-sm transition">Anthropic (Claude)</h4>
+                            <p class="text-xs text-slate-400 mt-0.5">Click to connect via OAuth</p>
+                        </div>
+                    </div>
+                    <span class="text-slate-300 group-hover:text-butter-500 transition font-bold text-xl">+</span>
+                </div>
+            </div>
+
+            <div class="bg-red-50 rounded-2xl p-5 border border-red-100 flex items-center justify-between">
+                <div>
+                    <h4 class="font-bold text-red-900 text-sm">Emergency Manual Override</h4>
+                    <p class="text-xs text-red-700 mt-1 max-w-[200px]">Instantly invalidate all current keys and generate new ones.</p>
+                </div>
+                <button id="panicBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm transition transform hover:scale-105 flex items-center space-x-2 text-sm">
+                    <span>☢️</span><span>Rotate Keys</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. THE PARANOIA SLIDER LOGIC 🦮 ---
+            const slider = document.querySelector('input[type="range"]');
+            const modeBox = document.querySelector('.paranoia-text-box');
+            
+            const paranoiaStates = {
+                1: {
+                    title: '<strong class="text-emerald-600 block mb-1">Current Mode: Chill (Low)</strong>',
+                    desc: 'Only blocks known 1-click RCE payloads. Background scanning is relaxed. API keys are static.'
+                },
+                2: {
+                    title: '<strong class="text-amber-500 block mb-1">Current Mode: Cautious (Medium)</strong>',
+                    desc: 'Alerts your phone for any weird port sniffing. Actively monitors game SDK logs for plaintext token leaks.'
+                },
+                3: {
+                    title: '<strong class="text-claw-600 block mb-1 animate-pulse">Current Mode: Butter / Kill Switch</strong>',
+                    desc: 'If any external origin breathes on port 18789, ButterClaw instantly rotates keys and SIGKILLs the agent.'
+                }
+            };
+
+            slider.addEventListener('input', async (e) => { // 1. Added 'async'
+            const val = e.target.value;
+            const state = paranoiaStates[val];
+    
+            // Update the UI (The stuff you already built)
+            modeBox.innerHTML = `<p class="text-xs text-slate-600 font-medium leading-relaxed transition-all duration-300">${state.title}${state.desc}</p>`;
+    
+            modeBox.style.transform = 'scale(0.98)';
+            setTimeout(() => modeBox.style.transform = 'scale(1)', 150);
+
+            // 2. NEW: The Bridge to the Python Brain
+            try {
+                await fetch('http://127.0.0.1:5000/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level: val })
+                });
+            console.log(`🛡️ Level ${val} synced to Sentinel.`);
+            } catch (err) {
+                console.warn("⚠️ Sentinel offline. Logic is local-only.");
+            }
+            });
+
+
+            // --- 2. THE BIG ASS SHIELD TOGGLE 🛡️ ---
+            const shieldIconBox = document.querySelector('.h-32.w-32');
+            const shieldIcon = shieldIconBox.querySelector('span');
+            const shieldTitle = shieldIconBox.nextElementSibling;
+            const shieldDesc = shieldTitle.nextElementSibling;
+            const toggleBtn = shieldDesc.nextElementSibling;
+            
+            let shieldUp = true;
+
+            toggleBtn.addEventListener('click', () => {
+                shieldUp = !shieldUp;
+                
+                if (shieldUp) {
+                    shieldIconBox.className = "h-32 w-32 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-pointer hover:scale-105 transition-all duration-300";
+                    shieldIcon.textContent = "🛡️";
+                    shieldTitle.textContent = "Shield is UP";
+                    shieldTitle.className = "text-3xl font-bold text-dark mb-2";
+                    shieldDesc.textContent = "ButterClaw is actively monitoring localhost sniffing and API token leaks.";
+                    toggleBtn.textContent = "Disable Shield (Not Recommended)";
+                    toggleBtn.className = "mt-8 bg-slate-100 text-slate-600 font-bold py-3 px-8 rounded-full hover:bg-claw-500 hover:text-white transition duration-300";
+                } else {
+                    shieldIconBox.className = "h-32 w-32 bg-red-100 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-pointer animate-bounce transition-all duration-300";
+                    shieldIcon.textContent = "🦞"; 
+                    shieldTitle.textContent = "Claw is EXPOSED";
+                    shieldTitle.className = "text-3xl font-bold text-claw-600 mb-2 animate-pulse";
+                    shieldDesc.textContent = "WARNING: OpenClaw traffic is unmonitored. You are vulnerable to CSWH attacks.";
+                    toggleBtn.textContent = "ENABLE SHIELD";
+                    toggleBtn.className = "mt-8 bg-emerald-500 text-white font-bold py-3 px-8 rounded-full hover:bg-emerald-600 shadow-lg hover:shadow-emerald-500/50 transition duration-300 transform hover:-translate-y-1";
+                }
+            });
+
+            // --- 3. THE BUTTERVAULT MODAL LOGIC 🧈 ---
+            const vaultLink = document.getElementById('vaultSidebarLink');
+            const vaultModal = document.getElementById('butterVaultModal');
+            const vaultContent = document.getElementById('bvContent');
+            const closeVaultBtn = document.getElementById('closeVaultBtn');
+            const panicBtn = document.getElementById('panicBtn');
+
+            vaultLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                vaultModal.classList.remove('hidden');
+                setTimeout(() => {
+                    vaultModal.classList.remove('opacity-0');
+                    vaultContent.classList.remove('scale-95');
+                }, 10);
+            });
+
+            const closeModal = () => {
+                vaultModal.classList.add('opacity-0');
+                vaultContent.classList.add('scale-95');
+                setTimeout(() => {
+                    vaultModal.classList.add('hidden');
+                }, 300); 
+            };
+
+            closeVaultBtn.addEventListener('click', closeModal);
+            
+            vaultModal.addEventListener('click', (e) => {
+                if(e.target === vaultModal) closeModal();
+            });
+
+            panicBtn.addEventListener('click', async () => {
+                // 1. Change UI to "Loading"
+                panicBtn.innerHTML = `<span>⏳</span><span>Buttering...</span>`;
+                panicBtn.classList.replace('bg-red-500', 'bg-amber-500');
+                panicBtn.classList.replace('hover:bg-red-600', 'hover:bg-amber-600');
+                
+                try {
+                    // 2. Fire the manual override command to the Python Brain
+                    await fetch('http://127.0.0.1:5000/api/rotate-keys', {
+                        method: 'POST'
+                    });
+                    
+                    // 3. Change UI to "Success"
+                    panicBtn.innerHTML = `<span>✅</span><span>Keys Rotated</span>`;
+                    panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
+                    panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
+                    
+                    // Force the dashboard to fetch the new manual override log instantly
+                    fetchLiveLogs();
+                    
+                } catch (error) {
+                    console.error("Vault offline. Is server.py running?", error);
+                    panicBtn.innerHTML = `<span>❌</span><span>Vault Offline</span>`;
+                }
+            });
+
+            // --- 4. LIVE OOPSIE LOGS ENGINE (CONNECTED TO PYTHON) 📋 ---
+            const oopsieContainer = document.getElementById('oopsieContainer');
+            const emptyLogs = document.getElementById('emptyLogs');
+            const simulateAttackBtn = document.getElementById('simulateAttackBtn'); // Keep button for visuals
+
+            let previousLogsLength = 0;
+
+            const fetchLiveLogs = async () => {
+                try {
+                    const response = await fetch('http://127.0.0.1:5000/api/logs');
+                    const logs = await response.json();
+
+                    if (logs.length === 0) {
+                    emptyLogs.classList.remove('hidden');
+                    oopsieContainer.innerHTML = '';
+                    return;
+                    }
+
+                emptyLogs.classList.add('hidden');
+        
+                // Only re-render if we have a new log to avoid flickering
+                if (logs.length !== previousLogsLength || logs[0].time !== oopsieContainer.dataset.lastTime) {
+                    oopsieContainer.dataset.lastTime = logs[0].time;
+                    previousLogsLength = logs.length;
+
+                    oopsieContainer.innerHTML = logs.map((log, index) => `
+                        <div class="flex items-start p-4 bg-${log.color}-50 rounded-2xl border border-${log.color}-100 transform transition-all duration-500 ease-out ${index === 0 ? 'animate-slide-down opacity-100' : ''}">
+                        <div class="bg-${log.color}-100 text-${log.color}-600 p-2 rounded-lg mr-4 text-lg shadow-sm">${log.icon}</div>
+                        <div class="flex-1">
+                            <h4 class="font-bold text-${log.color}-900 text-sm tracking-tight">${log.title}</h4>
+                            <p class="text-sm text-${log.color}-700 mt-1 leading-relaxed">${log.desc}</p>
+                            <p class="text-xs text-${log.color}-600 mt-2 font-mono bg-${log.color}-100/50 inline-block px-2 py-1 rounded">Action: ${log.action}</p>
+                        </div>
+                        <span class="ml-4 text-xs text-${log.color}-400 font-bold tracking-wider">${log.time}</span>
+                        </div>
+                            `).join('');
+                        }
+                    } catch (error) {
+                        console.error("Brain disconnected. Is server.py running?");
+                    }
+                };
+
+                // Check for new logs every 2 seconds
+                //setInterval(fetchLiveLogs, 2000);
+                // --- THE ENTERPRISE SSE PIPELINE ---
+const logStream = new EventSource('http://127.0.0.1:5000/api/stream');
+
+logStream.onmessage = function(event) {
+    console.log("📡 [SSE ALERT] Server tapped us on the shoulder! Fetching fresh logs...");
+    // Only fetch the logs WHEN the server tells us to!
+    fetchLiveLogs(); 
+};
+
+logStream.onerror = function() {
+    console.warn("🔇 SSE Stream disconnected. The Brain is offline.");
+    
+    // --- THE KILL SWITCH ---
+    // Instantly close the connection so it doesn't retry every 2 seconds.
+    logStream.close(); 
+};
+
+
+                fetchLiveLogs(); // Initial fetch
+
+            // --- 5. WIRE THE UI BUTTON TO THE PYTHON BRAIN ---
+    simulateAttackBtn.addEventListener('click', async () => {
+    // 1. Make the button wiggle so you know you clicked it
+    simulateAttackBtn.classList.add('scale-95');
+    setTimeout(() => simulateAttackBtn.classList.remove('scale-95'), 150);
+
+    // 2. A bank of real payloads to throw at the AI
+    const payloads = [
+        { 
+            threat_type: "Cross-Site WebSocket Hijack", 
+            raw_data: "Origin: wss://malicious-vibe-coder.net attempting to bind to localhost:18789 with parameters: applySettingsFromUrl=True & exportAuthToken=True" 
+        },
+        { 
+            threat_type: "Indirect Prompt Injection", 
+            raw_data: "Agent received invisible prompt from web. Executing file read on: ~/AppData/Local/ArcRaiders/logs/discord_bearer_tokens.txt. Attempting to cURL contents." 
+        },
+        { 
+            threat_type: "Routine Log", 
+            raw_data: "Agent woke up, checked system clock, verified no pending cron jobs. Returning to sleep state." 
+        }
+    ];
+
+    // Pick a random payload from the list
+    const randomPayload = payloads[Math.floor(Math.random() * payloads.length)];
+
+    // 3. Save the original button HTML so we can restore it later
+    const originalHTML = simulateAttackBtn.innerHTML;
+    
+    // Change button state to "Stewing..."
+    simulateAttackBtn.innerHTML = `<span>⏳</span><span>Stewing...</span>`;
+
+    // 4. Fire it directly at your Python server!
+    try {
+        await fetch('http://127.0.0.1:5000/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(randomPayload)
+        });
+        
+        // Reset button
+        simulateAttackBtn.innerHTML = originalHTML;
+        
+        // Force an immediate log fetch so you don't have to wait 2 seconds
+        fetchLiveLogs();
+        
+        } catch (error) {
+            console.error("Could not reach the Brain. Is server.py running?", error);
+            simulateAttackBtn.innerHTML = `<span>❌</span><span>Brain Offline</span>`;
+            setTimeout(() => simulateAttackBtn.innerHTML = originalHTML, 2000);
+        }
+    });
+});    
+    </script>
+</body>
+</html>
