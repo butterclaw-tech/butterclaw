@@ -1,5 +1,7 @@
 # 🦞 ButterClaw v0.1: Agentic Telemetry Sentinel & Local LLM Judge
 
+**[Official Dashboard: butterclaw.tech](https://butterclaw.tech)**
+
 Lightweight, local-first behavioral analysis prototype for autonomous AI agents. Deterministic LLM judge-model for post-authorization observability.
 
 Traditional security (like mTLS) secures the network perimeter, but fails if an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level agent telemetry and using a deterministic, zero-temperature local LLM to evaluate agent behavior in real-time.
