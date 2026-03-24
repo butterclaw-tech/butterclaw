@@ -137,5 +137,4 @@ MIT License. Copyright (c) 2026 butterclaw-tech. See [LICENSE](LICENSE) file for
 
 ---
 
-*Built with Python, Vanilla JS, and a whole lot of unautclated, yes unautclated, telemetry.* 🦞
-```
+*Built with Python, Vanilla JS, and a whole lot of unautclated telemetry. Yes, unautclated.* 🦞
