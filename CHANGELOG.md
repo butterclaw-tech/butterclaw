@@ -6,7 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.1.1] — 2026-03-23
+# Changelog: ButterClaw v0.2
+**Release Date:** April 1, 2026
+
+## [0.2.0] - 2026-04-01 - Structured Intelligence & MCP
+
+### Added
+* **The Claws (Execution Layer):** Introduced `butterclaw_mcp.py`, a dedicated Model Context Protocol (MCP) layer for OS-level interventions.
+* **Gibson Kill Switch:** Implementation of a "Dry Run" safety harness for simulated `SIGKILL` (`pkill`/`taskkill`) and API key rotation.
+* **Structured JSON Intelligence:** Migrated the Brain (Phi-3) to a strict JSON schema output, eliminating brittle regex string-matching errors.
+* **Confidence Scoring:** The model now calculates and returns a probabilistic confidence score (0.0 - 1.0) for every threat analysis.
+* **Adaptive Temperature:** Bumped LLM temperature to `0.2` to allow for lateral semantic reasoning against obfuscated threats.
+
+### Changed
+* **The Brain:** Transitioned from a passive "judge" to an active "Sentinel" capable of triggering programmatic defenses.
+* **UI Overhaul:** Updated `index.html` to support real-time metadata streaming and kinetic action logging via Server-Sent Events (SSE).
+
+### Fixed
+* **The Box Trap:** Resolved issues where non-deterministic text outputs from the LLM would crash the API parser.
+
+---
+
+## [0.1.1] — 2026-03-23 - Security & Routing Update
 
 ### Summary
 

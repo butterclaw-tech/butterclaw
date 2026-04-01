@@ -37,12 +37,13 @@ import threading
 import os
 from collections import deque
 from urllib.parse import urlparse
+import json
 
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.1.1"
+VERSION = "0.2"
 
 app = Flask(__name__)
 
@@ -203,21 +204,21 @@ def _validate_endpoint_url(url_string):
 # =============================================
 
 def ask_guardian_agent(threat_type, raw_data):
-    """Passes the log through the Logic Gates using local Ollama Chat API."""
-    # [C3] Thread-safe read of current_level + [R2] model + [R4] gates
+    """
+    [v0.2] Passes the log through the Logic Gates, enforcing JSON output.
+    Returns a structured dictionary instead of a raw string.
+    """
     with _state_lock:
         level = current_level
         active_model = model_name
-        gates = dict(gate_states)  # Snapshot to avoid holding lock during HTTP
+        gates = dict(gate_states)
 
-    # Map the number to a Security Personality
     mode_instructions = "Mode: RELAXED. Be lenient unless it's a clear RCE."
     if level == "2":
         mode_instructions = "Mode: CAUTIOUS. Flag anomalies and token leaks."
     if level == "3":
         mode_instructions = "Mode: PARANOID. Zero Trust. Flag ANY external origin breathing on local ports."
 
-    # [R4] Build gate context — tell the model which gates are active
     active_gates = [k for k, v in gates.items() if v]
     inactive_gates = [k for k, v in gates.items() if not v]
 
@@ -235,24 +236,24 @@ def ask_guardian_agent(threat_type, raw_data):
             f" Active analysis gates: {', '.join(active_labels) if active_labels else 'NONE'}."
             f" Disabled gates (skip these): {', '.join(inactive_labels)}."
         )
-        # [R6] If kill switch is disarmed, explicitly instruct no SIGKILL
         if not gates.get("kill_sw"):
-            gate_context += " Kill Switch is DISARMED — do NOT recommend SIGKILL or process termination."
+            gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
 
-    # [R3] Resolve endpoint dynamically
+    # --- THE UFO UPGRADE: JSON Schema Enforcement ---
+    json_schema = (
+        'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
+        'Strict Schema: {"verdict": "CRITICAL" | "WARNING" | "BENIGN", "confidence": float 0.0-1.0, "reasoning": "2-sentence explanation."}'
+    )
+
     ollama_url = _resolve_ollama_url()
 
     payload = {
-        "model": active_model,  # [R2] Dynamic model name
+        "model": active_model,
+        "format": "json",  # Forces Ollama to output valid JSON
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    f"You are ButterClaw, an expert Blue Team cybersecurity Guardian AI. "
-                    f"{mode_instructions}{gate_context} Respond with EXACTLY this format: "
-                    f"VERDICT: [CRITICAL/WARNING/BENIGN] followed by a 2-sentence analysis. "
-                    f"Never include IP addresses."
-                )
+                "content": f"You are ButterClaw, an expert Blue Team cybersecurity Guardian AI. {mode_instructions}{gate_context} {json_schema}"
             },
             {
                 "role": "user",
@@ -260,26 +261,36 @@ def ask_guardian_agent(threat_type, raw_data):
                     f"Analyze this local AI agent event:\n"
                     f"Threat Type: {threat_type}\n"
                     f"Raw Data/Log: {raw_data}\n\n"
-                    f"Determine if this is a Cross-Site WebSocket Hijacking (CSWH) attempt, "
-                    f"an Indirect Prompt Injection, or benign noise."
+                    f"Determine if this is a CSWH attempt, an Indirect Prompt Injection, or benign noise."
                 )
             }
         ],
         "stream": False,
         "options": {
-            "temperature": 0.0
+            "temperature": 0.2  # Unfrozen! 🧠
         }
     }
 
     try:
         response = requests.post(ollama_url, json=payload, timeout=120)
-        return response.json().get("message", {}).get("content", "VERDICT: UNKNOWN - The brain stalled.")
-    except requests.ConnectionError:
-        return f"VERDICT: ERROR - Could not connect to Ollama at {ollama_url}. Is the service running?"
-    except requests.Timeout:
-        return f"VERDICT: ERROR - Ollama at {ollama_url} timed out after 120s."
+        raw_content = response.json().get("message", {}).get("content", "{}")
+
+        try:
+            parsed = json.loads(raw_content)
+            return {
+                "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
+                "confidence": float(parsed.get("confidence", 0.0)),
+                "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning."))
+            }
+        except json.JSONDecodeError:
+            return {
+                "verdict": "ERROR",
+                "confidence": 0.0,
+                "reasoning": f"JSON parse failed on output: {raw_content}"
+            }
+
     except Exception as e:
-        return f"VERDICT: ERROR - Could not connect to local Ollama. Details: {e}"
+        return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"Brain failure: {str(e)}"}
 
 
 # =============================================
@@ -326,38 +337,49 @@ def analyze_threat():
     print(f"\U0001f4e1 [HTTP POST DISPATCHED] Routing to {ollama_url}...")
     start_time = time.time()
 
-    # Let the model stew on it
-    verdict_text = ask_guardian_agent(threat_type, raw_data)
-
+    # Let the model stew on it (v0.2 returns a dict!)
+    analysis = ask_guardian_agent(threat_type, raw_data)
+    
     end_time = time.time()
     stew_time = round(end_time - start_time, 2)
 
-    verdict_upper = verdict_text.upper()
+    # Extract the structured data
+    verdict_upper = analysis["verdict"]
+    confidence_pct = int(analysis["confidence"] * 100)
+    
+    # We now embed the confidence score directly into the UI description!
+    verdict_text = f"[{confidence_pct}% Confidence] {analysis['reasoning']}"
 
-    print(f"\U0001f9e0 [HTTP 200 OK] Model returned verdict in {stew_time} seconds.")
+    print(f"\U0001f9e0 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
     print("=" * 60)
 
     # [R6] Gate-aware action assignment
     with _state_lock:
         kill_sw_armed = gate_states.get("kill_sw", True)
 
-    if "CRITICAL" in verdict_upper:
+    # THE BOX TRAP IS DEAD. We use exact matching now.
+    if verdict_upper == "CRITICAL":
         color = "red"
-        icon = "\U0001f6a8"
-        # [R6] If kill switch is DISARMED, downgrade action from SIGKILL
+        icon = "🚨"
         if kill_sw_armed:
+            # --- WIRING THE PROP CLAWS ---
+            import butterclaw_mcp
+            butterclaw_mcp.execute_gibson_kill("openclaw")
+            butterclaw_mcp.rotate_keys("OpenRouter")
+            # -----------------------------
             action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
-    elif "WARNING" in verdict_upper:
+    elif verdict_upper == "WARNING":
         color = "amber"
         icon = "⚠️"
         action = "Monitored"
-    elif "ERROR" in verdict_upper:
+    elif verdict_upper == "ERROR":
         color = "red"
         icon = "❌"
         action = "System Offline"
     else:
+        # Defaults to BENIGN. 
         color = "emerald"
         icon = "✅"
         action = "Monitored"

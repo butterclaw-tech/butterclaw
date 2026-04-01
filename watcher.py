@@ -252,7 +252,7 @@ def watch_log(replay=False):
 def main():
     # [L1] CLI argument for replay mode
     parser = argparse.ArgumentParser(
-        description="ButterClaw Log Watcher v0.1.1"
+        description="ButterClaw Log Watcher v0.2"
     )
     parser.add_argument(
         "--replay",
