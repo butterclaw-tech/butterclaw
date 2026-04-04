@@ -43,7 +43,7 @@ import json
 # APP SETUP
 # =============================================
 
-VERSION = "0.2"
+VERSION = "0.2.1"
 
 app = Flask(__name__)
 
@@ -240,9 +240,14 @@ def ask_guardian_agent(threat_type, raw_data):
             gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
 
     # --- THE UFO UPGRADE: JSON Schema Enforcement ---
+    # --- THE UFO UPGRADE: Mind Reader JSON Schema ---
     json_schema = (
         'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
-        'Strict Schema: {"verdict": "CRITICAL" | "WARNING" | "BENIGN", "confidence": float 0.0-1.0, "reasoning": "2-sentence explanation."}'
+        'Strict Schema: {'
+        '"verdict": "CRITICAL" | "WARNING" | "BENIGN", '
+        '"confidence": float 0.0-1.0, '
+        '"primary_gate": "Signature" | "Origin" | "Intent" | "None", '
+        '"reasoning": "2-sentence explanation."}'
     )
 
     ollama_url = _resolve_ollama_url()
@@ -280,6 +285,7 @@ def ask_guardian_agent(threat_type, raw_data):
             return {
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
                 "confidence": float(parsed.get("confidence", 0.0)),
+                "primary_gate": str(parsed.get("primary_gate", "None")), # <-- NEW!
                 "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning."))
             }
         except json.JSONDecodeError:
@@ -346,9 +352,10 @@ def analyze_threat():
     # Extract the structured data
     verdict_upper = analysis["verdict"]
     confidence_pct = int(analysis["confidence"] * 100)
+    trigger_gate = analysis["primary_gate"]
     
-    # We now embed the confidence score directly into the UI description!
-    verdict_text = f"[{confidence_pct}% Confidence] {analysis['reasoning']}"
+    # We now embed the Gate and Confidence score directly into the UI description!
+    verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {analysis['reasoning']}"
 
     print(f"\U0001f9e0 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
     print("=" * 60)

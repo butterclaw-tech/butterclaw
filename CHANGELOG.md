@@ -6,10 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+# Changelog: ButterClaw v0.2.1
+**Release Date:** April 3, 2026
+
+## [0.2.1] - The Mind Reader Update (Observation & Simulation)
+
+### Added
+* **Logic Gate Trace:** Introduced the `primary_gate` field to the JSON schema, forcing the Brain to identify the specific analytical vector (Signature, Origin, or Intent) used for the verdict.
+* **UI Mind Reader Window:** The dashboard now explicitly displays the triggering logic gate next to the confidence score for 100% transparent observability.
+
+### Changed
+* **Terminology Pivot:** Rebranded the system from "Deterministic" to "**Probabilistic**" to accurately reflect the adaptive nature of temperature-based sampling.
+* **Documentation Cleanup:** Streamlined the `README.md` to remove "slop" and emphasize the **Evaluation before Execution** principle.
+
+### Fixed
+* **Parsing Stability:** Refined the JSON parser in `server.py` to handle the new gate metadata without breaking existing SQLite storage logic.
+
+---
+
 # Changelog: ButterClaw v0.2
 **Release Date:** April 1, 2026
 
-## [0.2.0] - 2026-04-01 - Structured Intelligence & MCP
+## [0.2.0] - Structured Intelligence & MCP Update - 2026-04-01
 
 ### Added
 * **The Claws (Execution Layer):** Introduced `butterclaw_mcp.py`, a dedicated Model Context Protocol (MCP) layer for OS-level interventions.
@@ -27,7 +45,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.1.1] — 2026-03-23 - Security & Routing Update
+## [0.1.1] — Security & Routing Update - 2026-03-23
 
 ### Summary
 
@@ -183,7 +201,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.1.0] — Initial Release
+## [0.1.0] — Initial Prototype Release — 2026-03-17
 
 - Prototype dashboard (`index.html`)
 - Flask API server (`server.py`)

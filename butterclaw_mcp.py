@@ -46,6 +46,6 @@ def execute_gibson_kill(target_process="openclaw"):
 
 if __name__ == "__main__":
     # If you run this file directly, it just tests the prop claws
-    print("🦞 ButterClaw Claws (v0.2) - DRY RUN TEST")
+    print("🦞 ButterClaw Claws (v0.2) - DRUN RUN TEST")
     execute_gibson_kill("rogue_agent.exe")
     rotate_keys("Anthropic")
