@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ButterClaw 🦞</title>
 
-  <!-- [C4] Content Security Policy -->
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self';
              script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
@@ -34,21 +33,16 @@
           }
         }
       },
-      // [C2] Tailwind safelist — ensures dynamic color classes survive JIT purge
+      // [C2] Tailwind safelist
       safelist: [
-        // red (CRITICAL)
         'bg-red-50', 'bg-red-100', 'bg-red-100/50', 'border-red-100',
         'text-red-400', 'text-red-600', 'text-red-700', 'text-red-900',
-        // amber (WARNING)
         'bg-amber-50', 'bg-amber-100', 'bg-amber-100/50', 'border-amber-100',
         'text-amber-400', 'text-amber-600', 'text-amber-700', 'text-amber-900',
-        // emerald (BENIGN)
         'bg-emerald-50', 'bg-emerald-100', 'bg-emerald-100/50', 'border-emerald-100',
         'text-emerald-400', 'text-emerald-600', 'text-emerald-700', 'text-emerald-900',
-        // blue (INFO / future use)
         'bg-blue-50', 'bg-blue-100', 'bg-blue-100/50', 'border-blue-100',
         'text-blue-400', 'text-blue-600', 'text-blue-700', 'text-blue-900',
-        // [N1] connection badge — dynamic dot/text classes for health polling
         'bg-emerald-500', 'bg-amber-500', 'bg-red-500',
         'text-emerald-800', 'text-amber-800', 'text-red-800',
       ]
@@ -58,9 +52,6 @@
 
 <body class="bg-slate-50 text-slate-800 font-sans h-screen flex overflow-hidden selection:bg-butter-400 selection:text-dark">
 
-  <!-- =============================================
-       [M3] MOBILE HAMBURGER BUTTON
-       ============================================= -->
   <button id="mobileMenuBtn"
     class="fixed top-4 left-4 z-50 md:hidden bg-white border border-slate-200 rounded-xl p-2 shadow-sm hover:bg-slate-50 transition">
     <svg class="w-6 h-6 text-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -68,16 +59,10 @@
     </svg>
   </button>
 
-  <!-- =============================================
-       [M3] MOBILE OVERLAY BACKDROP
-       ============================================= -->
   <div id="mobileBackdrop"
     class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 hidden md:hidden transition-opacity duration-300 opacity-0">
   </div>
 
-  <!-- =============================================
-       SIDEBAR (now with mobile slide-in support)
-       ============================================= -->
   <aside id="sidebar"
     class="w-64 bg-white border-r border-slate-200 flex-col justify-between
            fixed inset-y-0 left-0 z-40 transform -translate-x-full transition-transform duration-300
@@ -88,7 +73,6 @@
           <span class="text-3xl">🦞</span>
           <h1 class="text-xl font-bold tracking-tight text-dark">Butter<span class="text-butter-500">Claw</span></h1>
         </div>
-        <!-- Mobile close button -->
         <button id="closeSidebarBtn" class="md:hidden text-slate-400 hover:text-dark transition">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -115,7 +99,6 @@
       </nav>
     </div>
     <div class="p-6">
-      <!-- [N1] Live connection badge — polls /api/health every 30s -->
       <div id="connectionBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3">
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div id="connectionText" class="text-sm font-medium text-slate-500">Checking...</div>
@@ -123,16 +106,12 @@
     </div>
   </aside>
 
-  <!-- =============================================
-       MAIN CONTENT
-       ============================================= -->
   <main class="flex-1 overflow-y-auto p-8 lg:p-12 scroll-smooth">
     <header class="mb-10 flex justify-between items-center">
       <div class="ml-10 md:ml-0">
         <h2 class="text-3xl font-extrabold text-dark tracking-tight">Agent Dashboard</h2>
         <p class="text-slate-500 mt-1">Local agent behavior is being monitored.</p>
       </div>
-      <!-- [N1] Header connection indicator — synced with sidebar badge -->
       <button id="headerConnBtn" class="bg-dark hover:bg-slate-800 text-white px-6 py-2.5 rounded-full font-medium shadow-lg transition flex items-center space-x-2">
         <span id="headerConnLabel">VPS: Checking</span>
         <span id="headerConnDot" class="text-slate-400">●</span>
@@ -141,9 +120,6 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-      <!-- =============================================
-           SHIELD STATUS CARD
-           ============================================= -->
       <div class="col-span-1 lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center relative overflow-hidden">
         <div id="shieldGradient" class="absolute top-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-emerald-500"></div>
         <div id="shieldIconBox"
@@ -158,9 +134,6 @@
         </button>
       </div>
 
-      <!-- =============================================
-           PARANOIA LEVEL CARD
-           ============================================= -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col justify-between">
         <div>
           <h3 class="text-xl font-bold text-dark flex items-center space-x-2">
@@ -185,9 +158,6 @@
         </div>
       </div>
 
-      <!-- =============================================
-           LIVE OOPSIE LOGS
-           ============================================= -->
       <div id="oopsieSection" class="col-span-1 lg:col-span-3 bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mt-4">
         <div class="flex justify-between items-center mb-6">
           <h3 class="text-xl font-bold text-dark flex items-center space-x-2">
@@ -210,9 +180,6 @@
     </div>
   </main>
 
-  <!-- =============================================
-       BUTTERVAULT MODAL
-       ============================================= -->
   <div id="butterVaultModal"
     class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
     <div id="bvContent"
@@ -228,26 +195,31 @@
         <h3 class="text-2xl font-extrabold text-dark tracking-tight">The ButterVault</h3>
       </div>
       <p class="text-sm text-slate-500 mb-8 leading-relaxed">
-        Your API keys are encrypted locally. If Gate 4 detects a localhost sniff,
-        these keys are instantly rotated via the provider's API. The Claw gets nothing.
+        Your API keys are encrypted locally using OS-native Keyrings. If Gate 4 detects a localhost sniff,
+        these ciphertexts are instantly overwritten. The Claw gets nothing.
       </p>
+      
       <div class="space-y-4 mb-8">
-        <!-- OpenRouter Key (Demo) -->
-        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-          <div class="flex items-center space-x-3">
-            <div class="bg-blue-100 text-blue-600 p-2 rounded-lg font-bold text-xs">OR</div>
-            <div>
-              <h4 class="font-bold text-dark text-sm">OpenRouter</h4>
-              <!-- [L1] Demo label added for clarity -->
-              <p class="text-xs text-slate-500 font-mono mt-0.5">sk-or-v1-••••••••8f9a <span class="text-slate-400 font-sans">(Demo)</span></p>
+        <div class="flex flex-col space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-all duration-300">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="bg-blue-100 text-blue-600 p-2 rounded-lg font-bold text-xs">OR</div>
+              <div>
+                <h4 class="font-bold text-dark text-sm">OpenRouter</h4>
+                <p id="orStatusText" class="text-xs text-slate-500 font-mono mt-0.5">Checking...</p>
+              </div>
             </div>
+            <span id="orBadge" class="bg-slate-100 text-slate-500 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1">
+              <span id="orBadgeDot" class="w-1.5 h-1.5 bg-slate-400 rounded-full mr-1"></span>
+              <span id="orBadgeText">...</span>
+            </span>
           </div>
-          <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1">
-            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse"></span>
-            Protected
-          </span>
+          <div id="orInputGroup" class="flex space-x-2 mt-2">
+            <input id="orKeyInput" type="password" placeholder="sk-or-v1-..." class="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-butter-500 outline-none">
+            <button id="orSaveBtn" class="bg-dark hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold transition">Seal</button>
+          </div>
         </div>
-        <!-- Anthropic Connect Slot -->
+
         <div class="flex items-center justify-between p-4 bg-white rounded-2xl border border-dashed border-slate-300 hover:border-butter-400 transition cursor-pointer group">
           <div class="flex items-center space-x-3">
             <div class="bg-slate-100 text-slate-400 group-hover:bg-butter-100 group-hover:text-butter-600 transition p-2 rounded-lg font-bold text-xs">AN</div>
@@ -259,23 +231,20 @@
           <span class="text-slate-300 group-hover:text-butter-500 transition font-bold text-xl">+</span>
         </div>
       </div>
-      <!-- Emergency Override -->
+
       <div class="bg-red-50 rounded-2xl p-5 border border-red-100 flex items-center justify-between">
         <div>
           <h4 class="font-bold text-red-900 text-sm">Emergency Manual Override</h4>
-          <p class="text-xs text-red-700 mt-1 max-w-[200px]">Instantly invalidate all current keys and generate new ones.</p>
+          <p class="text-xs text-red-700 mt-1 max-w-[200px]">Instantly invalidate all local ciphertexts.</p>
         </div>
         <button id="panicBtn"
           class="bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm transition transform hover:scale-105 flex items-center space-x-2 text-sm">
-          <span>☢️</span><span>Rotate Keys</span>
+          <span>☢️</span><span>Butter Keys</span>
         </button>
       </div>
     </div>
   </div>
 
-  <!-- =============================================
-       JAVASCRIPT — PATCHED v0.1.1
-       ============================================= -->
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
@@ -319,7 +288,6 @@
     const slider  = document.getElementById('paranoiaSlider');
     const modeBox = document.getElementById('paranoiaModeBox');
 
-    // [L2] Paranoia states — using DOM construction instead of innerHTML
     const paranoiaStates = {
       1: {
         titleText:  'Current Mode: Chill (Low)',
@@ -334,13 +302,12 @@
       3: {
         titleText:  'Current Mode: Butter / Kill Switch',
         titleClass: 'text-claw-600 block mb-1 animate-pulse',
-        desc: 'If any external origin breathes on port 18789, ButterClaw instantly rotates keys and SIGKILLs the agent.'
+        desc: 'If any external origin breathes on port 18789, ButterClaw instantly destroys Vault ciphertext and SIGKILLs the agent.'
       }
     };
 
     const updateParanoiaUI = (val) => {
       const state = paranoiaStates[val];
-      // [L2] DOM construction — no innerHTML for mode text
       modeBox.innerHTML = '';
       const p = document.createElement('p');
       p.className = 'text-xs text-slate-600 font-medium leading-relaxed transition-all duration-300';
@@ -350,12 +317,10 @@
       p.appendChild(strong);
       p.appendChild(document.createTextNode(state.desc));
       modeBox.appendChild(p);
-      // Micro-animation
       modeBox.style.transform = 'scale(0.98)';
       setTimeout(() => modeBox.style.transform = 'scale(1)', 150);
     };
 
-    // [M2] Sync slider state from server on page load
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/settings`);
@@ -367,7 +332,6 @@
           }
         }
       } catch (e) {
-        // Server offline — default to 3 (current HTML default), no disruption
         console.warn('⚠️ Could not sync paranoia level. Defaulting to 3.');
       }
     })();
@@ -375,23 +339,19 @@
     slider.addEventListener('input', async (e) => {
       const val = e.target.value;
       updateParanoiaUI(val);
-
-      // Sync to backend
       try {
         await fetch(`${API_BASE}/api/settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ level: val })
         });
-        console.log(`🛡️ Level ${val} synced to Sentinel.`);
       } catch (err) {
-        console.warn('⚠️ Sentinel offline. Logic is local-only.');
+        console.warn('⚠️ Sentinel offline.');
       }
     });
 
     // =============================================
     // 2. SHIELD TOGGLE 🛡️
-    // [M1] Now posts state to backend
     // =============================================
     const shieldIconBox  = document.getElementById('shieldIconBox');
     const shieldIcon     = document.getElementById('shieldIcon');
@@ -424,31 +384,87 @@
         toggleBtn.className = 'mt-8 bg-emerald-500 text-white font-bold py-3 px-8 rounded-full hover:bg-emerald-600 shadow-lg hover:shadow-emerald-500/50 transition duration-300 transform hover:-translate-y-1';
       }
 
-      // [M1] POST shield state to backend
       try {
         await fetch(`${API_BASE}/api/shield`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: shieldUp })
         });
-        console.log(`🛡️ Shield ${shieldUp ? 'ENABLED' : 'DISABLED'} — synced to backend.`);
       } catch (err) {
-        console.warn('⚠️ Backend offline. Shield state is visual-only.');
+        console.warn('⚠️ Backend offline.');
       }
     });
 
     // =============================================
-    // 3. BUTTERVAULT MODAL LOGIC 🧈
+    // 3. BUTTERVAULT MODAL LOGIC 🧈 (v0.3)
     // =============================================
     const vaultLink    = document.getElementById('vaultSidebarLink');
     const vaultModal   = document.getElementById('butterVaultModal');
     const vaultContent = document.getElementById('bvContent');
     const closeVaultBtn = document.getElementById('closeVaultBtn');
     const panicBtn     = document.getElementById('panicBtn');
+    
+    // OpenRouter Form Elements
+    const orStatusText = document.getElementById('orStatusText');
+    const orBadge = document.getElementById('orBadge');
+    const orBadgeDot = document.getElementById('orBadgeDot');
+    const orBadgeText = document.getElementById('orBadgeText');
+    const orInputGroup = document.getElementById('orInputGroup');
+    const orKeyInput = document.getElementById('orKeyInput');
+    const orSaveBtn = document.getElementById('orSaveBtn');
+
+    // Fetch live status from backend
+    const fetchVaultStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/vault/status`);
+        if (res.ok) {
+          const status = await res.json();
+          if (status.OpenRouter) {
+            orStatusText.textContent = 'Ciphertext Sealed';
+            orStatusText.className = 'text-xs text-emerald-600 font-mono mt-0.5 font-bold';
+            orBadge.className = 'bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1';
+            orBadgeDot.className = 'w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse';
+            orBadgeText.textContent = 'Protected';
+            orInputGroup.classList.add('hidden');
+          } else {
+            orStatusText.textContent = 'Awaiting API Key';
+            orStatusText.className = 'text-xs text-slate-500 font-mono mt-0.5';
+            orBadge.className = 'bg-slate-100 text-slate-500 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1';
+            orBadgeDot.className = 'w-1.5 h-1.5 bg-slate-400 rounded-full mr-1';
+            orBadgeText.textContent = 'Unprotected';
+            orInputGroup.classList.remove('hidden');
+            orKeyInput.value = '';
+          }
+        }
+      } catch (e) {
+        orStatusText.textContent = 'Offline';
+      }
+    };
+
+    // Save key to backend
+    orSaveBtn.addEventListener('click', async () => {
+      const key = orKeyInput.value.trim();
+      if (!key) return;
+      
+      orSaveBtn.textContent = 'Sealing...';
+      try {
+        await fetch(`${API_BASE}/api/vault/key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'OpenRouter', api_key: key })
+        });
+        await fetchVaultStatus(); // Refresh UI to Protected state
+      } catch (e) {
+        console.error('Failed to seal key', e);
+      } finally {
+        orSaveBtn.textContent = 'Seal';
+      }
+    });
 
     vaultLink.addEventListener('click', (e) => {
       e.preventDefault();
-      closeSidebar(); // Close mobile sidebar if open
+      closeSidebar();
+      fetchVaultStatus(); // Fetch status every time modal opens
       vaultModal.classList.remove('hidden');
       setTimeout(() => {
         vaultModal.classList.remove('opacity-0');
@@ -467,12 +483,13 @@
       if (e.target === vaultModal) closeModal();
     });
 
+    // The Gibson Kill Switch Button
     panicBtn.addEventListener('click', async () => {
       panicBtn.textContent = '';
       const spinIcon = document.createElement('span');
       spinIcon.textContent = '⏳';
       const spinText = document.createElement('span');
-      spinText.textContent = 'Buttering...';
+      spinText.textContent = 'Shredding Ciphertext...';
       panicBtn.appendChild(spinIcon);
       panicBtn.appendChild(spinText);
       panicBtn.classList.replace('bg-red-500', 'bg-amber-500');
@@ -484,14 +501,16 @@
         const okIcon = document.createElement('span');
         okIcon.textContent = '✅';
         const okText = document.createElement('span');
-        okText.textContent = 'Keys Rotated';
+        okText.textContent = 'Keys Buttered';
         panicBtn.appendChild(okIcon);
         panicBtn.appendChild(okText);
         panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
         panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
+        
+        // v0.3: Instantly visually reset the inputs so user sees the destruction
+        await fetchVaultStatus();
         fetchLiveLogs();
       } catch (error) {
-        console.error('Vault offline. Is server.py running?', error);
         panicBtn.textContent = '';
         const errIcon = document.createElement('span');
         errIcon.textContent = '❌';
@@ -500,11 +519,25 @@
         panicBtn.appendChild(errIcon);
         panicBtn.appendChild(errText);
       }
+      
+      // Reset button visuals after 3 seconds
+      setTimeout(() => {
+        panicBtn.textContent = '';
+        const normIcon = document.createElement('span');
+        normIcon.textContent = '☢️';
+        const normText = document.createElement('span');
+        normText.textContent = 'Butter Keys';
+        panicBtn.appendChild(normIcon);
+        panicBtn.appendChild(normText);
+        panicBtn.classList.replace('bg-emerald-500', 'bg-red-500');
+        panicBtn.classList.replace('bg-amber-500', 'bg-red-500'); // Failsafe
+        panicBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+        panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-red-600');
+      }, 3000);
     });
 
     // =============================================
     // 4. LIVE OOPSIE LOGS ENGINE 📋
-    // [C1] XSS-safe DOM construction
     // =============================================
     const oopsieContainer  = document.getElementById('oopsieContainer');
     const emptyLogs        = document.getElementById('emptyLogs');
@@ -512,38 +545,28 @@
 
     let previousLogSignature = '';
 
-    /**
-     * [C1] Creates a single log card using DOM APIs + textContent.
-     * No innerHTML with server-provided strings. Ever.
-     */
     const createLogCard = (log, index) => {
-      const color = log.color || 'slate'; // Fallback for missing color
+      const color = log.color || 'slate';
 
-      // Card wrapper
       const card = document.createElement('div');
       card.className = `flex items-start p-4 bg-${color}-50 rounded-2xl border border-${color}-100 transform transition-all duration-500 ease-out`;
       if (index === 0) card.classList.add('animate-slide-down', 'opacity-100');
 
-      // Icon container
       const iconDiv = document.createElement('div');
       iconDiv.className = `bg-${color}-100 text-${color}-600 p-2 rounded-lg mr-4 text-lg shadow-sm`;
       iconDiv.textContent = log.icon || '📋';
 
-      // Content wrapper
       const contentDiv = document.createElement('div');
       contentDiv.className = 'flex-1';
 
-      // Title — textContent, not innerHTML
       const title = document.createElement('h4');
       title.className = `font-bold text-${color}-900 text-sm tracking-tight`;
       title.textContent = log.title || 'Untitled Event';
 
-      // Description — textContent, not innerHTML
       const desc = document.createElement('p');
       desc.className = `text-sm text-${color}-700 mt-1 leading-relaxed`;
       desc.textContent = log.desc || '';
 
-      // Action badge — textContent, not innerHTML
       const action = document.createElement('p');
       action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`;
       action.textContent = `Action: ${log.action || 'None'}`;
@@ -552,7 +575,6 @@
       contentDiv.appendChild(desc);
       contentDiv.appendChild(action);
 
-      // Timestamp
       const timeSpan = document.createElement('span');
       timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`;
       timeSpan.textContent = log.time || '';
@@ -577,43 +599,38 @@
 
         emptyLogs.classList.add('hidden');
 
-        // Dedupe check — only re-render if data actually changed
         const signature = logs.map(l => l.time + l.title).join('|');
         if (signature === previousLogSignature) return;
         previousLogSignature = signature;
 
-        // [C1] Clear and rebuild with safe DOM construction
         oopsieContainer.innerHTML = '';
         logs.forEach((log, index) => {
           oopsieContainer.appendChild(createLogCard(log, index));
         });
 
       } catch (error) {
-        console.error('Brain disconnected. Is server.py running?');
+        console.error('Brain disconnected.');
       }
     };
 
     // =============================================
     // 5. SSE STREAM
-    // [C3] Exponential backoff reconnect
     // =============================================
-    let sseRetryDelay = 1000; // Start at 1 second
-    const SSE_MAX_DELAY = 30000; // Cap at 30 seconds
+    let sseRetryDelay = 1000;
+    const SSE_MAX_DELAY = 30000;
 
     const connectSSE = () => {
       const logStream = new EventSource(`${API_BASE}/api/stream`);
 
       logStream.onmessage = (event) => {
-        console.log('📡 [SSE ALERT] Server tapped us on the shoulder! Fetching fresh logs...');
-        sseRetryDelay = 1000; // Reset backoff on successful message
+        sseRetryDelay = 1000;
         fetchLiveLogs();
+        // If the stream caught an event (like a SIGKILL / Butter event), refresh vault UI too
+        fetchVaultStatus(); 
       };
 
       logStream.onerror = () => {
-        console.warn(`🔇 SSE disconnected. Reconnecting in ${sseRetryDelay / 1000}s...`);
         logStream.close();
-
-        // [C3] Exponential backoff instead of permanent kill
         setTimeout(() => {
           connectSSE();
           sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX_DELAY);
@@ -621,8 +638,8 @@
       };
     };
 
-    connectSSE(); // Initial SSE connection
-    fetchLiveLogs(); // Initial log fetch
+    connectSSE();
+    fetchLiveLogs();
 
     // =============================================
     // 6. SIMULATE ATTACK BUTTON
@@ -647,9 +664,7 @@
       ];
 
       const randomPayload = payloads[Math.floor(Math.random() * payloads.length)];
-      const originalHTML = simulateAttackBtn.innerHTML;
 
-      // Stewing state — safe DOM update
       simulateAttackBtn.textContent = '';
       const stewIcon = document.createElement('span');
       stewIcon.textContent = '⏳';
@@ -664,7 +679,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(randomPayload)
         });
-        // Restore original button content
         simulateAttackBtn.textContent = '';
         const okIcon = document.createElement('span');
         okIcon.textContent = '👾';
@@ -674,7 +688,6 @@
         simulateAttackBtn.appendChild(okText);
         fetchLiveLogs();
       } catch (error) {
-        console.error('Could not reach the Brain. Is server.py running?', error);
         simulateAttackBtn.textContent = '';
         const errIcon = document.createElement('span');
         errIcon.textContent = '❌';
@@ -696,10 +709,6 @@
 
     // =============================================
     // 7. LIVE CONNECTION BADGE 🔌
-    // [N1] Pings /api/health every 30s — 3 states:
-    //   🟢 emerald  = connected (<2s latency)
-    //   🟡 amber    = slow (>2s latency)
-    //   🔴 red      = disconnected / unreachable
     // =============================================
     const connectionDot   = document.getElementById('connectionDot');
     const connectionText  = document.getElementById('connectionText');

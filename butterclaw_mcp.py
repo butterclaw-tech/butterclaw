@@ -1,31 +1,40 @@
 """
-ButterClaw v0.2 — The Claws (MCP Execution Layer)
-*** DRY RUN / SIMULATION MODE ***
+ButterClaw v0.3 — The Claws (MCP Execution Layer)
+=====================================================================
+Changelog from v0.2:
+  [v0.3] Context Shift: Local keys are now destroyed by ButterVault. 
+         rotate_keys() now specifically simulates external provider API revocation.
+  [v0.3] Added True MCP Protocol server scaffolding (stdio/SSE preparation).
+  *** KINETIC OS ACTIONS REMAIN IN DRY RUN / SIMULATION MODE ***
 """
 
 import logging
 import time
+import json
 
 # Set up loud, clear logging for the terminal
 logging.basicConfig(level=logging.INFO, format="[CLAWS] %(message)s")
 logger = logging.getLogger("butterclaw.mcp")
 
-# SAFETY HARNESS IS ON
+# SAFETY HARNESS IS ON FOR KINETIC OS ACTIONS
 DRY_RUN = True
 
 def rotate_keys(provider="OpenRouter"):
     """
-    Simulates finding the local .env file and scrambling the API keys.
+    [v0.3 Update] 
+    Local keys are now physically shredded by the ButterVault.
+    This function simulates reaching out to the provider's external API
+    to invalidate the old token globally so the attacker can't use it.
     """
-    logger.warning(f"🧈 GIBSON KILL SWITCH: Initiating {provider} key rotation...")
+    logger.warning(f"🌐 EXT-ROTATE: Requesting external key revocation for {provider}...")
     time.sleep(0.5) # Dramatic pause for the tech demo
     
     if DRY_RUN:
-        logger.info(f"🛡️ [DRY RUN] Would have overwritten local {provider} keys with dummy values.")
-        logger.info(f"🛡️ [DRY RUN] Keys successfully 'Buttered'.")
+        logger.info(f"🛡️ [DRY RUN] Would have POSTed to {provider} API to roll tokens globally.")
+        logger.info(f"🛡️ [DRY RUN] External tokens successfully 'Buttered'.")
         return True
     else:
-        # Real logic goes here later
+        # Real external API revocation logic goes here later
         pass
 
 def execute_gibson_kill(target_process="openclaw"):
@@ -41,11 +50,62 @@ def execute_gibson_kill(target_process="openclaw"):
         logger.info(f"🛡️ [DRY RUN] Process neutralized. The Sentinel rests.")
         return True
     else:
-        # Real subprocess.run(taskkill) logic goes here later
+        # Real subprocess.run() SIGKILL logic goes here later
         pass
 
+
+# =====================================================================
+# THE TRUE MCP PROTOCOL SCAFFOLD (v0.3)
+# =====================================================================
+class ButterClawMCPServer:
+    """
+    Scaffolding for the True MCP implementation.
+    Will eventually listen on stdio or SSE to allow the Brain to dynamically 
+    discover these tools via JSON-RPC rather than hardcoded Python imports.
+    """
+    def __init__(self):
+        self.tools = [
+            {
+                "name": "execute_gibson_kill",
+                "description": "Kinetic Response: Terminates a rogue process by name using OS-level SIGKILL.",
+                "parameters": {
+                    "type": "object", 
+                    "properties": {"target_process": {"type": "string"}},
+                    "required": ["target_process"]
+                }
+            },
+            {
+                "name": "rotate_keys",
+                "description": "Kinetic Response: Invalidates provider API tokens globally.",
+                "parameters": {
+                    "type": "object", 
+                    "properties": {"provider": {"type": "string"}},
+                    "required": ["provider"]
+                }
+            }
+        ]
+
+    def list_tools(self):
+        """Returns the available tools formatted for an LLM system prompt."""
+        return json.dumps(self.tools, indent=2)
+
+    def execute_tool(self, tool_name, kwargs):
+        """Routes the LLM's dynamic JSON request to the actual Python function."""
+        if tool_name == "execute_gibson_kill":
+            return execute_gibson_kill(**kwargs)
+        elif tool_name == "rotate_keys":
+            return rotate_keys(**kwargs)
+        else:
+            logger.error(f"❌ Unknown MCP tool invoked: {tool_name}")
+            raise ValueError(f"Unknown tool: {tool_name}")
+
 if __name__ == "__main__":
-    # If you run this file directly, it just tests the prop claws
-    print("🦞 ButterClaw Claws (v0.2) - DRUN RUN TEST")
+    # If you run this file directly, it tests the prop claws and outputs the MCP schema
+    print("🦞 ButterClaw Claws (v0.3) - DRY RUN TEST")
+    print("\n--- Testing Execution ---")
     execute_gibson_kill("rogue_agent.exe")
     rotate_keys("Anthropic")
+    
+    print("\n--- MCP Server Schema Output ---")
+    server = ButterClawMCPServer()
+    print(server.list_tools())

@@ -1,29 +1,11 @@
 """
-ButterClaw v0.1.1 — Reasoning Engine (Patched + Routing Integration)
+ButterClaw v0.3.1 — Reasoning Engine (Self-DoS & Stability Patch)
 =====================================================================
-Changelog from v0.1:
-  [C1] Removed manual CORS wildcard on /api/stream — Flask-CORS handles it
-  [C2] Input validation on /api/analyze — null check + required field check
-  [C3] threading.Lock on all global state (total_logs_processed, current_level, shield_enabled)
-  [C4] try/except on all SQLite operations — returns proper error responses
-  [M1] Single declaration of total_logs_processed (removed duplicate)
-  [M2] Removed dead code: live_oopsie_logs
-  [M3] Removed dead code: trigger_kill_switch
-  [M4] Absolute DB path via __file__ — no more CWD dependency
-  [M5] check_same_thread=False on SQLite connections
-  [M6] Werkzeug log level → WARNING (was ERROR — swallowed 4xx/5xx)
-  [N1] GET /api/settings — frontend syncs paranoia slider on load
-  [N2] POST /api/shield — frontend shield toggle is no longer cosmetic
-  [L1] Simple in-memory rate limiter on /api/analyze (10 req/min)
-  [L2] Version string in startup banner
-
-Routing Integration (v0.1.1-routing):
-  [R1] GET /api/health — lightweight health check for Test Ping + connection badge
-  [R2] Dynamic model name — replaces hardcoded MODEL_NAME, reads from global state
-  [R3] Dynamic endpoint — routing_mode switches between local Ollama and remote VPS
-  [R4] Gate states — stored, returned, and used to shape analysis behavior
-  [R5] Extended /api/settings — GET/POST now handles routing_mode, model, endpoint, gates
-  [R6] Gate-aware analysis — active gates listed in system prompt, kill_sw suppresses SIGKILL
+Changelog from v0.3.0:
+  [v0.3.1] Security: Added CONFIDENCE_THRESHOLD (85%). Downgrades low-confidence 
+           CRITICAL verdicts to WARNING to prevent "Self-DoS" kamikaze injections.
+  [v0.3.1] Stability: Fixed LLM confidence hallucination (handling 95 vs 0.95) and clamped bounds.
+  [v0.3.1] Stability: Cleaned hot-path imports out of the analyze_threat execution block.
 """
 
 from flask import Flask, request, jsonify, Response
@@ -39,76 +21,65 @@ from collections import deque
 from urllib.parse import urlparse
 import json
 
+# [v0.3.1] Fixed Hot-Path Imports: Moved to top level for boot-time validation
+import buttervault  
+import butterclaw_mcp
+
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.2.1"
+VERSION = "0.3.1"
 
 app = Flask(__name__)
 
 # The Titanium Shield (Localhost Only)
 ALLOWED_ORIGINS = [
-    "http://127.0.0.1:5000",   # Standard local Flask port
+    "http://127.0.0.1:5000",   
     "http://localhost:5000",
-    "http://127.0.0.1:5500",   # VS Code Live Server default port
+    "http://127.0.0.1:5500",   
     "http://localhost:5500",
-    "null"                      # For double-clicking the HTML file directly
+    "null"                      
 ]
 
-# [C1] Flask-CORS handles ALL endpoints — no more manual wildcard overrides
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 
-
 # =============================================
-# [C3] THREAD-SAFE GLOBAL STATE
+# THREAD-SAFE GLOBAL STATE
 # =============================================
 
 _state_lock = threading.Lock()
-total_logs_processed = 0       # [M1] Single declaration — no duplicate
-current_level = "3"            # Paranoia slider (1=Chill, 2=Cautious, 3=Paranoid)
-shield_enabled = True          # [N2] Shield state — frontend can now toggle this
+total_logs_processed = 0       
+current_level = "3"            
+shield_enabled = True          
+model_name = "butterclaw-optimized:latest"
+routing_mode = "local"         
+remote_endpoint = ""           
 
-# [R2] Dynamic model — replaces hardcoded MODEL_NAME
-model_name = "phi3:latest"
-
-# [R3] Routing state — local Ollama vs remote VPS
-routing_mode = "local"         # "local" or "remote"
-remote_endpoint = ""           # VPS URL (only used when routing_mode == "remote")
-
-# [R4] Logic gate states — controls which analysis gates are active
 gate_states = {
-    "sig_scan": True,          # Signature Scan gate
-    "origin_ctx": True,        # Origin Context gate
-    "intent": True,            # Intent Classification gate
-    "kill_sw": True            # Kill Switch gate (when DISARMED, suppresses SIGKILL actions)
+    "sig_scan": True,          
+    "origin_ctx": True,        
+    "intent": True,            
+    "kill_sw": True            
 }
-
-# =============================================
-# DEFAULTS — used as fallbacks + validation references
-# =============================================
 
 OLLAMA_LOCAL_BASE = "http://localhost:11434"
 OLLAMA_CHAT_PATH = "/api/chat"
 VALID_ROUTING_MODES = ("local", "remote")
 VALID_GATE_KEYS = frozenset(gate_states.keys())
 
-
 # =============================================
-# [L1] SIMPLE RATE LIMITER
+# SIMPLE RATE LIMITER
 # =============================================
 
-RATE_LIMIT_MAX = 10            # Max requests per window
-RATE_LIMIT_WINDOW = 60         # Window in seconds
-_rate_log = deque()            # Timestamps of recent /api/analyze calls
+RATE_LIMIT_MAX = 10            
+RATE_LIMIT_WINDOW = 60         
+_rate_log = deque()            
 _rate_lock = threading.Lock()
 
-
 def is_rate_limited():
-    """Returns True if the caller has exceeded the rate limit."""
     now = time.time()
     with _rate_lock:
-        # Purge timestamps older than the window
         while _rate_log and _rate_log[0] < now - RATE_LIMIT_WINDOW:
             _rate_log.popleft()
         if len(_rate_log) >= RATE_LIMIT_MAX:
@@ -116,25 +87,19 @@ def is_rate_limited():
         _rate_log.append(now)
         return False
 
-
 # =============================================
-# [M4] ABSOLUTE DB PATH + [M5] THREAD-SAFE SQLITE
+# ABSOLUTE DB PATH + THREAD-SAFE SQLITE
 # =============================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
-
 def get_db_connection():
-    """Opens the vault door."""
-    # [M5] check_same_thread=False — safe for Flask's threaded model
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-
 def init_db():
-    """Builds the vault if it doesn't exist yet."""
     conn = get_db_connection()
     conn.execute('''
         CREATE TABLE IF NOT EXISTS logs (
@@ -150,64 +115,38 @@ def init_db():
     conn.commit()
     conn.close()
 
-
-# Run the builder immediately!
 init_db()
 
-
-# =============================================
-# [M6] LOGGING — WARNING level (was ERROR)
-# =============================================
-
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.WARNING)  # [M6] Now shows 4xx/5xx but not routine GET spam
-
+log.setLevel(logging.WARNING)  
 
 # =============================================
-# [R3] DYNAMIC ENDPOINT RESOLUTION
+# DYNAMIC ENDPOINT RESOLUTION
 # =============================================
 
 def _resolve_ollama_url():
-    """
-    Returns the full Ollama chat API URL based on current routing state.
-    Local mode → localhost:11434/api/chat
-    Remote mode → {remote_endpoint}/api/chat
-    Thread-safe: reads state under lock.
-    """
     with _state_lock:
         mode = routing_mode
         endpoint = remote_endpoint
-
     if mode == "remote" and endpoint:
-        # Strip trailing slash, append chat path
         base = endpoint.rstrip("/")
         return f"{base}{OLLAMA_CHAT_PATH}"
     return f"{OLLAMA_LOCAL_BASE}{OLLAMA_CHAT_PATH}"
 
-
 def _validate_endpoint_url(url_string):
-    """
-    Basic URL validation — must have scheme (http/https) and netloc.
-    Returns True if valid, False otherwise.
-    """
     if not url_string:
-        return True  # Empty is valid — means "not configured yet"
+        return True  
     try:
         parsed = urlparse(url_string)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except Exception:
         return False
 
-
 # =============================================
 # THE GUARDIAN BRAIN
 # =============================================
 
 def ask_guardian_agent(threat_type, raw_data):
-    """
-    [v0.2] Passes the log through the Logic Gates, enforcing JSON output.
-    Returns a structured dictionary instead of a raw string.
-    """
     with _state_lock:
         level = current_level
         active_model = model_name
@@ -239,8 +178,6 @@ def ask_guardian_agent(threat_type, raw_data):
         if not gates.get("kill_sw"):
             gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
 
-    # --- THE UFO UPGRADE: JSON Schema Enforcement ---
-    # --- THE UFO UPGRADE: Mind Reader JSON Schema ---
     json_schema = (
         'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
         'Strict Schema: {'
@@ -254,7 +191,7 @@ def ask_guardian_agent(threat_type, raw_data):
 
     payload = {
         "model": active_model,
-        "format": "json",  # Forces Ollama to output valid JSON
+        "format": "json",  
         "messages": [
             {
                 "role": "system",
@@ -272,7 +209,7 @@ def ask_guardian_agent(threat_type, raw_data):
         ],
         "stream": False,
         "options": {
-            "temperature": 0.2  # Unfrozen! 🧠
+            "temperature": 0.2  
         }
     }
 
@@ -282,10 +219,17 @@ def ask_guardian_agent(threat_type, raw_data):
 
         try:
             parsed = json.loads(raw_content)
+            
+            # --- [v0.3.1] LLM HALLUCINATION & CLAMPING FIX ---
+            raw_conf = float(parsed.get("confidence", 0.0))
+            if raw_conf > 1.0:
+                raw_conf = raw_conf / 100.0  # Catch if LLM outputs 95 instead of 0.95
+            clamped_conf = max(0.0, min(1.0, raw_conf))
+            
             return {
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
-                "confidence": float(parsed.get("confidence", 0.0)),
-                "primary_gate": str(parsed.get("primary_gate", "None")), # <-- NEW!
+                "confidence": clamped_conf,
+                "primary_gate": str(parsed.get("primary_gate", "None")), 
                 "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning."))
             }
         except json.JSONDecodeError:
@@ -303,26 +247,31 @@ def ask_guardian_agent(threat_type, raw_data):
 # API ROUTES
 # =============================================
 
-# --- [R1] HEALTH CHECK ---
-
 @app.route('/api/health', methods=['GET'])
 def health():
-    """
-    [R1] Lightweight health probe for routing.html.
-    Used by: Test Ping button (performance.now() RTT), connection badge (30s poll).
-    """
     return jsonify({"status": "ok", "version": VERSION}), 200
 
+@app.route('/api/vault/key', methods=['POST'])
+def save_vault_key():
+    data = request.json
+    if not data or "provider" not in data or "api_key" not in data:
+        return jsonify({"error": "Missing provider or api_key"}), 400
+    buttervault.store_key(data["provider"], data["api_key"])
+    return jsonify({"status": "success"}), 200
 
-# --- THREAT ANALYSIS ---
+@app.route('/api/vault/status', methods=['GET'])
+def check_vault_status():
+    status = {
+        "OpenRouter": buttervault.get_key("OpenRouter") is not None,
+        "Anthropic": buttervault.get_key("Anthropic") is not None
+    }
+    return jsonify(status), 200
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_threat():
-    # [L1] Rate limiting
     if is_rate_limited():
         return jsonify({"error": "Rate limit exceeded. Max 10 requests per minute."}), 429
 
-    # [C2] Input validation
     data = request.json
     if data is None:
         return jsonify({"error": "Request body must be valid JSON with Content-Type: application/json"}), 400
@@ -333,47 +282,46 @@ def analyze_threat():
     if not threat_type or not raw_data:
         return jsonify({"error": "Missing required fields: 'threat_type' and 'raw_data'"}), 400
 
-    # --- THE TERMINAL X-RAY (FRONTEND -> BACKEND) ---
     print("\n" + "=" * 60)
     print(f"\U0001f4e5 [HTTP POST RECEIVED] From Browser Dashboard")
     print(f"   Payload: {threat_type}")
 
-    # --- THE TERMINAL X-RAY (BACKEND -> OLLAMA) ---
     ollama_url = _resolve_ollama_url()
     print(f"\U0001f4e1 [HTTP POST DISPATCHED] Routing to {ollama_url}...")
     start_time = time.time()
 
-    # Let the model stew on it (v0.2 returns a dict!)
     analysis = ask_guardian_agent(threat_type, raw_data)
     
     end_time = time.time()
     stew_time = round(end_time - start_time, 2)
 
-    # Extract the structured data
     verdict_upper = analysis["verdict"]
     confidence_pct = int(analysis["confidence"] * 100)
     trigger_gate = analysis["primary_gate"]
-    
-    # We now embed the Gate and Confidence score directly into the UI description!
-    verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {analysis['reasoning']}"
+    reasoning = analysis["reasoning"]
+
+    # --- [v0.3.1] SELF-DOS PREVENTION (THRESHOLD DOWNGRADE) ---
+    CONFIDENCE_THRESHOLD = 85
+    if verdict_upper == "CRITICAL" and confidence_pct < CONFIDENCE_THRESHOLD:
+        print(f"🛡️ [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
+        verdict_upper = "WARNING"
+        reasoning += f" [Downgraded from CRITICAL: Confidence below {CONFIDENCE_THRESHOLD}% safety threshold]."
+
+    verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {reasoning}"
 
     print(f"\U0001f9e0 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
     print("=" * 60)
 
-    # [R6] Gate-aware action assignment
     with _state_lock:
         kill_sw_armed = gate_states.get("kill_sw", True)
 
-    # THE BOX TRAP IS DEAD. We use exact matching now.
     if verdict_upper == "CRITICAL":
         color = "red"
         icon = "🚨"
         if kill_sw_armed:
-            # --- WIRING THE PROP CLAWS ---
-            import butterclaw_mcp
             butterclaw_mcp.execute_gibson_kill("openclaw")
+            buttervault.butter_keys()
             butterclaw_mcp.rotate_keys("OpenRouter")
-            # -----------------------------
             action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
@@ -386,12 +334,10 @@ def analyze_threat():
         icon = "❌"
         action = "System Offline"
     else:
-        # Defaults to BENIGN. 
         color = "emerald"
         icon = "✅"
         action = "Monitored"
 
-    # [C4] DB write with error handling
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -405,7 +351,6 @@ def analyze_threat():
         print(f"❌ [DB ERROR] Failed to write log: {e}")
         return jsonify({"error": f"Database write failed: {e}"}), 500
 
-    # [C3] Thread-safe counter increment
     with _state_lock:
         global total_logs_processed
         total_logs_processed += 1
@@ -415,7 +360,6 @@ def analyze_threat():
 
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
-    """The Browser asks for history, we fetch from the Vault."""
     try:
         conn = get_db_connection()
         rows = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 10').fetchall()
@@ -427,8 +371,7 @@ def get_logs():
 
 @app.route('/api/rotate-keys', methods=['POST'])
 def manual_key_rotation():
-    """Simulates a manual key rotation event."""
-    # [C4] DB write with error handling
+    buttervault.butter_keys()
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -436,10 +379,10 @@ def manual_key_rotation():
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (
             "Manual Key Rotation",
-            "Administrator manually triggered API key rotation via ButterVault.",
+            "Administrator manually triggered API key rotation. Ciphertext destroyed.",
             "Keys Buttered",
             datetime.datetime.now().strftime("%H:%M:%S"),
-            "\U0001f511",
+            "🗝️",
             "blue"
         ))
         conn.commit()
@@ -447,23 +390,16 @@ def manual_key_rotation():
     except sqlite3.Error as e:
         return jsonify({"error": f"Database write failed: {e}"}), 500
 
-    # [C3] Thread-safe counter increment
     with _state_lock:
         global total_logs_processed
         total_logs_processed += 1
 
     return jsonify({"status": "success"}), 200
 
-
 # --- THE CONTROL PANEL ---
 
 @app.route('/api/settings', methods=['GET', 'POST'])
 def settings():
-    """
-    [N1] + [R5] Unified settings endpoint.
-    GET  — returns full state snapshot (paranoia, shield, routing, model, gates)
-    POST — partial update: only fields present in the body are changed
-    """
     global current_level, routing_mode, model_name, remote_endpoint, gate_states
 
     if request.method == 'GET':
@@ -477,15 +413,12 @@ def settings():
                 "gates": dict(gate_states)
             })
 
-    # POST — partial update
-    # [C2] Input validation
     data = request.json
     if data is None:
         return jsonify({"error": "Request body must be valid JSON"}), 400
 
     errors = []
 
-    # --- Paranoia level (existing) ---
     if "level" in data:
         new_level = str(data["level"])
         if new_level not in ("1", "2", "3"):
@@ -495,7 +428,6 @@ def settings():
                 current_level = new_level
             print(f"\U0001f4e1 [SENTINEL UPDATE] Paranoia Level shifted to: {new_level}")
 
-    # --- [R3] Routing mode ---
     if "routing_mode" in data:
         new_mode = str(data["routing_mode"]).lower().strip()
         if new_mode not in VALID_ROUTING_MODES:
@@ -505,7 +437,6 @@ def settings():
                 routing_mode = new_mode
             print(f"\U0001f6e0\ufe0f [ROUTING] Mode set to: {new_mode}")
 
-    # --- [R2] Model name ---
     if "model" in data:
         new_model = str(data["model"]).strip()
         if not new_model:
@@ -515,7 +446,6 @@ def settings():
                 model_name = new_model
             print(f"\U0001f9e0 [MODEL] Active model set to: {new_model}")
 
-    # --- [R3] Remote endpoint ---
     if "endpoint" in data:
         new_endpoint = str(data["endpoint"]).strip()
         if not _validate_endpoint_url(new_endpoint):
@@ -526,7 +456,6 @@ def settings():
             label = new_endpoint if new_endpoint else "(cleared)"
             print(f"\U0001f310 [ENDPOINT] Remote endpoint set to: {label}")
 
-    # --- [R4] Gate states ---
     if "gates" in data:
         new_gates = data["gates"]
         if not isinstance(new_gates, dict):
@@ -534,10 +463,8 @@ def settings():
         else:
             unknown_keys = set(new_gates.keys()) - VALID_GATE_KEYS
             if unknown_keys:
-                errors.append(f"Unknown gate keys: {', '.join(sorted(unknown_keys))}. "
-                              f"Valid keys: {', '.join(sorted(VALID_GATE_KEYS))}")
+                errors.append(f"Unknown gate keys: {', '.join(sorted(unknown_keys))}. ")
             else:
-                # Validate all values are boolean-coercible
                 coerced = {}
                 for k, v in new_gates.items():
                     coerced[k] = bool(v)
@@ -554,7 +481,6 @@ def settings():
 
 @app.route('/api/shield', methods=['POST'])
 def shield():
-    """[N2] Toggle shield state — frontend shield button is no longer cosmetic."""
     global shield_enabled
 
     data = request.json
@@ -569,7 +495,6 @@ def shield():
     state_label = "UP" if shield_enabled else "DOWN"
     print(f"\U0001f6e1\ufe0f [SHIELD] Shield is now {state_label}")
 
-    # Log the state change to the vault
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -596,7 +521,7 @@ def shield():
 
 
 # =============================================
-# SSE STREAM — [C1] NO MORE CORS WILDCARD
+# SSE STREAM 
 # =============================================
 
 @app.route('/api/stream')
@@ -613,20 +538,16 @@ def stream():
                 last_processed = current
             time.sleep(0.5)
 
-    # [C1] REMOVED: manual CORS wildcard header
-    # Flask-CORS now handles this via the ALLOWED_ORIGINS whitelist
     response = Response(event_stream(), mimetype="text/event-stream")
     response.headers.add('Cache-Control', 'no-cache')
     response.headers.add('Connection', 'keep-alive')
     return response
-
 
 # =============================================
 # BOOT
 # =============================================
 
 if __name__ == '__main__':
-    # [L2] Version in startup banner + [R5] routing info
     print(f"\U0001f99e ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
     print(f"   Database: {DB_PATH}")
     print(f"   Paranoia Level: {current_level}")
@@ -638,6 +559,7 @@ if __name__ == '__main__':
         print(f"   Ollama Endpoint: {OLLAMA_LOCAL_BASE}")
     active_gates = [k for k, v in gate_states.items() if v]
     print(f"   Active Gates: {', '.join(active_gates) if active_gates else 'NONE'}")
+    print(f"   Self-DoS Threshold: {85}%")
     print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
     print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
     app.run(host='127.0.0.1', port=5000)
