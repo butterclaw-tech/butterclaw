@@ -12,8 +12,7 @@ import keyring
 from cryptography.fernet import Fernet
 
 # Set up Vault-specific logging
-logging.basicConfig(level=logging.INFO, format="[VAULT] %(message)s")
-logger = logging.getLogger("butterclaw.vault")
+logger = logging.getLogger("butterclaw.vault")  # PATCHED I6: removed basicConfig — root logger config belongs in server.py entry point only
 
 # Absolute path to the existing ButterClaw SQLite database
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
@@ -84,6 +83,13 @@ def get_key(provider):
         logger.error(f"❌ Decryption failed for '{provider}'. Master key mismatch or corrupted vault.")
         return None
 
+def list_providers():  # PATCHED I8: enables dynamic vault status in server.py
+    """Returns a list of all provider names stored in the vault."""
+    with _get_db() as conn:
+        cursor = conn.execute("SELECT provider FROM vault ORDER BY provider")
+        return [row[0] for row in cursor.fetchall()]
+
+
 def butter_keys(provider=None):
     """
     The Panic Button. 
@@ -121,8 +127,8 @@ if __name__ == "__main__":
     butter_keys("OpenRouter")
     
     # 4. Verify Destruction
-    try:
-        destroyed_key = get_key("OpenRouter")
-        print("❌ Panic button failed. Key still readable.")
-    except Exception:
-        print("✅ Keys successfully buttered. Ciphertext is unreadable.")
+    destroyed_key = get_key("OpenRouter")  # PATCHED [B5] — get_key() returns None on missing/destroyed keys, not an exception
+    if destroyed_key is None:
+        print("✅ Keys successfully buttered. Ciphertext is unreadable.")  # PATCHED [B5]
+    else:
+        print(f"❌ Panic button failed — key still retrievable: {destroyed_key}")  # PATCHED [B5]

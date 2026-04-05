@@ -1,6 +1,6 @@
-# 🦞 ButterClaw v0.3.1: The ButterVault, MCP Scaffold & The Sentinel Stability Patch
+# 🦞 ButterClaw v0.3.2: The QA Sterilization Patch
 
-**Version 0.3.1** — *April 4, 2026* | **[Official Dashboard: butterclaw.tech](https://butterclaw.tech)**
+**Version 0.3.2** — *April 5, 2026* | **[Official Dashboard: butterclaw.tech](https://butterclaw.tech)**
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys into cryptographic garbage if a breach is detected. Evaluation before Execution.
 
@@ -10,11 +10,11 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 ---
 
-## 🚀 What's New in v0.3.1?
-* **Self-DoS Prevention:** Introduced an 85% Confidence Threshold. Low-confidence `CRITICAL` verdicts are automatically downgraded to `WARNING` to prevent "kamikaze" prompt injections from tricking the Sentinel into shredding its own keys.
-* **LLM Stability Patch:** Fixed confidence float hallucinations (e.g., catching when an LLM outputs `95` instead of `0.95`) and moved execution hot-paths to the top-level scope for faster boot times.
-* **The ButterVault (`buttervault.py`):** Deprecated plaintext `.env` files. API keys are now AES-encrypted via the OS-native Credential Locker and stored as SQLite BLOBs.
-* **Live Ammunition (Credential Shredding):** When the Gibson Kill Switch triggers, the Vault instantly overwrites local ciphertexts with cryptographic garbage.
+## 🚀 What's New in v0.3.2?
+* **The QA Sterilization (100% Green):** Smashed 5 high-severity bugs and 8 medium-severity issues. The execution layer now safely throws `NotImplementedError` if kinetic actions are triggered without production logic, and all JSON info-leaks have been firmly capped at 200 characters.
+* **Dynamic Vault Scaling:** The `/api/vault/status` endpoint now dynamically queries the local SQLite database for *all* stored providers (`buttervault.list_providers()`), completely removing hardcoded limits on which API keys you can protect.
+* **Hermetic UI Security:** The `routing.html` Content-Security-Policy (CSP) has been strictly locked down to local origins, eliminating wildcard vulnerabilities.
+* **V0.3.1 Carryovers:** Retains the 85% Self-DoS Shield, LLM float hallucination fixes, and the OS-native AES Keyring encryption.
 
 ## 🏗️ The 6-Node Sentinel Architecture
 
@@ -48,7 +48,7 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-3. Install the required Python packages (including the new v0.3 cryptography suite):
+3. Install the required Python packages (including the cryptography suite):
 ```bash
 pip install flask flask-cors requests cryptography keyring
 ```
@@ -79,7 +79,7 @@ Open `index.html` (or use VS Code Live Server).
 
 ## 🧪 Live Simulation (The "Claw" Test)
 
-To see the v0.3 Evaluation before Execution pipeline in action:
+To see the Evaluation before Execution pipeline in action:
 
 1. Ensure `server.py` and `watcher.py` are running.
 2. Open the `index.html` dashboard, click **ButterVault**, and seal a dummy test key (e.g., `sk-or-test-123`).
@@ -95,9 +95,9 @@ To see the v0.3 Evaluation before Execution pipeline in action:
 |---|---|---|
 | `/api/analyze` | `POST` | Submit log for JSON analysis. Triggers MCP execution and Vault destruction on CRITICAL. |
 | `/api/vault/key` | `POST` | Encrypt and store an API key into the local SQLite Vault. |
-| `/api/vault/status` | `GET` | Returns boolean status of sealed keys without exposing plaintext. |
+| `/api/vault/status` | `GET` | Returns boolean status of all sealed keys without exposing plaintext. |
 | `/api/rotate-keys` | `POST` | The Panic Button. Instantly overwrites all Vault ciphertext with garbage. |
-| `/api/health` | `GET` | Lightweight health probe. Returns `{"status": "ok", "version": "0.3.1"}` |
+| `/api/health` | `GET` | Lightweight health probe. Returns `{"status": "ok", "version": "0.3.2"}` |
 | `/api/settings` | `GET/POST` | Central config sync for UI sliders, routing modes, and logic gates. |
 | `/api/stream` | `GET` | SSE endpoint. Pushes kinetic action updates to the dashboard. |
 

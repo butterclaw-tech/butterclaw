@@ -209,7 +209,7 @@ def ask_guardian_agent(threat_type, raw_data):
         ],
         "stream": False,
         "options": {
-            "temperature": 0.2  
+            "temperature": 0.3  # PATCHED I7: matched to Modelfile (0.3 optimal for Gemma brain)  
         }
     }
 
@@ -236,7 +236,7 @@ def ask_guardian_agent(threat_type, raw_data):
             return {
                 "verdict": "ERROR",
                 "confidence": 0.0,
-                "reasoning": f"JSON parse failed on output: {raw_content}"
+                "reasoning": f"JSON parse failed on output: {raw_content[:200]}"  # PATCHED [B4] — truncate to prevent raw LLM output leaking into logs
             }
 
     except Exception as e:
@@ -260,11 +260,13 @@ def save_vault_key():
     return jsonify({"status": "success"}), 200
 
 @app.route('/api/vault/status', methods=['GET'])
-def check_vault_status():
-    status = {
-        "OpenRouter": buttervault.get_key("OpenRouter") is not None,
-        "Anthropic": buttervault.get_key("Anthropic") is not None
-    }
+def check_vault_status():  # PATCHED I8: dynamic provider list from vault DB instead of hardcoded
+    providers = buttervault.list_providers()
+    status = {provider: buttervault.get_key(provider) is not None for provider in providers}
+    # Always show OpenRouter and Anthropic even if not yet stored
+    for default in ["OpenRouter", "Anthropic"]:
+        if default not in status:
+            status[default] = False
     return jsonify(status), 200
 
 @app.route('/api/analyze', methods=['POST'])
@@ -303,7 +305,7 @@ def analyze_threat():
     # --- [v0.3.1] SELF-DOS PREVENTION (THRESHOLD DOWNGRADE) ---
     CONFIDENCE_THRESHOLD = 85
     if verdict_upper == "CRITICAL" and confidence_pct < CONFIDENCE_THRESHOLD:
-        print(f"🛡️ [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
+        print(f"\U0001f6e1\ufe0f [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
         verdict_upper = "WARNING"
         reasoning += f" [Downgraded from CRITICAL: Confidence below {CONFIDENCE_THRESHOLD}% safety threshold]."
 
@@ -317,7 +319,7 @@ def analyze_threat():
 
     if verdict_upper == "CRITICAL":
         color = "red"
-        icon = "🚨"
+        icon = "\U0001f6a8"
         if kill_sw_armed:
             butterclaw_mcp.execute_gibson_kill("openclaw")
             buttervault.butter_keys()
@@ -382,7 +384,7 @@ def manual_key_rotation():
             "Administrator manually triggered API key rotation. Ciphertext destroyed.",
             "Keys Buttered",
             datetime.datetime.now().strftime("%H:%M:%S"),
-            "🗝️",
+            "\U0001f5dd\ufe0f",
             "blue"
         ))
         conn.commit()

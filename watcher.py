@@ -1,5 +1,5 @@
 """
-ButterClaw v0.3 — Log Watcher (Expanded Context)
+ButterClaw v0.3.1 — Log Watcher (Expanded Context)
 =================================================
 Changelog from v0.1.1:
   [v0.3] CONTEXT EXPANSION: Increased log truncation from 500 to 4096 chars.
@@ -24,12 +24,7 @@ from collections import deque
 # [M2] STRUCTURED LOGGING
 # =============================================
 
-logging.basicConfig(
-    format="[%(asctime)s] %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    level=logging.INFO
-)
-logger = logging.getLogger("butterclaw.watcher")
+logger = logging.getLogger("butterclaw.watcher")  # PATCHED I6: basicConfig moved to main() — prevents collision when imported as module
 
 # =============================================
 # CONFIGURATION
@@ -114,7 +109,7 @@ def flush_retry_queue():
             retry_queue.popleft()
             retried += 1
         else:
-            break 
+            break
     if retried > 0:
         logger.info("✅ Flushed %d queued log(s) to server.", retried)
 
@@ -182,7 +177,7 @@ def watch_log(replay=False):
         safe_line = sanitize_log_line(clean_log)
 
         logger.info("📡 New log detected: %.80s%s", safe_line, "..." if len(safe_line) > 80 else "")
-        
+
         payload = {
             "threat_type": "Live Gateway Log",
             "raw_data": safe_line
@@ -196,14 +191,20 @@ def watch_log(replay=False):
 # =============================================
 
 def main():
-    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.3")
+    # PATCHED I6: basicConfig here — only runs when watcher is the entry point, not on import
+    logging.basicConfig(
+        format="[%(asctime)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO
+    )
+    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.3.1")  # PATCHED I3
     parser.add_argument("--replay", action="store_true", help="Process entire log file from start")
     args = parser.parse_args()
 
     check_pid_file()
     atexit.register(cleanup_pid_file)
 
-    logger.info("🦞 ButterClaw Watcher v0.3 online. Staring intensely at %s...", LOG_FILE)
+    logger.info("🦞 ButterClaw Watcher v0.3.1 online. Staring intensely at %s...", LOG_FILE)
 
     if retry_queue:
         logger.info("Retry queue initialized (max %d entries).", RETRY_QUEUE_MAX)
