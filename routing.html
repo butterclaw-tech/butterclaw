@@ -88,12 +88,25 @@
       </nav>
     </div>
 
+    <!-- ============================================= -->
+    <!-- SIDEBAR BOTTOM: MCP Badge + Connection Badge  -->
+    <!-- [v0.4] Added MCP status badge                 -->
+    <!-- ============================================= -->
     <div class="p-6">
+      <!-- [v0.4] MCP Execution Layer Status Badge -->
+      <div id="sidebarMcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 shadow-sm mb-3 cursor-pointer hover:bg-slate-100 transition" title="Scroll to MCP section">
+        <div id="sidebarMcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
+        <div class="flex-1">
+          <div id="sidebarMcpText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">MCP: Checking...</div>
+          <div id="sidebarMcpSub" class="text-[10px] text-slate-400 mt-0.5"></div>
+        </div>
+      </div>
+
       <div id="connectionBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 shadow-sm">
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.3.1</div> <!-- PATCHED I1 -->
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.4.0</div> <!-- PATCHED: v0.3.1 → v0.4.0 -->
     </div>
   </aside>
 
@@ -193,37 +206,90 @@
           </div>
       </div>
 
-      <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <!-- ============================================= -->
+      <!-- MCP CONNECTIONS — v0.4 LIVE PANEL              -->
+      <!-- Replaces disabled v0.3.1 placeholder           -->
+      <!-- ============================================= -->
+      <div id="mcpSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-violet-400 to-fuchsia-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
           <div class="bg-violet-100 text-violet-600 p-3 rounded-xl text-xl shadow-inner">🔗</div>
-          <h3 class="text-xl font-extrabold text-dark tracking-tight">MCP Connections</h3>
-          <span class="text-[10px] font-extrabold tracking-widest text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md uppercase">v0.3.1 Active</span> <!-- PATCHED I2 -->
+          <h3 class="text-xl font-extrabold text-dark tracking-tight">MCP Execution Layer</h3>
+          <span id="mcpVersionBadge" class="text-[10px] font-extrabold tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md uppercase">Checking...</span>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div class="group">
-            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">MCP Server URL</label>
-            <input type="text" placeholder="http://localhost:3001" disabled
-                   class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-400 font-mono text-sm shadow-sm cursor-not-allowed">
+
+        <!-- MCP Status + Controls Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <!-- Status Card -->
+          <div id="mcpStatusCard" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div class="flex items-center space-x-2 mb-2">
+              <div id="mcpStatusDot" class="h-2.5 w-2.5 bg-slate-400 rounded-full animate-pulse"></div>
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Process Status</span>
+            </div>
+            <p id="mcpStatusLabel" class="text-sm font-bold text-slate-600">Checking...</p>
+            <p id="mcpStatusPid" class="text-[10px] font-mono text-slate-400 mt-1"></p>
           </div>
-          <div class="group">
+
+          <!-- Ping Card -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div class="flex items-center space-x-2 mb-2">
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">MCP Ping</span>
+            </div>
+            <button id="mcpPingBtn"
+                    class="w-full bg-dark hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold text-sm transition flex items-center justify-center space-x-2">
+              <span>📡</span><span>Ping MCP</span>
+            </button>
+            <p id="mcpPingResult" class="text-[10px] font-mono text-slate-400 mt-2 text-center h-3"></p>
+          </div>
+
+          <!-- Restart Card -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div class="flex items-center space-x-2 mb-2">
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Lifecycle</span>
+            </div>
+            <button id="mcpRestartBtn"
+                    class="w-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition flex items-center justify-center space-x-2">
+              <span>🔄</span><span>Restart MCP</span>
+            </button>
+            <p id="mcpRestartResult" class="text-[10px] font-mono text-slate-400 mt-2 text-center h-3"></p>
+          </div>
+        </div>
+
+        <!-- Transport Info -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Transport</label>
-            <div class="relative">
-              <select disabled class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-400 font-medium shadow-sm cursor-not-allowed appearance-none pr-10">
-                <option>SSE (Server-Sent Events)</option>
-                <option>stdio</option>
-              </select>
-              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                <svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                </svg>
-              </div>
+            <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-medium text-sm">
+              stdio (JSON-RPC 2.0 over stdin/stdout)
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Protocol Version</label>
+            <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono text-sm">
+              2024-11-05
             </div>
           </div>
         </div>
-        <div class="mt-6 bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🧪 The True MCP Protocol (v0.3)</p>
-          <p>Model Context Protocol allows ButterClaw to discover and invoke external tools. Now that the ButterVault is secure, standardizing the Claws to full stdio/SSE compliance is the final objective.</p>
+
+        <!-- Discovered Tools List -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Discovered Tools</label>
+            <button id="mcpRefreshToolsBtn" class="text-[10px] font-bold text-violet-600 hover:text-violet-800 transition uppercase tracking-wider">
+              Refresh
+            </button>
+          </div>
+          <div id="mcpToolsList" class="space-y-2">
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
+              <p class="text-xs text-slate-400">Loading tools...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info Box -->
+        <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.4)</p>
+          <p>Model Context Protocol server running via stdio. The reasoning engine (server.py) manages the child process with threaded readers, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence.</p>
         </div>
       </div>
 
@@ -585,7 +651,239 @@
       // Run initial health check + schedule periodic
       checkConnection();
       setInterval(checkConnection, HEALTH_CHECK_INTERVAL);
+
+      // [v0.4] Initialize MCP panel
+      mcpCheckStatus();
+      mcpFetchTools();
+      setInterval(mcpCheckStatus, HEALTH_CHECK_INTERVAL);
     }
+
+    // =============================================
+    // [v0.4] MCP EXECUTION LAYER — Live Panel
+    // =============================================
+    const mcpStatusDot      = document.getElementById('mcpStatusDot');
+    const mcpStatusLabel    = document.getElementById('mcpStatusLabel');
+    const mcpStatusPid      = document.getElementById('mcpStatusPid');
+    const mcpStatusCard     = document.getElementById('mcpStatusCard');
+    const mcpVersionBadge   = document.getElementById('mcpVersionBadge');
+    const mcpPingBtn        = document.getElementById('mcpPingBtn');
+    const mcpPingResult     = document.getElementById('mcpPingResult');
+    const mcpRestartBtn     = document.getElementById('mcpRestartBtn');
+    const mcpRestartResult  = document.getElementById('mcpRestartResult');
+    const mcpToolsList      = document.getElementById('mcpToolsList');
+    const mcpRefreshToolsBtn = document.getElementById('mcpRefreshToolsBtn');
+
+    // Sidebar MCP badge refs
+    const sidebarMcpDot  = document.getElementById('sidebarMcpDot');
+    const sidebarMcpText = document.getElementById('sidebarMcpText');
+    const sidebarMcpSub  = document.getElementById('sidebarMcpSub');
+    const sidebarMcpBadge = document.getElementById('sidebarMcpBadge');
+
+    // Click sidebar badge → scroll to MCP section
+    sidebarMcpBadge.addEventListener('click', () => {
+      closeMobileMenu();
+      document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // Handle #mcpSection hash on page load
+    if (window.location.hash === '#mcpSection') {
+      setTimeout(() => {
+        document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    }
+
+    function setMcpVisualState(state, toolCount, pid) {
+      const states = {
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',    card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.4.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',    sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded', card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.4.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded', sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',  card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.4.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',  sSub: 'Process not running' },
+        checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',  badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
+      };
+      const s = states[state];
+
+      // Main panel
+      mcpStatusDot.className   = 'h-2.5 w-2.5 ' + s.dot + ' rounded-full animate-pulse';
+      mcpStatusLabel.textContent = s.label;
+      mcpStatusCard.className  = s.card + ' rounded-xl p-4 border';
+      mcpVersionBadge.className = 'text-[10px] font-extrabold tracking-widest ' + s.badge + ' px-2 py-0.5 rounded-md uppercase border';
+      mcpVersionBadge.textContent = s.badgeText;
+      mcpStatusPid.textContent = pid ? 'PID: ' + pid : '';
+
+      // Sidebar badge
+      sidebarMcpDot.className  = 'h-3 w-3 ' + s.sDot + ' rounded-full animate-pulse';
+      sidebarMcpText.textContent = s.sText;
+      sidebarMcpSub.textContent = s.sSub;
+    }
+
+    async function mcpCheckStatus() {
+      try {
+        const res = await fetch(API_BASE + '/api/mcp/status');
+        if (!res.ok) { setMcpVisualState('offline', 0, null); return; }
+        const data = await res.json();
+        if (data.alive && data.handshake_ok) {
+          setMcpVisualState('armed', data.tools_count || 0, data.pid);
+        } else if (data.alive) {
+          setMcpVisualState('degraded', 0, data.pid);
+        } else {
+          setMcpVisualState('offline', 0, null);
+        }
+      } catch {
+        setMcpVisualState('offline', 0, null);
+      }
+    }
+
+    async function mcpFetchTools() {
+      try {
+        const res = await fetch(API_BASE + '/api/mcp/tools');
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const tools = data.tools || [];
+
+        mcpToolsList.innerHTML = '';
+
+        if (tools.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 text-center';
+          const emptyP = document.createElement('p');
+          emptyP.className = 'text-xs text-slate-400';
+          emptyP.textContent = 'No tools discovered. Is the MCP process running?';
+          empty.appendChild(emptyP);
+          mcpToolsList.appendChild(empty);
+          return;
+        }
+
+        tools.forEach(tool => {
+          const card = document.createElement('div');
+          card.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 hover:border-violet-200 transition';
+
+          const header = document.createElement('div');
+          header.className = 'flex items-center justify-between mb-1';
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'font-bold text-sm text-dark font-mono';
+          nameSpan.textContent = tool.name;
+
+          const typeBadge = document.createElement('span');
+          typeBadge.className = 'text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-md uppercase tracking-wider';
+          typeBadge.textContent = 'Tool';
+
+          header.appendChild(nameSpan);
+          header.appendChild(typeBadge);
+
+          const desc = document.createElement('p');
+          desc.className = 'text-xs text-slate-500 mt-1';
+          desc.textContent = tool.description || '(no description)';
+
+          // Show input params if available
+          const schema = tool.inputSchema;
+          if (schema && schema.properties && Object.keys(schema.properties).length > 0) {
+            const paramLine = document.createElement('p');
+            paramLine.className = 'text-[10px] font-mono text-slate-400 mt-2';
+            const paramNames = Object.keys(schema.properties).join(', ');
+            const required = (schema.required || []).join(', ');
+            paramLine.textContent = 'params: ' + paramNames + (required ? '  (required: ' + required + ')' : '');
+            card.appendChild(header);
+            card.appendChild(desc);
+            card.appendChild(paramLine);
+          } else {
+            card.appendChild(header);
+            card.appendChild(desc);
+          }
+
+          mcpToolsList.appendChild(card);
+        });
+      } catch {
+        mcpToolsList.innerHTML = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-4 text-center';
+        const errP = document.createElement('p');
+        errP.className = 'text-xs text-red-500';
+        errP.textContent = 'Failed to fetch tools. Server may be offline.';
+        errDiv.appendChild(errP);
+        mcpToolsList.appendChild(errDiv);
+      }
+    }
+
+    // MCP Ping Button
+    mcpPingBtn.addEventListener('click', async () => {
+      mcpPingBtn.textContent = '';
+      const spinSpan = document.createElement('span');
+      spinSpan.textContent = '⏳';
+      const pingLabel = document.createElement('span');
+      pingLabel.textContent = 'Pinging...';
+      mcpPingBtn.appendChild(spinSpan);
+      mcpPingBtn.appendChild(pingLabel);
+
+      try {
+        const res = await fetch(API_BASE + '/api/mcp/ping');
+        const data = await res.json();
+        if (data.pong) {
+          mcpPingResult.textContent = 'Pong! ' + data.ms + 'ms round-trip';
+          mcpPingResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
+        } else {
+          mcpPingResult.textContent = 'No pong: ' + (data.error || 'unknown');
+          mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+        }
+      } catch {
+        mcpPingResult.textContent = 'Server unreachable';
+        mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+      }
+
+      mcpPingBtn.textContent = '';
+      const resetIcon = document.createElement('span');
+      resetIcon.textContent = '📡';
+      const resetLabel = document.createElement('span');
+      resetLabel.textContent = 'Ping MCP';
+      mcpPingBtn.appendChild(resetIcon);
+      mcpPingBtn.appendChild(resetLabel);
+
+      setTimeout(() => { mcpPingResult.textContent = ''; }, 5000);
+    });
+
+    // MCP Restart Button
+    mcpRestartBtn.addEventListener('click', async () => {
+      mcpRestartBtn.textContent = '';
+      const spinSpan = document.createElement('span');
+      spinSpan.textContent = '⏳';
+      const restartLabel = document.createElement('span');
+      restartLabel.textContent = 'Restarting...';
+      mcpRestartBtn.appendChild(spinSpan);
+      mcpRestartBtn.appendChild(restartLabel);
+      mcpRestartBtn.disabled = true;
+
+      try {
+        const res = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
+        const data = await res.json();
+        if (data.restarted) {
+          mcpRestartResult.textContent = 'Restarted successfully';
+          mcpRestartResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
+          // Refresh status + tools after restart
+          setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500);
+        } else {
+          mcpRestartResult.textContent = 'Restart failed';
+          mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+        }
+      } catch {
+        mcpRestartResult.textContent = 'Server unreachable';
+        mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+      }
+
+      mcpRestartBtn.disabled = false;
+      mcpRestartBtn.textContent = '';
+      const resetIcon = document.createElement('span');
+      resetIcon.textContent = '🔄';
+      const resetLabel = document.createElement('span');
+      resetLabel.textContent = 'Restart MCP';
+      mcpRestartBtn.appendChild(resetIcon);
+      mcpRestartBtn.appendChild(resetLabel);
+
+      setTimeout(() => { mcpRestartResult.textContent = ''; }, 5000);
+    });
+
+    // Refresh tools button
+    mcpRefreshToolsBtn.addEventListener('click', () => {
+      mcpFetchTools();
+    });
 
     init();
 

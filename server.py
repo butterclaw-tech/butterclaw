@@ -1,11 +1,18 @@
 """
-ButterClaw v0.3.1 — Reasoning Engine (Self-DoS & Stability Patch)
+ButterClaw v0.4.0 — Reasoning Engine + MCP Transport Layer
 =====================================================================
-Changelog from v0.3.0:
-  [v0.3.1] Security: Added CONFIDENCE_THRESHOLD (85%). Downgrades low-confidence 
-           CRITICAL verdicts to WARNING to prevent "Self-DoS" kamikaze injections.
-  [v0.3.1] Stability: Fixed LLM confidence hallucination (handling 95 vs 0.95) and clamped bounds.
-  [v0.3.1] Stability: Cleaned hot-path imports out of the analyze_threat execution block.
+Changelog:
+  [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
+  [v0.3.1] Stability: LLM confidence hallucination fix + clamping.
+  [v0.3.1] Stability: Hot-path imports moved to top level.
+  [v0.4.0] MCP Transport: Full rewrite of MCP process manager.
+           - Dedicated stdout reader thread (no more blocking Flask)
+           - Dedicated stderr drain thread (no more child deadlocks)
+           - Response correlation by JSON-RPC id
+           - Configurable timeouts on all MCP calls
+           - Proper MCP handshake: initialize → notifications/initialized → tools/list
+           - Auto-restart on child death
+           - New endpoints: /api/mcp/status, /api/mcp/ping, /api/mcp/tools, /api/mcp/restart
 """
 
 from flask import Flask, request, jsonify, Response
@@ -20,26 +27,27 @@ import os
 from collections import deque
 from urllib.parse import urlparse
 import json
+import subprocess
+import sys
 
 # [v0.3.1] Fixed Hot-Path Imports: Moved to top level for boot-time validation
-import buttervault  
-import butterclaw_mcp
+import buttervault
 
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 app = Flask(__name__)
 
 # The Titanium Shield (Localhost Only)
 ALLOWED_ORIGINS = [
-    "http://127.0.0.1:5000",   
+    "http://127.0.0.1:5000",
     "http://localhost:5000",
-    "http://127.0.0.1:5500",   
+    "http://127.0.0.1:5500",
     "http://localhost:5500",
-    "null"                      
+    "null"
 ]
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
@@ -49,18 +57,18 @@ CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 # =============================================
 
 _state_lock = threading.Lock()
-total_logs_processed = 0       
-current_level = "3"            
-shield_enabled = True          
+total_logs_processed = 0
+current_level = "3"
+shield_enabled = True
 model_name = "butterclaw-optimized:latest"
-routing_mode = "local"         
-remote_endpoint = ""           
+routing_mode = "local"
+remote_endpoint = ""
 
 gate_states = {
-    "sig_scan": True,          
-    "origin_ctx": True,        
-    "intent": True,            
-    "kill_sw": True            
+    "sig_scan": True,
+    "origin_ctx": True,
+    "intent": True,
+    "kill_sw": True
 }
 
 OLLAMA_LOCAL_BASE = "http://localhost:11434"
@@ -72,9 +80,9 @@ VALID_GATE_KEYS = frozenset(gate_states.keys())
 # SIMPLE RATE LIMITER
 # =============================================
 
-RATE_LIMIT_MAX = 10            
-RATE_LIMIT_WINDOW = 60         
-_rate_log = deque()            
+RATE_LIMIT_MAX = 10
+RATE_LIMIT_WINDOW = 60
+_rate_log = deque()
 _rate_lock = threading.Lock()
 
 def is_rate_limited():
@@ -118,7 +126,294 @@ def init_db():
 init_db()
 
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.WARNING)  
+log.setLevel(logging.WARNING)
+
+
+# =============================================
+# MCP PROCESS MANAGER (v0.4 Transport Layer)
+# =============================================
+
+class MCPProcessManager:
+    """
+    Manages the MCP child process lifecycle with proper transport safety:
+    - Dedicated stdout reader thread (never blocks Flask)
+    - Dedicated stderr drain thread (child never deadlocks)
+    - Response correlation by JSON-RPC id
+    - Configurable timeouts
+    - Auto-restart on child death
+    """
+
+    MCP_PROTOCOL_VERSION = "2024-11-05"
+
+    def __init__(self, script_path):
+        self.script_path = script_path
+        self.process = None
+        self._write_lock = threading.Lock()    # serializes stdin writes
+        self._pending = {}                      # req_id → {event, result}
+        self._req_counter = 0
+        self._running = False
+        self._stdout_thread = None
+        self._stderr_thread = None
+        self.discovered_tools = []
+        self.server_info = {}
+        self.handshake_ok = False
+
+    @property
+    def is_alive(self):
+        return self.process is not None and self.process.poll() is None
+
+    # ----- Lifecycle -----
+
+    def start(self):
+        """Spawn the MCP child process and start reader threads."""
+        if self.is_alive:
+            return True
+
+        print("🚀 [MCP] Spawning ButterClaw Execution Layer...")
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, self.script_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,       # ← v0.4: capture stderr
+                text=True,
+                bufsize=1
+            )
+        except FileNotFoundError:
+            print(f"❌ [MCP] Script not found: {self.script_path}")
+            return False
+        except Exception as e:
+            print(f"❌ [MCP] Failed to spawn: {e}")
+            return False
+
+        self._running = True
+
+        self._stdout_thread = threading.Thread(
+            target=self._read_stdout, name="mcp-stdout", daemon=True
+        )
+        self._stderr_thread = threading.Thread(
+            target=self._read_stderr, name="mcp-stderr", daemon=True
+        )
+        self._stdout_thread.start()
+        self._stderr_thread.start()
+
+        print(f"✅ [MCP] Claws active at PID: {self.process.pid}")
+        return True
+
+    def stop(self):
+        """Gracefully stop the MCP child process."""
+        self._running = False
+
+        if self.process and self.process.poll() is None:
+            print(f"🛑 [MCP] Stopping PID {self.process.pid}...")
+            try:
+                self.process.stdin.close()
+            except Exception:
+                pass
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+            print("🛑 [MCP] Process stopped.")
+
+        # Wake up any threads waiting for responses
+        for req_id, entry in list(self._pending.items()):
+            entry["result"] = {"error": "MCP process stopped"}
+            entry["event"].set()
+        self._pending.clear()
+
+        self.process = None
+        self.handshake_ok = False
+
+    def restart(self):
+        """Stop and restart the MCP child, re-run handshake."""
+        self.stop()
+        time.sleep(0.3)
+        if self.start():
+            return self.handshake()
+        return False
+
+    # ----- Transport -----
+
+    def send(self, method, params=None, timeout=10):
+        """
+        Send a JSON-RPC 2.0 request over stdin, wait for correlated response.
+        Returns the parsed JSON response dict, or {"error": "..."}.
+        """
+        # Auto-restart if child is dead
+        if not self.is_alive:
+            if not self.start():
+                return {"error": "MCP process failed to start"}
+
+        self._req_counter += 1
+        req_id = self._req_counter
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": req_id
+        }
+
+        # Set up correlation before writing (avoids race with fast responses)
+        event = threading.Event()
+        self._pending[req_id] = {"event": event, "result": None}
+
+        try:
+            with self._write_lock:
+                self.process.stdin.write(json.dumps(payload) + "\n")
+                self.process.stdin.flush()
+        except (BrokenPipeError, OSError, AttributeError) as e:
+            self._pending.pop(req_id, None)
+            return {"error": f"Pipe error: {e}"}
+
+        # Block until reader thread delivers the response or timeout
+        if event.wait(timeout=timeout):
+            entry = self._pending.pop(req_id, {})
+            return entry.get("result") or {"error": "Empty response"}
+        else:
+            self._pending.pop(req_id, None)
+            return {"error": f"Timeout ({timeout}s) on {method}"}
+
+    def notify(self, method, params=None):
+        """Send a JSON-RPC notification (no id, no response expected)."""
+        if not self.is_alive:
+            return
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {}
+            # No "id" → notification
+        }
+
+        try:
+            with self._write_lock:
+                self.process.stdin.write(json.dumps(payload) + "\n")
+                self.process.stdin.flush()
+        except (BrokenPipeError, OSError):
+            pass
+
+    # ----- Reader Threads -----
+
+    def _read_stdout(self):
+        """Dedicated thread: reads JSON-RPC responses from child stdout,
+        correlates them by id, and wakes up the waiting sender."""
+        while self._running and self.is_alive:
+            try:
+                line = self.process.stdout.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+
+                response = json.loads(line)
+                req_id = response.get("id")
+
+                # Dashboard light
+                preview = line[:150] + ("..." if len(line) > 150 else "")
+                print(f"📥 [MCP ACK] id={req_id} → {preview}")
+
+                if req_id is not None and req_id in self._pending:
+                    self._pending[req_id]["result"] = response
+                    self._pending[req_id]["event"].set()
+                elif req_id is not None:
+                    print(f"⚠️ [MCP] Orphaned response (id={req_id}), no pending request.")
+
+            except json.JSONDecodeError as e:
+                print(f"⚠️ [MCP] Malformed JSON on stdout: {e}")
+            except Exception as e:
+                if self._running:
+                    print(f"❌ [MCP] stdout reader error: {e}")
+                break
+
+        print("📡 [MCP] stdout reader exited.")
+
+    def _read_stderr(self):
+        """Dedicated thread: drains stderr so the child never fills the pipe
+        buffer and deadlocks. Lines are printed with an [MCP LOG] prefix."""
+        while self._running and self.is_alive:
+            try:
+                line = self.process.stderr.readline()
+                if not line:
+                    break
+                print(f"🔧 [MCP LOG] {line.rstrip()}")
+            except Exception:
+                break
+
+        print("📡 [MCP] stderr reader exited.")
+
+    # ----- Handshake -----
+
+    def handshake(self):
+        """
+        MCP protocol handshake:
+          1. initialize → get protocolVersion + serverInfo + capabilities
+          2. notifications/initialized → tell child we're ready
+          3. tools/list → discover available tools
+        """
+        # Step 1: initialize
+        init_resp = self.send("initialize", {
+            "protocolVersion": self.MCP_PROTOCOL_VERSION,
+            "clientInfo": {"name": "butterclaw-server", "version": VERSION},
+            "capabilities": {}
+        }, timeout=10)
+
+        if "error" in init_resp:
+            err = init_resp["error"]
+            if isinstance(err, dict):
+                err = err.get("message", str(err))
+            print(f"❌ [MCP] Handshake failed at initialize: {err}")
+            self.handshake_ok = False
+            return False
+
+        result = init_resp.get("result", {})
+        self.server_info = result.get("serverInfo", {})
+        protocol = result.get("protocolVersion", "unknown")
+
+        srv_name = self.server_info.get("name", "?")
+        srv_ver = self.server_info.get("version", "?")
+        print(f"📡 [MCP] Connected: {srv_name} v{srv_ver} (protocol {protocol})")
+
+        # Step 2: notifications/initialized
+        self.notify("notifications/initialized")
+
+        # Step 3: tools/list
+        tools_resp = self.send("tools/list", {}, timeout=5)
+        if "error" not in tools_resp and "result" in tools_resp:
+            self.discovered_tools = tools_resp["result"].get("tools", [])
+            print(f"🔫 [MCP] Discovered {len(self.discovered_tools)} tools:")
+            for tool in self.discovered_tools:
+                print(f"   - {tool['name']}: {tool.get('description', '(no desc)')}")
+        else:
+            print(f"⚠️ [MCP] tools/list failed, continuing with 0 tools.")
+            self.discovered_tools = []
+
+        self.handshake_ok = True
+        return True
+
+    # ----- Status -----
+
+    def status(self):
+        """Return a dict summarizing current MCP process state."""
+        return {
+            "alive": self.is_alive,
+            "pid": self.process.pid if self.process else None,
+            "handshake_ok": self.handshake_ok,
+            "server_info": self.server_info,
+            "tools_count": len(self.discovered_tools),
+            "pending_requests": len(self._pending)
+        }
+
+
+# Instantiate the global MCP manager
+mcp_manager = MCPProcessManager(
+    script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py")
+)
+
 
 # =============================================
 # DYNAMIC ENDPOINT RESOLUTION
@@ -135,12 +430,13 @@ def _resolve_ollama_url():
 
 def _validate_endpoint_url(url_string):
     if not url_string:
-        return True  
+        return True
     try:
         parsed = urlparse(url_string)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except Exception:
         return False
+
 
 # =============================================
 # THE GUARDIAN BRAIN
@@ -179,19 +475,15 @@ def ask_guardian_agent(threat_type, raw_data):
             gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
 
     json_schema = (
-        'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
-        'Strict Schema: {'
-        '"verdict": "CRITICAL" | "WARNING" | "BENIGN", '
-        '"confidence": float 0.0-1.0, '
-        '"primary_gate": "Signature" | "Origin" | "Intent" | "None", '
-        '"reasoning": "2-sentence explanation."}'
+        'Respond ONLY with raw JSON. No markdown, no backticks, no conversational text. '
+        'Schema: {"verdict": "CRITICAL|WARNING|BENIGN", "confidence": 0.99, "primary_gate": "Signature|Origin|Intent|None", "reasoning": "Why."}'
     )
 
     ollama_url = _resolve_ollama_url()
 
     payload = {
         "model": active_model,
-        "format": "json",  
+        "format": "json",
         "messages": [
             {
                 "role": "system",
@@ -209,7 +501,7 @@ def ask_guardian_agent(threat_type, raw_data):
         ],
         "stream": False,
         "options": {
-            "temperature": 0.3  # PATCHED I7: matched to Modelfile (0.3 optimal for Gemma brain)  
+            "temperature": 0.3
         }
     }
 
@@ -219,24 +511,24 @@ def ask_guardian_agent(threat_type, raw_data):
 
         try:
             parsed = json.loads(raw_content)
-            
+
             # --- [v0.3.1] LLM HALLUCINATION & CLAMPING FIX ---
             raw_conf = float(parsed.get("confidence", 0.0))
             if raw_conf > 1.0:
-                raw_conf = raw_conf / 100.0  # Catch if LLM outputs 95 instead of 0.95
+                raw_conf = raw_conf / 100.0
             clamped_conf = max(0.0, min(1.0, raw_conf))
-            
+
             return {
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
                 "confidence": clamped_conf,
-                "primary_gate": str(parsed.get("primary_gate", "None")), 
+                "primary_gate": str(parsed.get("primary_gate", "None")),
                 "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning."))
             }
         except json.JSONDecodeError:
             return {
                 "verdict": "ERROR",
                 "confidence": 0.0,
-                "reasoning": f"JSON parse failed on output: {raw_content[:200]}"  # PATCHED [B4] — truncate to prevent raw LLM output leaking into logs
+                "reasoning": f"JSON parse failed on output: {raw_content[:200]}"
             }
 
     except Exception as e:
@@ -260,10 +552,9 @@ def save_vault_key():
     return jsonify({"status": "success"}), 200
 
 @app.route('/api/vault/status', methods=['GET'])
-def check_vault_status():  # PATCHED I8: dynamic provider list from vault DB instead of hardcoded
+def check_vault_status():
     providers = buttervault.list_providers()
     status = {provider: buttervault.get_key(provider) is not None for provider in providers}
-    # Always show OpenRouter and Anthropic even if not yet stored
     for default in ["OpenRouter", "Anthropic"]:
         if default not in status:
             status[default] = False
@@ -285,15 +576,15 @@ def analyze_threat():
         return jsonify({"error": "Missing required fields: 'threat_type' and 'raw_data'"}), 400
 
     print("\n" + "=" * 60)
-    print(f"\U0001f4e5 [HTTP POST RECEIVED] From Browser Dashboard")
+    print(f"📥 [HTTP POST RECEIVED] From Browser Dashboard")
     print(f"   Payload: {threat_type}")
 
     ollama_url = _resolve_ollama_url()
-    print(f"\U0001f4e1 [HTTP POST DISPATCHED] Routing to {ollama_url}...")
+    print(f"📡 [HTTP POST DISPATCHED] Routing to {ollama_url}...")
     start_time = time.time()
 
     analysis = ask_guardian_agent(threat_type, raw_data)
-    
+
     end_time = time.time()
     stew_time = round(end_time - start_time, 2)
 
@@ -305,13 +596,13 @@ def analyze_threat():
     # --- [v0.3.1] SELF-DOS PREVENTION (THRESHOLD DOWNGRADE) ---
     CONFIDENCE_THRESHOLD = 85
     if verdict_upper == "CRITICAL" and confidence_pct < CONFIDENCE_THRESHOLD:
-        print(f"\U0001f6e1\ufe0f [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
+        print(f"🛡️ [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
         verdict_upper = "WARNING"
         reasoning += f" [Downgraded from CRITICAL: Confidence below {CONFIDENCE_THRESHOLD}% safety threshold]."
 
     verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {reasoning}"
 
-    print(f"\U0001f9e0 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
+    print(f"🧠 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
     print("=" * 60)
 
     with _state_lock:
@@ -319,11 +610,22 @@ def analyze_threat():
 
     if verdict_upper == "CRITICAL":
         color = "red"
-        icon = "\U0001f6a8"
+        icon = "🚨"
         if kill_sw_armed:
-            butterclaw_mcp.execute_gibson_kill("openclaw")
+            # v0.4: Push commands through the MCP manager (non-blocking, correlated)
+            mcp_manager.send("tools/call", {
+                "name": "execute_gibson_kill",
+                "arguments": {"target_process": "openclaw"}
+            })
+
+            # buttervault is still a local import — direct call
             buttervault.butter_keys()
-            butterclaw_mcp.rotate_keys("OpenRouter")
+
+            mcp_manager.send("tools/call", {
+                "name": "rotate_keys",
+                "arguments": {"provider": "OpenRouter"}
+            })
+
             action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
@@ -374,6 +676,11 @@ def get_logs():
 @app.route('/api/rotate-keys', methods=['POST'])
 def manual_key_rotation():
     buttervault.butter_keys()
+    # v0.4: Trigger external rotation via MCP manager
+    mcp_manager.send("tools/call", {
+        "name": "rotate_keys",
+        "arguments": {"provider": "Manual_Global"}
+    })
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -384,7 +691,7 @@ def manual_key_rotation():
             "Administrator manually triggered API key rotation. Ciphertext destroyed.",
             "Keys Buttered",
             datetime.datetime.now().strftime("%H:%M:%S"),
-            "\U0001f5dd\ufe0f",
+            "🗝️",
             "blue"
         ))
         conn.commit()
@@ -397,6 +704,7 @@ def manual_key_rotation():
         total_logs_processed += 1
 
     return jsonify({"status": "success"}), 200
+
 
 # --- THE CONTROL PANEL ---
 
@@ -428,7 +736,7 @@ def settings():
         else:
             with _state_lock:
                 current_level = new_level
-            print(f"\U0001f4e1 [SENTINEL UPDATE] Paranoia Level shifted to: {new_level}")
+            print(f"📡 [SENTINEL UPDATE] Paranoia Level shifted to: {new_level}")
 
     if "routing_mode" in data:
         new_mode = str(data["routing_mode"]).lower().strip()
@@ -437,7 +745,7 @@ def settings():
         else:
             with _state_lock:
                 routing_mode = new_mode
-            print(f"\U0001f6e0\ufe0f [ROUTING] Mode set to: {new_mode}")
+            print(f"🛠️ [ROUTING] Mode set to: {new_mode}")
 
     if "model" in data:
         new_model = str(data["model"]).strip()
@@ -446,7 +754,7 @@ def settings():
         else:
             with _state_lock:
                 model_name = new_model
-            print(f"\U0001f9e0 [MODEL] Active model set to: {new_model}")
+            print(f"🧠 [MODEL] Active model set to: {new_model}")
 
     if "endpoint" in data:
         new_endpoint = str(data["endpoint"]).strip()
@@ -456,7 +764,7 @@ def settings():
             with _state_lock:
                 remote_endpoint = new_endpoint
             label = new_endpoint if new_endpoint else "(cleared)"
-            print(f"\U0001f310 [ENDPOINT] Remote endpoint set to: {label}")
+            print(f"🌐 [ENDPOINT] Remote endpoint set to: {label}")
 
     if "gates" in data:
         new_gates = data["gates"]
@@ -473,7 +781,7 @@ def settings():
                 with _state_lock:
                     gate_states.update(coerced)
                 active = [k for k, v in gate_states.items() if v]
-                print(f"\U0001f512 [GATES] Updated. Active: {', '.join(active) if active else 'NONE'}")
+                print(f"🔒 [GATES] Updated. Active: {', '.join(active) if active else 'NONE'}")
 
     if errors:
         return jsonify({"status": "partial", "errors": errors}), 400
@@ -495,7 +803,7 @@ def shield():
         shield_enabled = new_state
 
     state_label = "UP" if shield_enabled else "DOWN"
-    print(f"\U0001f6e1\ufe0f [SHIELD] Shield is now {state_label}")
+    print(f"🛡️ [SHIELD] Shield is now {state_label}")
 
     try:
         conn = get_db_connection()
@@ -507,7 +815,7 @@ def shield():
             f"Administrator {'enabled' if shield_enabled else 'disabled'} the ButterClaw shield.",
             "Shield Toggled",
             datetime.datetime.now().strftime("%H:%M:%S"),
-            "\U0001f6e1\ufe0f" if shield_enabled else "\U0001f99e",
+            "🛡️" if shield_enabled else "🦞",
             "emerald" if shield_enabled else "amber"
         ))
         conn.commit()
@@ -523,7 +831,47 @@ def shield():
 
 
 # =============================================
-# SSE STREAM 
+# MCP OBSERVABILITY ENDPOINTS (v0.4 — NEW)
+# =============================================
+
+@app.route('/api/mcp/status', methods=['GET'])
+def mcp_status():
+    """Returns the current health of the MCP execution layer."""
+    return jsonify(mcp_manager.status()), 200
+
+
+@app.route('/api/mcp/ping', methods=['GET'])
+def mcp_ping():
+    """Sends a ping to the MCP child and returns the round-trip result."""
+    start = time.time()
+    resp = mcp_manager.send("ping", {}, timeout=5)
+    elapsed_ms = round((time.time() - start) * 1000, 1)
+
+    if "error" in resp:
+        return jsonify({"pong": False, "error": resp["error"], "ms": elapsed_ms}), 503
+    return jsonify({"pong": True, "ms": elapsed_ms}), 200
+
+
+@app.route('/api/mcp/tools', methods=['GET'])
+def mcp_tools():
+    """Returns the list of tools discovered during the MCP handshake."""
+    return jsonify({
+        "tools": mcp_manager.discovered_tools,
+        "count": len(mcp_manager.discovered_tools)
+    }), 200
+
+
+@app.route('/api/mcp/restart', methods=['POST'])
+def mcp_restart():
+    """Restarts the MCP child process and re-runs the handshake."""
+    success = mcp_manager.restart()
+    status = mcp_manager.status()
+    code = 200 if success else 503
+    return jsonify({"restarted": success, **status}), code
+
+
+# =============================================
+# SSE STREAM
 # =============================================
 
 @app.route('/api/stream')
@@ -545,12 +893,13 @@ def stream():
     response.headers.add('Connection', 'keep-alive')
     return response
 
+
 # =============================================
 # BOOT
 # =============================================
 
 if __name__ == '__main__':
-    print(f"\U0001f99e ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
+    print(f"🦞 ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
     print(f"   Database: {DB_PATH}")
     print(f"   Paranoia Level: {current_level}")
     print(f"   Routing Mode: {routing_mode}")
@@ -564,4 +913,23 @@ if __name__ == '__main__':
     print(f"   Self-DoS Threshold: {85}%")
     print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
     print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
+
+    # ==========================================================
+    # PHASE 2: THE HANDSHAKE (MCP v0.4 — Threaded, Safe)
+    # ==========================================================
+    print("\n" + "=" * 60)
+    print("📡 [MCP] Initiating v0.4 Handshake Sequence...")
+    print("=" * 60)
+
+    if mcp_manager.start():
+        if mcp_manager.handshake():
+            tool_count = len(mcp_manager.discovered_tools)
+            print(f"✅ [MCP] Handshake complete. {tool_count} tools armed.")
+        else:
+            print("⚠️ [MCP] Handshake failed. MCP endpoints will report degraded status.")
+    else:
+        print("❌ [MCP] Failed to spawn execution layer. The Sentinel is unarmed.")
+
+    print("=" * 60 + "\n")
+
     app.run(host='127.0.0.1', port=5000)

@@ -2,18 +2,115 @@
 
 All notable changes to ButterClaw are documented in this file.
 
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+Format: [Keep a Changelog](https://keepachangelog.com/)
+
+---
+
+# Changelog: ButterClaw v0.4.0
+
+Release Date: April 9, 2026
+
+## [0.4.0] - The Claws Awaken (MCP Transport & Observability)
+
+### Added
+
+- **Full MCP Protocol Compliance (`butterclaw_mcp.py`):** The execution layer now speaks real Model Context Protocol over stdio. `initialize` returns `protocolVersion` (`2024-11-05`), `serverInfo`, and proper `capabilities` shape. Added `tools/list`, `ping`, and `notifications/initialized` handlers. Tool results now return MCP-standard content arrays (`{content: [{type: "text", text: "..."}], isError: bool}`).
+
+- **Threaded MCP Process Manager (`server.py`):** Replaced the inline blocking `stdout.readline()` with a dedicated `MCPProcessManager` class. Stdout and stderr each get their own daemon reader thread — Flask never blocks on MCP I/O, and the child process never deadlocks from a full stderr pipe.
+
+- **Response Correlation by ID:** MCP requests are tracked via a `_pending` dictionary keyed by JSON-RPC `id`. The stdout reader thread wakes the correct waiting sender via `threading.Event`, eliminating response ordering assumptions.
+
+- **Configurable Timeouts:** Every `MCPProcessManager.send()` call accepts a `timeout` parameter (default 10s). Stalled MCP children no longer hang the server indefinitely.
+
+- **Auto-Restart:** If `send()` detects a dead child process, it automatically respawns and re-runs the handshake before retrying. The `/api/mcp/restart` endpoint provides manual lifecycle control.
+
+- **3-Step MCP Handshake (`server.py`):**
+  1. `initialize` → receive `protocolVersion` + `serverInfo` + `capabilities`
+  2. `notifications/initialized` → tell the child the client is ready
+  3. `tools/list` → dynamically discover all registered tools with `inputSchema`
+
+- **4 New API Endpoints (`server.py`):**
+  - `/api/mcp/status` — Returns process health: `alive`, `handshake_ok`, `pid`, `tools_count`, `pending_requests`
+  - `/api/mcp/ping` — Sends MCP `ping` to the child, returns round-trip ms and `pong` boolean
+  - `/api/mcp/tools` — Returns the full tool list discovered during handshake
+  - `/api/mcp/restart` — Stops, restarts the child, and re-runs the handshake
+
+- **Expanded Tool Registry (`butterclaw_mcp.py`):** 5 tools (up from 2):
+  - `execute_gibson_kill` — Kinetic: terminates a rogue process by name (DRY_RUN)
+  - `rotate_keys` — Kinetic: invalidates provider API tokens globally (DRY_RUN)
+  - `system_status` — Returns ButterClaw health metrics (version, platform, PID, DRY_RUN state)
+  - `scan_port` — Quick TCP connect check (e.g., is Ollama alive at 11434?)
+  - `log_event` — Writes structured audit entries to the MCP stderr log stream
+
+- **MCP Sidebar Badge (`index.html`):** New status indicator in the sidebar bottom showing MCP state (Armed / Degraded / Offline) with tool count. Polls `/api/mcp/status` every 30s. Clickable → navigates to `routing.html#mcpSection`.
+
+- **Live MCP Panel (`routing.html`):** Replaced the disabled v0.3.1 MCP placeholder with a fully wired panel:
+  - Process status card with live dot + PID display
+  - Ping button → hits `/api/mcp/ping`, shows round-trip latency in ms
+  - Restart button → POSTs `/api/mcp/restart`, refreshes status + tool list on success
+  - Dynamic tool list rendered from `/api/mcp/tools` with name, description, and `inputSchema` parameter details
+  - Transport info (stdio / JSON-RPC 2.0) and protocol version display
+  - Refresh button for manual tool re-discovery
+
+### Changed
+
+- **Dispatch Table Architecture (`butterclaw_mcp.py`):** Replaced the `if/elif` method routing chain with a `METHOD_MAP` dict mapping method names to handler functions, and a `TOOL_DISPATCH` dict mapping tool names to callables. Adding new methods or tools is now a one-line addition.
+
+- **Tool Schema Field Name:** Tool definitions now use `inputSchema` (MCP standard) instead of `parameters`.
+
+- **Tool Function Return Values:** `execute_gibson_kill` and `rotate_keys` now return descriptive strings instead of raw `True` booleans, making content array results meaningful.
+
+- **JSON-RPC Error Codes:** Proper codes throughout — `-32700` (parse error), `-32601` (method not found), `-32602` (invalid params / unknown tool), `-32603` (internal error). Previously everything was `-32603`.
+
+- **MCP Commands in Analyze Path (`server.py`):** CRITICAL verdict responses now push `execute_gibson_kill` and `rotate_keys` through the `MCPProcessManager` (non-blocking, correlated) instead of the old inline `send_mcp_command()`.
+
+- **Version Strings:** All files updated from `v0.3.1` / `v0.3.2` to `v0.4.0` — `server.py`, `butterclaw_mcp.py`, `routing.html` footer, MCP badge.
+
+### Fixed
+
+- **Flask Thread Blocking:** The single biggest fragility source — `mcp_process.stdout.readline()` running inline on the Flask request thread — is eliminated. All MCP reads now happen on dedicated daemon threads.
+
+- **Child Deadlock Risk:** `stderr` was never captured (`Popen` had no `stderr=PIPE`). If the MCP child logged enough to fill the OS pipe buffer (~64KB), it would deadlock silently. Now drained continuously by a dedicated thread.
+
+- **Orphaned Response Handling:** If a response arrives for an already-timed-out or unknown request ID, it's logged with a warning instead of silently dropped or misattributed.
+
+- **Handshake Failure Visibility:** A failed MCP handshake previously froze startup silently. Now it fails cleanly, logs the error, and sets `handshake_ok = False` so all observability endpoints report degraded status truthfully.
+
+- **Redundant Import:** Removed duplicate `import sys` at the bottom of `butterclaw_mcp.py`.
+
+### Architecture Notes
+
+**Transport Model:**
+```
+[Flask Server (server.py)]
+        │
+        ├── MCPProcessManager
+        │       ├── stdin writer (serialized via _write_lock)
+        │       ├── stdout reader thread (correlates by id → threading.Event)
+        │       └── stderr drain thread (prints with [MCP LOG] prefix)
+        │
+        └── subprocess.Popen (butterclaw_mcp.py)
+                ├── stdin  ← JSON-RPC requests (one per line)
+                ├── stdout → JSON-RPC responses (one per line)
+                └── stderr → logging/diagnostics (never JSON)
+```
+
+**Observability Stack:**
+- Sidebar badge (both pages) polls `/api/mcp/status` every 30s
+- Routing page MCP panel provides manual ping, restart, and tool inspection
+- Server console shows `📥 [MCP ACK]` for every correlated response and `🔧 [MCP LOG]` for every stderr line from the child
+- Three visual states: **Armed** (green — alive + handshake OK), **Degraded** (amber — alive but handshake failed), **Offline** (red — process not running)
+
+**DRY_RUN remains `True`** — all kinetic tools (gibson_kill, rotate_keys) are still simulated. The transport is production-ready; the actions are not yet live.
 
 ---
 
 ### Patched — v0.3.1 QA Audit for v0.3.2
 
-**Audit Date:** April 5, 2026
-**Scope:** Full codebase review of v0.3.1 release — 5 files audited
-**Findings:** 13 total — 5 🔴 Bugs, 8 🟡 Issues, 6 🟢 Notes
-**Regression Alert:** Bugs B1–B4 are regressions of v0.2.0 audit patches (P6, P7, P13, P3 respectively). Original fixes were overwritten during the v0.3.x development cycle.
-
----
+Audit Date: April 5, 2026
+Scope: Full codebase review of v0.3.1 release — 5 files audited
+Findings: 13 total — 5 🔴 Bugs, 8 🟡 Issues, 6 🟢 Notes
+Regression Alert: Bugs B1–B4 are regressions of v0.2.0 audit patches (P6, P7, P13, P3 respectively). Original fixes were overwritten during the v0.3.x development cycle.
 
 #### `routing.html` — 5 patches (B1, B2, I1, I2, I5)
 
@@ -25,8 +122,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 | I2 | 🟡 Issue | MCP status badge displays "v0.3 Active" | Updated to "v0.3.1 Active" |
 | I5 | 🟡 Issue | Model dropdown first option value is `butterclaw-optimized` but `server.py` default is `butterclaw-optimized:latest` — tag mismatch could cause Ollama to pull/use wrong model | Changed value to `butterclaw-optimized:latest` to match server default |
 
----
-
 #### `server.py` — 3 patches (B4, I7, I8)
 
 | ID | Severity | Finding | Fix |
@@ -34,8 +129,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 | B4 | 🔴 Bug | JSON parse error response leaked full `raw_content` string in API error message — potential data exfiltration vector | Truncated to `raw_content[:200]` in error payload (REGRESSION of v0.2.0 P3) |
 | I7 | 🟡 Issue | LLM temperature hardcoded to `0.2` (legacy Phi-3 setting) but `Modelfile.example` specifies `0.3` for Gemma brain — runtime/documentation mismatch | Changed to `0.3`; Modelfile is authoritative for tuned inference parameters |
 | I8 | 🟡 Issue | `/api/vault/status` endpoint hardcoded only `openrouter` and `anthropic` as provider keys — any other provider stored in ButterVault would not appear in status response | Replaced with dynamic `buttervault.list_providers()` call; all stored providers now surfaced |
-
----
 
 #### `butterclaw_mcp.py` — 3 patches (B3, I4, I6)
 
@@ -45,16 +138,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 | I4 | 🟡 Issue | Docstring and dry-run print statements say "v0.3" | Updated to "v0.3.1" |
 | I6 | 🟡 Issue | Module-level `logging.basicConfig()` collides with other modules — only the first imported module's config takes effect; rest silently ignored | Removed module-level `logging.basicConfig()`; logging config deferred to caller |
 
----
-
 #### `watcher.py` — 2 patches (I3, I6)
 
 | ID | Severity | Finding | Fix |
 |----|----------|---------|-----|
 | I3 | 🟡 Issue | Docstring, argparse `--version`, and boot log message all display "v0.3" | Updated all three to "v0.3.1" |
 | I6 | 🟡 Issue | Module-level `logging.basicConfig()` collides with other modules | Moved `logging.basicConfig()` into `main()` function scope |
-
----
 
 #### `buttervault.py` — 3 patches (B5, I6, I8)
 
@@ -63,8 +152,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 | B5 | 🔴 Bug | Post-destroy diagnostic test used `try/except` to detect destroyed key, but `get_key()` returns `None` on missing keys — never raises an exception; test always reported false success | Changed to explicit `if destroyed_key is None` check |
 | I6 | 🟡 Issue | Module-level `logging.basicConfig()` collides with other modules | Removed module-level `logging.basicConfig()`; logging config deferred to caller |
 | I8 | 🟡 Issue | No API to dynamically enumerate stored providers | Added `list_providers()` helper function returning all provider names from the vault |
-
----
 
 #### Cross-File Audit Notes — 🟢 Positive
 
@@ -80,85 +167,95 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ---
 
 # Changelog: ButterClaw v0.3.1
-**Release Date:** April 4, 2026
+
+Release Date: April 4, 2026
 
 ## [0.3.1] - Reasoning Engine (Self-DoS & Stability Patch)
 
 ### Added
-* **Self-DoS Prevention:** Introduced a `CONFIDENCE_THRESHOLD` (85%) to the Brain. Low-confidence `CRITICAL` verdicts are now automatically downgraded to `WARNING`, preventing attackers from using weak, ambiguous prompt injections to trick the Sentinel into constantly buttering its own keys.
+
+- **Self-DoS Prevention:** Introduced a `CONFIDENCE_THRESHOLD` (85%) to the Brain. Low-confidence `CRITICAL` verdicts are now automatically downgraded to `WARNING`, preventing attackers from using weak, ambiguous prompt injections to trick the Sentinel into constantly buttering its own keys.
 
 ### Fixed
-* **LLM Hallucination Handling:** Added parsing logic to catch and correct confidence formatting hallucinations (e.g., when the LLM outputs `95` instead of `0.95`). Clamped bounds strictly between `0.0` and `1.0`.
-* **Execution Hot-Paths:** Moved module imports (`buttervault`, `butterclaw_mcp`) out of the `analyze_threat` execution block and into the top-level scope for boot-time validation, significantly improving threat-response latency.
+
+- **LLM Hallucination Handling:** Added parsing logic to catch and correct confidence formatting hallucinations (e.g., when the LLM outputs `95` instead of `0.95`). Clamped bounds strictly between `0.0` and `1.0`.
+- **Execution Hot-Paths:** Moved module imports (`buttervault`, `butterclaw_mcp`) out of the `analyze_threat` execution block and into the top-level scope for boot-time validation, significantly improving threat-response latency.
 
 ---
 
 # Changelog: ButterClaw v0.3
-**Release Date:** April 4, 2026
+
+Release Date: April 4, 2026
 
 ## [0.3.0] - The ButterVault & MCP Scaffold
 
 ### Added
-* **The ButterVault (`buttervault.py`):** Deprecated plaintext `.env` files. API keys are now securely AES-encrypted using the OS-native Credential Locker (`keyring`) and stored as SQLite BLOBs. 
-* **Live Ammunition:** Upgraded the Gibson Kill Switch. Triggering the Gibson now physically overwrites local Vault ciphertexts with cryptographic garbage.
-* **True MCP Scaffolding:** Restructured `butterclaw_mcp.py` into `ButterClawMCPServer`. It now outputs strict JSON-RPC tool schemas, laying the groundwork for full stdio/SSE Model Context Protocol transport.
-* **Hardware Profiles:** Added `Modelfile.example` to the repository, providing a tuned configuration (16k context, 0.3 temp, 0.9 top_p) specifically for running the Sentinel on dedicated local GPUs (e.g., RTX 2060).
+
+- **The ButterVault (`buttervault.py`):** Deprecated plaintext `.env` files. API keys are now securely AES-encrypted using the OS-native Credential Locker (`keyring`) and stored as SQLite BLOBs.
+- **Live Ammunition:** Upgraded the Gibson Kill Switch. Triggering the Gibson now physically overwrites local Vault ciphertexts with cryptographic garbage.
+- **True MCP Scaffolding:** Restructured `butterclaw_mcp.py` into `ButterClawMCPServer`. It now outputs strict JSON-RPC tool schemas, laying the groundwork for full stdio/SSE Model Context Protocol transport.
+- **Hardware Profiles:** Added `Modelfile.example` to the repository, providing a tuned configuration (16k context, 0.3 temp, 0.9 top_p) specifically for running the Sentinel on dedicated local GPUs (e.g., RTX 2060).
 
 ### Changed
-* **The Brain Upgrade:** Officially pivoted the primary localized reasoning engine from `phi3` to `gemma4:e4b` for superior adaptive semantic reasoning.
-* **Massive Context Expansion:** Increased the `watcher.py` log truncation limit from 500 to 4096 characters to ensure deeply embedded, long-form Indirect Prompt Injections are fully captured and passed to the LLM.
-* **UI Suite & Routing:** Revamped the VPS Brain Routing dashboard to explicitly support the new `butterclaw-optimized` Modelfile profile and the 6-Node Sentinel architecture.
-* **Vibe Sync:** Unified the Tailwind UI color palettes (`butter-400`, `claw-500`) and typography (`Inter`) across the internal dashboard and the public-facing tech demo.
+
+- **The Brain Upgrade:** Officially pivoted the primary localized reasoning engine from `phi3` to `gemma4:e4b` for superior adaptive semantic reasoning.
+- **Massive Context Expansion:** Increased the `watcher.py` log truncation limit from 500 to 4096 characters to ensure deeply embedded, long-form Indirect Prompt Injections are fully captured and passed to the LLM.
+- **UI Suite & Routing:** Revamped the VPS Brain Routing dashboard to explicitly support the new `butterclaw-optimized` Modelfile profile and the 6-Node Sentinel architecture.
+- **Vibe Sync:** Unified the Tailwind UI color palettes (`butter-400`, `claw-500`) and typography (`Inter`) across the internal dashboard and the public-facing tech demo.
 
 ---
 
 # Changelog: ButterClaw v0.2.1
-**Release Date:** Late March, 2026
+
+Release Date: Late March, 2026
 
 ## [0.2.1] - The Mind Reader Update (Observation & Simulation)
 
 ### Added
-* **Logic Gate Trace:** Introduced the `primary_gate` field to the JSON schema, forcing the Brain to identify the specific analytical vector (Signature, Origin, or Intent) used for the verdict.
-* **UI Mind Reader Window:** The dashboard now explicitly displays the triggering logic gate next to the confidence score for 100% transparent observability.
+
+- **Logic Gate Trace:** Introduced the `primary_gate` field to the JSON schema, forcing the Brain to identify the specific analytical vector (Signature, Origin, or Intent) used for the verdict.
+- **UI Mind Reader Window:** The dashboard now explicitly displays the triggering logic gate next to the confidence score for 100% transparent observability.
 
 ### Changed
-* **Terminology Pivot:** Rebranded the system from "Deterministic" to "**Probabilistic**" to accurately reflect the adaptive nature of temperature-based sampling.
-* **Documentation Cleanup:** Streamlined the `README.md` to remove "slop" and emphasize the **Evaluation before Execution** principle.
+
+- **Terminology Pivot:** Rebranded the system from "Deterministic" to "Probabilistic" to accurately reflect the adaptive nature of temperature-based sampling.
+- **Documentation Cleanup:** Streamlined the `README.md` to remove "slop" and emphasize the `Evaluation before Execution` principle.
 
 ### Fixed
-* **Parsing Stability:** Refined the JSON parser in `server.py` to handle the new gate metadata without breaking existing SQLite storage logic.
+
+- **Parsing Stability:** Refined the JSON parser in `server.py` to handle the new gate metadata without breaking existing SQLite storage logic.
 
 ---
 
 # Changelog: ButterClaw v0.2
-**Release Date:** Late March, 2026
+
+Release Date: Late March, 2026
 
 ## [0.2.0] - The Kinetic Update
 
 ### Added
-* **The Claws (Execution Layer):** Introduced `butterclaw_mcp.py`, a dedicated Model Context Protocol (MCP) layer for OS-level interventions.
-* **Gibson Kill Switch:** Implementation of a "Dry Run" safety harness for simulated `SIGKILL` (`pkill`/`taskkill`) and API key rotation.
-* **Structured JSON Intelligence:** Migrated the Brain (Phi-3) to a strict JSON schema output, eliminating brittle regex string-matching errors.
-* **Confidence Scoring:** The model now calculates and returns a probabilistic confidence score (0.0 - 1.0) for every threat analysis.
-* **Adaptive Temperature:** Bumped LLM temperature to `0.2` to allow for lateral semantic reasoning against obfuscated threats.
+
+- **The Claws (Execution Layer):** Introduced `butterclaw_mcp.py`, a dedicated Model Context Protocol (MCP) layer for OS-level interventions.
+- **Gibson Kill Switch:** Implementation of a "Dry Run" safety harness for simulated `SIGKILL` (`pkill` / `taskkill`) and API key rotation.
+- **Structured JSON Intelligence:** Migrated the Brain (Phi-3) to a strict JSON schema output, eliminating brittle regex string-matching errors.
+- **Confidence Scoring:** The model now calculates and returns a probabilistic confidence score (0.0 - 1.0) for every threat analysis.
+- **Adaptive Temperature:** Bumped LLM temperature to `0.2` to allow for lateral semantic reasoning against obfuscated threats.
 
 ### Changed
-* **The Brain:** Transitioned from a passive "judge" to an active "Sentinel" capable of triggering programmatic defenses.
-* **UI Overhaul:** Updated `index.html` to support real-time metadata streaming and kinetic action logging via Server-Sent Events (SSE).
+
+- **The Brain:** Transitioned from a passive "judge" to an active "Sentinel" capable of triggering programmatic defenses.
+- **UI Overhaul:** Updated `index.html` to support real-time metadata streaming and kinetic action logging via Server-Sent Events (SSE).
 
 ### Fixed
-* **The Box Trap:** Resolved issues where non-deterministic text outputs from the LLM would crash the API parser.
 
----
+- **The Box Trap:** Resolved issues where non-deterministic text outputs from the LLM would crash the API parser.
 
 ### Patched — v0.2.0 QA Audit
 
-**Audit Date:** April 2026
-**Scope:** Full codebase review of v0.2.0 release — 5 files audited
-**Findings:** 20 total — 5 🔴 Bugs, 9 🟡 Issues, 6 🟢 Notes
-**Files Patched:** `routing.html`, `server.py`, `watcher.py`, `butterclaw_mcp.py`, `index.html`
-
----
+Audit Date: April 2026
+Scope: Full codebase review of v0.2.0 release — 5 files audited
+Findings: 20 total — 5 🔴 Bugs, 9 🟡 Issues, 6 🟢 Notes
+Files Patched: `routing.html`, `server.py`, `watcher.py`, `butterclaw_mcp.py`, `index.html`
 
 #### `routing.html` — Key patches
 
@@ -167,15 +264,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 | P6 | 🔴 Bug | CSP `connect-src` directive had trailing wildcard `*`, nullifying the entire allowlist | Removed wildcard; explicit origins only |
 | P7 | 🔴 Bug | Save Config in local mode sent bare `localhost:11434` (no scheme) as the endpoint URL | Changed to `''` (empty string) — local mode uses no remote endpoint |
 
----
-
 #### `server.py` — Key patches
 
 | ID | Severity | Finding | Fix |
 |----|----------|---------|-----|
 | P3 | 🔴 Bug | JSON parse error response leaked full `raw_content` string in API error message | Truncated to `raw_content[:200]` in error payload |
-
----
 
 #### `butterclaw_mcp.py` — Key patches
 
@@ -183,24 +276,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 |----|----------|---------|-----|
 | P13 | 🔴 Bug | `else: pass` branches in action dispatcher silently return `None` for unknown action types | Replaced with `raise NotImplementedError` |
 
----
-
 #### Additional v0.2.0 Audit Fixes
 
-* **Confidence Clamping:** Bounded confidence score parsing to `[0.0, 1.0]` range with hallucination correction
-* **MCP Import Optimization:** Moved `butterclaw_mcp` import from hot-path to top-level scope
-* **Version String Alignment:** Unified version identifiers across all files to `v0.2.0`
-* **Model Dropdown Sync:** Aligned `routing.html` model dropdown default values with `server.py` expected model tags
-* **UI Security Hardening:** Validated XSS-safe DOM patterns across `index.html` dynamic content areas
+- **Confidence Clamping:** Bounded confidence score parsing to `[0.0, 1.0]` range with hallucination correction
+- **MCP Import Optimization:** Moved `butterclaw_mcp` import from hot-path to top-level scope
+- **Version String Alignment:** Unified version identifiers across all files to `v0.2.0`
+- **Model Dropdown Sync:** Aligned `routing.html` model dropdown default values with `server.py` expected model tags
+- **UI Security Hardening:** Validated XSS-safe DOM patterns across `index.html` dynamic content areas
 
 #### Cross-File Audit Notes — 🟢 Positive
 
-* SSE streaming architecture is well-structured with proper event framing
-* Flask CORS configuration uses explicit origin allowlist — no wildcard
-* SQLite memory layer handles concurrent writes safely via connection-per-request pattern
-* Dry-run safety harness in MCP layer prevents accidental production kills
-* Paranoia slider UI provides intuitive real-time sensitivity control
-* `textContent`/`createElement` used consistently — no `innerHTML` injection vectors
+- SSE streaming architecture is well-structured with proper event framing
+- Flask CORS configuration uses explicit origin allowlist — no wildcard
+- SQLite memory layer handles concurrent writes safely via connection-per-request pattern
+- Dry-run safety harness in MCP layer prevents accidental production kills
+- Paranoia slider UI provides intuitive real-time sensitivity control
+- `textContent` / `createElement` used consistently — no `innerHTML` injection vectors
 
 ---
 
@@ -210,7 +301,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 52 patches across 4 files. Zero new dependencies. Full security audit, routing integration, and mobile responsiveness pass.
 
-*(See full v0.1.1 patch notes in historical commit logs)*
+(See full v0.1.1 patch notes in historical commit logs)
 
 ---
 
