@@ -98,7 +98,22 @@
         </a>
       </nav>
     </div>
-    <div class="p-6">
+
+    <!-- ============================================= -->
+    <!-- SIDEBAR BOTTOM: MCP Badge + Connection Badge  -->
+    <!-- ============================================= -->
+    <div class="p-6 space-y-3">
+
+      <!-- [v0.4] MCP Execution Layer Status Badge -->
+      <div id="mcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 cursor-pointer hover:bg-slate-100 transition" title="Click to view MCP tools">
+        <div id="mcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
+        <div class="flex-1">
+          <div id="mcpText" class="text-sm font-medium text-slate-500">MCP: Checking...</div>
+          <div id="mcpToolCount" class="text-xs text-slate-400 mt-0.5"></div>
+        </div>
+      </div>
+
+      <!-- Original Connection Badge -->
       <div id="connectionBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3">
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div id="connectionText" class="text-sm font-medium text-slate-500">Checking...</div>
@@ -453,7 +468,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider: 'OpenRouter', api_key: key })
         });
-        await fetchVaultStatus(); // Refresh UI to Protected state
+        await fetchVaultStatus();
       } catch (e) {
         console.error('Failed to seal key', e);
       } finally {
@@ -464,7 +479,7 @@
     vaultLink.addEventListener('click', (e) => {
       e.preventDefault();
       closeSidebar();
-      fetchVaultStatus(); // Fetch status every time modal opens
+      fetchVaultStatus();
       vaultModal.classList.remove('hidden');
       setTimeout(() => {
         vaultModal.classList.remove('opacity-0');
@@ -507,7 +522,6 @@
         panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
         panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
         
-        // v0.3: Instantly visually reset the inputs so user sees the destruction
         await fetchVaultStatus();
         fetchLiveLogs();
       } catch (error) {
@@ -520,7 +534,6 @@
         panicBtn.appendChild(errText);
       }
       
-      // Reset button visuals after 3 seconds
       setTimeout(() => {
         panicBtn.textContent = '';
         const normIcon = document.createElement('span');
@@ -530,7 +543,7 @@
         panicBtn.appendChild(normIcon);
         panicBtn.appendChild(normText);
         panicBtn.classList.replace('bg-emerald-500', 'bg-red-500');
-        panicBtn.classList.replace('bg-amber-500', 'bg-red-500'); // Failsafe
+        panicBtn.classList.replace('bg-amber-500', 'bg-red-500');
         panicBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
         panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-red-600');
       }, 3000);
@@ -625,7 +638,6 @@
       logStream.onmessage = (event) => {
         sseRetryDelay = 1000;
         fetchLiveLogs();
-        // If the stream caught an event (like a SIGKILL / Butter event), refresh vault UI too
         fetchVaultStatus(); 
       };
 
@@ -748,6 +760,55 @@
 
     checkConnection();
     setInterval(checkConnection, 30000);
+
+    // =============================================
+    // 8. MCP EXECUTION LAYER STATUS (v0.4) 🔫
+    // =============================================
+    const mcpDot       = document.getElementById('mcpDot');
+    const mcpText      = document.getElementById('mcpText');
+    const mcpToolCount = document.getElementById('mcpToolCount');
+    const mcpBadge     = document.getElementById('mcpBadge');
+
+    const setMCPState = (state, toolCount) => {
+      const states = {
+        armed:    { dot: 'bg-emerald-500', badge: 'bg-emerald-50 border-emerald-100', text: 'text-emerald-800', label: 'MCP: Armed',    sub: `${toolCount} tool${toolCount !== 1 ? 's' : ''} loaded` },
+        degraded: { dot: 'bg-amber-500',   badge: 'bg-amber-50 border-amber-100',     text: 'text-amber-800',   label: 'MCP: Degraded', sub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     badge: 'bg-red-50 border-red-100',         text: 'text-red-800',     label: 'MCP: Offline',  sub: 'Process not running' },
+        checking: { dot: 'bg-slate-400',   badge: 'bg-slate-50 border-slate-200',     text: 'text-slate-500',   label: 'MCP: Checking...', sub: '' }
+      };
+      const s = states[state];
+      mcpDot.className       = 'h-3 w-3 ' + s.dot + ' rounded-full animate-pulse';
+      mcpBadge.className     = s.badge + ' rounded-xl p-4 flex items-center space-x-3 cursor-pointer hover:bg-slate-100 transition border';
+      mcpText.className      = 'text-sm font-medium ' + s.text;
+      mcpText.textContent    = s.label;
+      mcpToolCount.textContent = s.sub;
+      mcpToolCount.className = 'text-xs text-slate-400 mt-0.5';
+    };
+
+    const checkMCPStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/mcp/status`);
+        if (!res.ok) { setMCPState('offline', 0); return; }
+        const data = await res.json();
+        if (data.alive && data.handshake_ok) {
+          setMCPState('armed', data.tools_count || 0);
+        } else if (data.alive) {
+          setMCPState('degraded', 0);
+        } else {
+          setMCPState('offline', 0);
+        }
+      } catch (e) {
+        setMCPState('offline', 0);
+      }
+    };
+
+    // Click MCP badge → navigate to routing page MCP section
+    mcpBadge.addEventListener('click', () => {
+      window.location.href = 'routing.html#mcpSection';
+    });
+
+    checkMCPStatus();
+    setInterval(checkMCPStatus, 30000);
 
   });
   </script>
