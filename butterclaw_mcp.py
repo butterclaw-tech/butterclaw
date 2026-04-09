@@ -12,9 +12,11 @@ Changelog from v0.2:
 import logging
 import time
 import json
+import sys
 
-# Set up loud, clear logging for the terminal
-logger = logging.getLogger("butterclaw.mcp")  # PATCHED I6: removed basicConfig — root logger config belongs in server.py/watcher.py entry points only
+# Set up loud, clear logging, strictly routed to stderr to protect the JSON pipe
+logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(message)s")
+logger = logging.getLogger("butterclaw.mcp")
 
 # SAFETY HARNESS IS ON FOR KINETIC OS ACTIONS
 DRY_RUN = True
@@ -106,13 +108,50 @@ class ButterClawMCPServer:
             raise ValueError(f"Unknown tool: {tool_name}")
 
 
-if __name__ == "__main__":
-    # If you run this file directly, it tests the prop claws and outputs the MCP schema
-    print("🦞 ButterClaw Claws (v0.3.1) - DRY RUN TEST")  # PATCHED I4
-    print("\n--- Testing Execution ---")
-    execute_gibson_kill("rogue_agent.exe")
-    rotate_keys("Anthropic")
-
-    print("\n--- MCP Server Schema Output ---")
+def main():
     server = ButterClawMCPServer()
-    print(server.list_tools())
+    
+    # The Claws are now a standalone background service
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+            
+        try:
+            # Parse the incoming JSON-RPC request
+            request = json.loads(line)
+            method = request.get("method")
+            params = request.get("params", {})
+            req_id = request.get("id")
+
+            # Route to the appropriate tool
+            if method == "tools/call":
+                tool_name = params.get("name")
+                tool_args = params.get("arguments", {}) # MCP standard uses 'arguments'
+                result = server.execute_tool(tool_name, tool_args)
+                
+                response = {
+                    "jsonrpc": "2.0",
+                    "result": result,
+                    "id": req_id
+                }
+            elif method == "initialize":
+                response = {
+                    "jsonrpc": "2.0",
+                    "result": {"capabilities": {"tools": server.tools}},
+                    "id": req_id
+                }
+            else:
+                response = {"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": req_id}
+
+        except Exception as e:
+            response = {"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}, "id": None}
+
+        # Send back to the Brain
+        print(json.dumps(response))
+        sys.stdout.flush()
+
+if __name__ == "__main__":
+    # Ensure sys is imported at the top of the file!
+    import sys
+    main()

@@ -23,7 +23,9 @@ import json
 
 # [v0.3.1] Fixed Hot-Path Imports: Moved to top level for boot-time validation
 import buttervault  
-import butterclaw_mcp
+
+import subprocess # NEW
+import sys        # NEW
 
 # =============================================
 # APP SETUP
@@ -119,6 +121,52 @@ init_db()
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.WARNING)  
+
+# =============================================
+# MCP PROCESS MANAGER (v0.4 Transport Layer)
+# =============================================
+mcp_process = None
+mcp_lock = threading.Lock()
+
+def start_mcp_claws():
+    global mcp_process
+    with mcp_lock:
+        # Check if process is dead or never started
+        if mcp_process is None or mcp_process.poll() is not None:
+            print("🚀 [MCP] Spawning ButterClaw Execution Layer...")
+            mcp_process = subprocess.Popen(
+                [sys.executable, os.path.join(BASE_DIR, "butterclaw_mcp.py")],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            print(f"✅ [MCP] Claws active at PID: {mcp_process.pid}")
+
+def send_mcp_command(method, params=None):
+    start_mcp_claws() 
+    payload = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params or {},
+        "id": int(time.time() * 1000)
+    }
+    with mcp_lock:
+        try:
+            mcp_process.stdin.write(json.dumps(payload) + "\n")
+            mcp_process.stdin.flush()
+            
+            response_line = mcp_process.stdout.readline()
+            
+            if response_line:
+                # ---> THIS IS THE MISSING DASHBOARD LIGHT <---
+                print(f"📥 [MCP ACK] {response_line.strip()}")
+                return json.loads(response_line)
+            else:
+                return {"error": "No response"}
+                
+        except Exception as e:
+            return {"error": str(e)}
 
 # =============================================
 # DYNAMIC ENDPOINT RESOLUTION
@@ -319,11 +367,16 @@ def analyze_threat():
 
     if verdict_upper == "CRITICAL":
         color = "red"
-        icon = "\U0001f6a8"
+        icon = "🚨"
         if kill_sw_armed:
-            butterclaw_mcp.execute_gibson_kill("openclaw")
-            buttervault.butter_keys()
-            butterclaw_mcp.rotate_keys("OpenRouter")
+            # NEW: Pushing commands down the stdio pipe
+            send_mcp_command("tools/call", {"name": "execute_gibson_kill", "arguments": {"target_process": "openclaw"}})
+            
+            # Note: buttervault is still a local import, so we call it directly
+            buttervault.butter_keys() 
+            
+            send_mcp_command("tools/call", {"name": "rotate_keys", "arguments": {"provider": "OpenRouter"}})
+            
             action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
@@ -374,6 +427,8 @@ def get_logs():
 @app.route('/api/rotate-keys', methods=['POST'])
 def manual_key_rotation():
     buttervault.butter_keys()
+    # Trigger external rotation via MCP pipe
+    send_mcp_command("tools/call", {"name": "rotate_keys", "arguments": {"provider": "Manual_Global"}})
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -550,7 +605,7 @@ def stream():
 # =============================================
 
 if __name__ == '__main__':
-    print(f"\U0001f99e ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
+    print(f"🦞 ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
     print(f"   Database: {DB_PATH}")
     print(f"   Paranoia Level: {current_level}")
     print(f"   Routing Mode: {routing_mode}")
@@ -564,4 +619,20 @@ if __name__ == '__main__':
     print(f"   Self-DoS Threshold: {85}%")
     print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
     print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
+    
+    # ==========================================================
+    # PHASE 2: THE HANDSHAKE (Dynamic Tool Discovery)
+    # ==========================================================
+    print("\n📡 [MCP] Initiating JSON-RPC Handshake...")
+    handshake_response = send_mcp_command("initialize")
+    
+    if "result" in handshake_response and "capabilities" in handshake_response["result"]:
+        discovered_tools = handshake_response["result"]["capabilities"]["tools"]
+        print(f"🔫 [MCP] Handshake successful! Discovered {len(discovered_tools)} kinetic weapons:")
+        for tool in discovered_tools:
+            print(f"   - {tool['name']}: {tool['description']}")
+    else:
+        print("❌ [MCP] Handshake failed. The Sentinel is unarmed.")
+    print("==========================================================")
+
     app.run(host='127.0.0.1', port=5000)
