@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VPS Routing | ButterClaw 🦞</title>
 
-  <!-- [v0.4.1 R1] PATCHED: Removed HTML comment that was inside CSP content attribute.
-       The comment was being parsed as literal CSP text, breaking the img-src directive. -->
+  <!-- [v0.4.1 R1] PATCHED: Removed HTML comment that was inside CSP content attribute. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
@@ -30,8 +29,7 @@
         'bg-dark', 'bg-butter-400', 'bg-emerald-500', 'bg-red-500', 'bg-amber-400',
         'hover:bg-slate-800', 'hover:bg-butter-500', 'hover:bg-emerald-600',
         'text-white', 'text-dark',
-        'scale-95',
-        'animate-spin',
+        'scale-95', 'animate-spin',
         'translate-x-0', '-translate-x-full',
         'opacity-0', 'opacity-100', 'pointer-events-none'
       ]
@@ -102,7 +100,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.4.1</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.5.0</div>
     </div>
   </aside>
 
@@ -112,7 +110,6 @@
         <h2 class="text-3xl font-extrabold text-dark tracking-tight">VPS Brain Routing</h2>
         <p class="text-slate-500 mt-1">Connect your local agent to your cloud reasoning engine.</p>
       </div>
-
       <button id="testPingBtn"
               class="bg-dark hover:bg-slate-800 text-white px-6 py-2.5 rounded-full font-bold shadow-lg transition-all duration-300 flex items-center space-x-2 w-[180px] justify-center">
         <span>📡</span><span>Test Ping</span>
@@ -121,6 +118,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
+      <!-- Routing Mode -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-blue-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
@@ -147,6 +145,7 @@
         </div>
       </div>
 
+      <!-- Endpoint Setup -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-butter-400 to-butter-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
@@ -155,19 +154,13 @@
         </div>
         <div class="space-y-6">
           <div class="group">
-            <label for="endpointInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 group-focus-within:text-butter-500 transition">
-              VPS IP Address or Domain
-            </label>
+            <label for="endpointInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 group-focus-within:text-butter-500 transition">VPS IP Address or Domain</label>
             <input id="endpointInput" type="text" placeholder="http://your-vps-ip:5000"
-                   class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm"
-                   value="">
+                   class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm" value="">
             <p id="endpointFeedback" class="text-xs mt-1 h-4"></p>
           </div>
-
           <div class="group relative">
-            <label for="modelSelect" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 group-focus-within:text-butter-500 transition">
-              Reasoning Model
-            </label>
+            <label for="modelSelect" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 group-focus-within:text-butter-500 transition">Reasoning Model</label>
             <div class="relative">
               <select id="modelSelect"
                       class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition bg-slate-50 text-slate-700 cursor-pointer font-medium shadow-sm appearance-none pr-10">
@@ -183,7 +176,6 @@
               </div>
             </div>
           </div>
-
           <button id="saveConfigBtn"
                   class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
             <span>💾</span><span>Save Configuration</span>
@@ -192,6 +184,7 @@
         </div>
       </div>
 
+      <!-- Active Logic Gates -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-dark to-slate-600 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
@@ -202,7 +195,7 @@
       </div>
 
       <!-- ============================================= -->
-      <!-- MCP CONNECTIONS — v0.4.1 LIVE PANEL            -->
+      <!-- MCP EXECUTION LAYER — v0.5.0 LIVE PANEL       -->
       <!-- ============================================= -->
       <div id="mcpSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-violet-400 to-fuchsia-500 left-0"></div>
@@ -212,6 +205,7 @@
           <span id="mcpVersionBadge" class="text-[10px] font-extrabold tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md uppercase">Checking...</span>
         </div>
 
+        <!-- Status + Controls Row -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div id="mcpStatusCard" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
@@ -221,7 +215,6 @@
             <p id="mcpStatusLabel" class="text-sm font-bold text-slate-600">Checking...</p>
             <p id="mcpStatusPid" class="text-[10px] font-mono text-slate-400 mt-1"></p>
           </div>
-
           <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
               <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">MCP Ping</span>
@@ -232,7 +225,6 @@
             </button>
             <p id="mcpPingResult" class="text-[10px] font-mono text-slate-400 mt-2 text-center h-3"></p>
           </div>
-
           <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
               <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Lifecycle</span>
@@ -245,28 +237,46 @@
           </div>
         </div>
 
+        <!-- [v0.5.0] Transport Selector -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div>
-            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Transport</label>
-            <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-medium text-sm">
-              stdio (JSON-RPC 2.0 over stdin/stdout)
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Transport Mode</label>
+            <div class="flex gap-2">
+              <button id="mcpTransportStdio" class="flex-1 px-4 py-3 rounded-xl border-2 border-violet-500 bg-violet-50 text-sm font-bold text-dark transition hover:shadow-md text-center">stdio</button>
+              <button id="mcpTransportSSE" class="flex-1 px-4 py-3 rounded-xl border-2 border-slate-200 bg-white text-sm font-bold text-dark transition hover:shadow-md text-center">SSE</button>
             </div>
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Protocol Version</label>
-            <!-- [v0.4.1 R2] Now populated dynamically from /api/mcp/status -->
-            <div id="mcpProtocolVersion" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono text-sm">
-              Loading...
-            </div>
+            <div id="mcpProtocolVersion" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono text-sm">Loading...</div>
           </div>
         </div>
 
+        <!-- [v0.5.0] SSE Remote Config (hidden by default) -->
+        <div id="mcpSSEConfig" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 hidden">
+          <div>
+            <label for="mcpSSEUrlInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">MCP SSE Server URL</label>
+            <input id="mcpSSEUrlInput" type="text" placeholder="http://remote-host:5001"
+                   class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm">
+          </div>
+          <div>
+            <label for="mcpSSETokenInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Bearer Token (optional)</label>
+            <input id="mcpSSETokenInput" type="password" placeholder="auth-token"
+                   class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm">
+          </div>
+          <div class="sm:col-span-2">
+            <button id="mcpSSESaveBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition flex items-center justify-center space-x-2">
+              <span>💾</span><span>Save SSE Config & Restart MCP</span>
+            </button>
+            <p id="mcpSSEFeedback" class="text-[10px] font-mono text-slate-400 mt-2 text-center h-3"></p>
+          </div>
+        </div>
+
+        <!-- Discovered Tools List -->
         <div class="mb-6">
           <div class="flex items-center justify-between mb-3">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Discovered Tools</label>
-            <button id="mcpRefreshToolsBtn" class="text-[10px] font-bold text-violet-600 hover:text-violet-800 transition uppercase tracking-wider">
-              Refresh
-            </button>
+            <button id="mcpRefreshToolsBtn" class="text-[10px] font-bold text-violet-600 hover:text-violet-800 transition uppercase tracking-wider">Refresh</button>
           </div>
           <div id="mcpToolsList" class="space-y-2">
             <div class="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
@@ -276,15 +286,55 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.4.1)</p>
-          <p>Model Context Protocol server running via stdio. The reasoning engine (server.py) manages the child process with threaded readers, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence.</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.5.0)</p>
+          <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger.</p>
+        </div>
+      </div>
+
+      <!-- ============================================= -->
+      <!-- [v0.5.0] EVENT LEDGER — Audit Log Panel        -->
+      <!-- ============================================= -->
+      <div id="eventLedgerSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+        <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-teal-500 left-0"></div>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="bg-cyan-100 text-cyan-600 p-3 rounded-xl text-xl shadow-inner">📋</div>
+            <div>
+              <h3 class="text-xl font-extrabold text-dark tracking-tight">Event Ledger</h3>
+              <p id="ledgerTotalCount" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-3">
+            <select id="ledgerFilterTool" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+              <option value="">All Tools</option>
+              <option value="execute_gibson_kill">gibson_kill</option>
+              <option value="rotate_keys">rotate_keys</option>
+              <option value="system_status">system_status</option>
+              <option value="scan_port">scan_port</option>
+              <option value="log_event">log_event</option>
+            </select>
+            <select id="ledgerFilterStatus" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+              <option value="">All Status</option>
+              <option value="success">Success</option>
+              <option value="error">Error</option>
+              <option value="timeout">Timeout</option>
+              <option value="pending">Pending</option>
+            </select>
+            <button id="ledgerRefreshBtn" class="text-[10px] font-bold text-cyan-600 hover:text-cyan-800 transition uppercase tracking-wider">Refresh</button>
+          </div>
+        </div>
+
+        <div id="ledgerContainer" class="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+          <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
+            <p class="text-xs text-slate-400">Loading event ledger...</p>
+          </div>
         </div>
       </div>
 
     </div>
   </main>
 
-  <script>
+    <script>
   document.addEventListener('DOMContentLoaded', () => {
 
     const API_BASE = 'http://127.0.0.1:5000';
@@ -433,98 +483,62 @@
     endpointInput.addEventListener('blur', () => {
       if (currentMode === 'local') return;
       const val = endpointInput.value.trim();
-      if (!val) {
-        endpointFeedback.textContent = '';
-        endpointInput.classList.remove('border-emerald-400', 'border-red-400');
-        return;
-      }
+      if (!val) { endpointFeedback.textContent = ''; endpointInput.classList.remove('border-emerald-400', 'border-red-400'); return; }
       try {
         const url = new URL(val);
         if (url.protocol === 'http:' || url.protocol === 'https:') {
           endpointFeedback.textContent = '✓ Valid endpoint format';
           endpointFeedback.className = 'text-xs mt-1 h-4 text-emerald-600';
-          endpointInput.classList.add('border-emerald-400');
-          endpointInput.classList.remove('border-red-400');
+          endpointInput.classList.add('border-emerald-400'); endpointInput.classList.remove('border-red-400');
         } else { throw new Error('bad protocol'); }
       } catch {
         endpointFeedback.textContent = '✗ Must be a valid http:// or https:// URL';
         endpointFeedback.className = 'text-xs mt-1 h-4 text-red-500';
-        endpointInput.classList.add('border-red-400');
-        endpointInput.classList.remove('border-emerald-400');
+        endpointInput.classList.add('border-red-400'); endpointInput.classList.remove('border-emerald-400');
       }
     });
 
     saveConfigBtn.addEventListener('click', async () => {
-      const payload = {
-        routing_mode: currentMode,
-        model: modelSelect.value,
-        endpoint: currentMode === 'remote' ? endpointInput.value.trim() : ''
-      };
+      const payload = { routing_mode: currentMode, model: modelSelect.value, endpoint: currentMode === 'remote' ? endpointInput.value.trim() : '' };
       saveConfigFeed.textContent = 'Saving...';
       saveConfigFeed.className = 'text-xs text-center h-4 text-slate-500';
       try {
-        const res = await fetch(API_BASE + '/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          saveConfigFeed.textContent = '✓ Configuration saved';
-          saveConfigFeed.className = 'text-xs text-center h-4 text-emerald-600 font-bold';
-        } else { throw new Error('Server returned ' + res.status); }
-      } catch (err) {
-        saveConfigFeed.textContent = '✗ Save failed — is the server running?';
-        saveConfigFeed.className = 'text-xs text-center h-4 text-red-500 font-bold';
-      }
+        const res = await fetch(API_BASE + '/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (res.ok) { saveConfigFeed.textContent = '✓ Configuration saved'; saveConfigFeed.className = 'text-xs text-center h-4 text-emerald-600 font-bold'; }
+        else { throw new Error('Server returned ' + res.status); }
+      } catch (err) { saveConfigFeed.textContent = '✗ Save failed — is the server running?'; saveConfigFeed.className = 'text-xs text-center h-4 text-red-500 font-bold'; }
       setTimeout(() => { saveConfigFeed.textContent = ''; }, 4000);
     });
 
     function setPingBtnState(emoji, label, bgClass, hoverClass, textClass) {
       testPingBtn.textContent = '';
-      const emojiSpan = document.createElement('span');
-      emojiSpan.textContent = emoji;
-      const labelSpan = document.createElement('span');
-      labelSpan.textContent = label;
-      testPingBtn.appendChild(emojiSpan);
-      testPingBtn.appendChild(labelSpan);
+      const emojiSpan = document.createElement('span'); emojiSpan.textContent = emoji;
+      const labelSpan = document.createElement('span'); labelSpan.textContent = label;
+      testPingBtn.appendChild(emojiSpan); testPingBtn.appendChild(labelSpan);
       testPingBtn.classList.remove('bg-dark','bg-butter-400','bg-emerald-500','bg-red-500','hover:bg-slate-800','hover:bg-butter-500','hover:bg-emerald-600','text-white','text-dark');
       testPingBtn.classList.add(bgClass, hoverClass, textClass);
     }
 
     testPingBtn.addEventListener('click', async () => {
       let pingUrl;
-      if (currentMode === 'local') {
-        pingUrl = API_BASE + '/api/health';
-      } else {
+      if (currentMode === 'local') { pingUrl = API_BASE + '/api/health'; }
+      else {
         const endpoint = endpointInput.value.trim();
-        if (!endpoint) {
-          setPingBtnState('❌', 'No Endpoint', 'bg-red-500', 'hover:bg-slate-800', 'text-white');
-          setTimeout(() => setPingBtnState('📡', 'Test Ping', 'bg-dark', 'hover:bg-slate-800', 'text-white'), 3000);
-          return;
-        }
+        if (!endpoint) { setPingBtnState('❌', 'No Endpoint', 'bg-red-500', 'hover:bg-slate-800', 'text-white'); setTimeout(() => setPingBtnState('📡', 'Test Ping', 'bg-dark', 'hover:bg-slate-800', 'text-white'), 3000); return; }
         pingUrl = endpoint.replace(/\/+$/, '') + '/api/health';
       }
       setPingBtnState('⏳', 'Pinging...', 'bg-butter-400', 'hover:bg-butter-500', 'text-dark');
-      testPingBtn.classList.add('scale-95');
-      setTimeout(() => testPingBtn.classList.remove('scale-95'), 150);
+      testPingBtn.classList.add('scale-95'); setTimeout(() => testPingBtn.classList.remove('scale-95'), 150);
       const t0 = performance.now();
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(pingUrl, { signal: controller.signal });
-        clearTimeout(timeout);
+        const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(pingUrl, { signal: controller.signal }); clearTimeout(timeout);
         const pingTime = Math.round(performance.now() - t0);
-        if (res.ok) {
-          setPingBtnState('⚡', 'Ping: ' + pingTime + 'ms', 'bg-emerald-500', 'hover:bg-emerald-600', 'text-white');
-        } else {
-          setPingBtnState('⚠️', res.status + ' Error', 'bg-amber-400', 'hover:bg-butter-500', 'text-dark');
-        }
+        if (res.ok) { setPingBtnState('⚡', 'Ping: ' + pingTime + 'ms', 'bg-emerald-500', 'hover:bg-emerald-600', 'text-white'); }
+        else { setPingBtnState('⚠️', res.status + ' Error', 'bg-amber-400', 'hover:bg-butter-500', 'text-dark'); }
       } catch (err) {
-        if (err.name === 'AbortError') {
-          setPingBtnState('⏱️', 'Timeout (5s)', 'bg-red-500', 'hover:bg-slate-800', 'text-white');
-        } else {
-          setPingBtnState('❌', 'Unreachable', 'bg-red-500', 'hover:bg-slate-800', 'text-white');
-        }
+        if (err.name === 'AbortError') { setPingBtnState('⏱️', 'Timeout (5s)', 'bg-red-500', 'hover:bg-slate-800', 'text-white'); }
+        else { setPingBtnState('❌', 'Unreachable', 'bg-red-500', 'hover:bg-slate-800', 'text-white'); }
       }
       setTimeout(() => setPingBtnState('📡', 'Test Ping', 'bg-dark', 'hover:bg-slate-800', 'text-white'), 3000);
     });
@@ -532,26 +546,21 @@
     async function checkConnection() {
       try {
         const t0 = performance.now();
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(API_BASE + '/api/health', { signal: controller.signal });
-        clearTimeout(timeout);
+        const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(API_BASE + '/api/health', { signal: controller.signal }); clearTimeout(timeout);
         const latency = Math.round(performance.now() - t0);
         if (res.ok && latency < 2000) {
           connectionDot.className = 'h-3 w-3 bg-emerald-500 rounded-full animate-pulse';
-          connectionText.textContent = 'Brain Linked';
-          connectionText.className = 'text-xs font-bold text-emerald-800 tracking-wide uppercase';
+          connectionText.textContent = 'Brain Linked'; connectionText.className = 'text-xs font-bold text-emerald-800 tracking-wide uppercase';
           connectionBadge.className = 'bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center space-x-3 shadow-sm';
         } else if (res.ok) {
           connectionDot.className = 'h-3 w-3 bg-amber-400 rounded-full animate-pulse';
-          connectionText.textContent = 'Slow Link';
-          connectionText.className = 'text-xs font-bold text-amber-700 tracking-wide uppercase';
+          connectionText.textContent = 'Slow Link'; connectionText.className = 'text-xs font-bold text-amber-700 tracking-wide uppercase';
           connectionBadge.className = 'bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-center space-x-3 shadow-sm';
         } else { throw new Error('bad status'); }
       } catch {
         connectionDot.className = 'h-3 w-3 bg-red-500 rounded-full';
-        connectionText.textContent = 'Disconnected';
-        connectionText.className = 'text-xs font-bold text-red-700 tracking-wide uppercase';
+        connectionText.textContent = 'Disconnected'; connectionText.className = 'text-xs font-bold text-red-700 tracking-wide uppercase';
         connectionBadge.className = 'bg-red-50 border border-red-100 rounded-xl p-4 flex items-center space-x-3 shadow-sm';
       }
     }
@@ -566,10 +575,10 @@
           if (data.routing_mode) setRoutingMode(data.routing_mode);
           if (data.model) modelSelect.value = data.model;
           if (data.endpoint && data.routing_mode === 'remote') endpointInput.value = data.endpoint;
-          if (data.gates) {
-            GATES.forEach(g => { if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id]; });
-            renderGates();
-          }
+          if (data.gates) { GATES.forEach(g => { if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id]; }); renderGates(); }
+          // [v0.5.0] Sync transport selector from settings
+          if (data.mcp_transport) { setMcpTransportMode(data.mcp_transport); }
+          if (data.mcp_sse_url) { mcpSSEUrlInput.value = data.mcp_sse_url; }
         }
       } catch { /* Server offline — use defaults */ }
       checkConnection();
@@ -577,10 +586,12 @@
       mcpCheckStatus();
       mcpFetchTools();
       setInterval(mcpCheckStatus, HEALTH_CHECK_INTERVAL);
+      ledgerFetch();
+      setInterval(ledgerFetch, HEALTH_CHECK_INTERVAL);
     }
 
     // =============================================
-    // [v0.4.1] MCP EXECUTION LAYER — Live Panel
+    // MCP EXECUTION LAYER (v0.5.0)
     // =============================================
     const mcpStatusDot       = document.getElementById('mcpStatusDot');
     const mcpStatusLabel     = document.getElementById('mcpStatusLabel');
@@ -594,14 +605,22 @@
     const mcpToolsList       = document.getElementById('mcpToolsList');
     const mcpRefreshToolsBtn = document.getElementById('mcpRefreshToolsBtn');
     const mcpProtocolVersion = document.getElementById('mcpProtocolVersion');
+    const sidebarMcpDot      = document.getElementById('sidebarMcpDot');
+    const sidebarMcpText     = document.getElementById('sidebarMcpText');
+    const sidebarMcpSub      = document.getElementById('sidebarMcpSub');
+    const sidebarMcpBadge    = document.getElementById('sidebarMcpBadge');
 
-    const sidebarMcpDot   = document.getElementById('sidebarMcpDot');
-    const sidebarMcpText  = document.getElementById('sidebarMcpText');
-    const sidebarMcpSub   = document.getElementById('sidebarMcpSub');
-    const sidebarMcpBadge = document.getElementById('sidebarMcpBadge');
+    // [v0.5.0] Transport selector refs
+    const mcpTransportStdio  = document.getElementById('mcpTransportStdio');
+    const mcpTransportSSE    = document.getElementById('mcpTransportSSE');
+    const mcpSSEConfig       = document.getElementById('mcpSSEConfig');
+    const mcpSSEUrlInput     = document.getElementById('mcpSSEUrlInput');
+    const mcpSSETokenInput   = document.getElementById('mcpSSETokenInput');
+    const mcpSSESaveBtn      = document.getElementById('mcpSSESaveBtn');
+    const mcpSSEFeedback     = document.getElementById('mcpSSEFeedback');
 
-    // [v0.4.1 R3] Track previous armed state for auto-refresh on transition
     let _prevMcpArmed = false;
+    let _currentMcpTransport = 'stdio';
 
     sidebarMcpBadge.addEventListener('click', () => {
       closeMobileMenu();
@@ -611,12 +630,69 @@
     if (window.location.hash === '#mcpSection') {
       setTimeout(() => { document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' }); }, 300);
     }
+    if (window.location.hash === '#eventLedgerSection') {
+      setTimeout(() => { document.getElementById('eventLedgerSection').scrollIntoView({ behavior: 'smooth' }); }, 300);
+    }
+
+    // [v0.5.0] Transport mode toggle
+    function setMcpTransportMode(mode) {
+      _currentMcpTransport = mode;
+      if (mode === 'sse') {
+        mcpTransportSSE.classList.add('border-violet-500', 'bg-violet-50');
+        mcpTransportSSE.classList.remove('border-slate-200', 'bg-white');
+        mcpTransportStdio.classList.remove('border-violet-500', 'bg-violet-50');
+        mcpTransportStdio.classList.add('border-slate-200', 'bg-white');
+        mcpSSEConfig.classList.remove('hidden');
+      } else {
+        mcpTransportStdio.classList.add('border-violet-500', 'bg-violet-50');
+        mcpTransportStdio.classList.remove('border-slate-200', 'bg-white');
+        mcpTransportSSE.classList.remove('border-violet-500', 'bg-violet-50');
+        mcpTransportSSE.classList.add('border-slate-200', 'bg-white');
+        mcpSSEConfig.classList.add('hidden');
+      }
+    }
+
+    mcpTransportStdio.addEventListener('click', () => setMcpTransportMode('stdio'));
+    mcpTransportSSE.addEventListener('click', () => setMcpTransportMode('sse'));
+
+    mcpSSESaveBtn.addEventListener('click', async () => {
+      const sseUrl = mcpSSEUrlInput.value.trim();
+      const sseToken = mcpSSETokenInput.value.trim();
+      if (_currentMcpTransport === 'sse' && !sseUrl) {
+        mcpSSEFeedback.textContent = '✗ SSE URL is required';
+        mcpSSEFeedback.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+        return;
+      }
+      mcpSSEFeedback.textContent = 'Saving & restarting...';
+      mcpSSEFeedback.className = 'text-[10px] font-mono text-slate-500 mt-2 text-center h-3';
+      try {
+        const settingsRes = await fetch(API_BASE + '/api/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mcp_transport: _currentMcpTransport, mcp_sse_url: sseUrl, mcp_sse_token: sseToken })
+        });
+        if (!settingsRes.ok) throw new Error('Settings save failed');
+        const restartRes = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
+        const restartData = await restartRes.json();
+        if (restartData.restarted) {
+          mcpSSEFeedback.textContent = '✓ MCP restarted with new transport';
+          mcpSSEFeedback.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
+          setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500);
+        } else {
+          mcpSSEFeedback.textContent = '⚠ Saved, but MCP restart failed';
+          mcpSSEFeedback.className = 'text-[10px] font-mono text-amber-600 mt-2 text-center h-3';
+        }
+      } catch (e) {
+        mcpSSEFeedback.textContent = '✗ Failed: ' + e.message;
+        mcpSSEFeedback.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+      }
+      setTimeout(() => { mcpSSEFeedback.textContent = ''; }, 5000);
+    });
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.4.1 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.4.1 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.4.1 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.5.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.5.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.5.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
@@ -636,19 +712,17 @@
         const res = await fetch(API_BASE + '/api/mcp/status');
         if (!res.ok) { setMcpVisualState('offline', 0, null); _prevMcpArmed = false; return; }
         const data = await res.json();
-
-        // [v0.4.1 R2] Populate protocol version dynamically
-        if (data.protocol_version && mcpProtocolVersion) {
-          mcpProtocolVersion.textContent = data.protocol_version;
-        }
-
+        if (data.protocol_version && mcpProtocolVersion) { mcpProtocolVersion.textContent = data.protocol_version; }
+        // [v0.5.0] Show transport mode in PID line
+        const transportLabel = data.transport_mode ? ' | ' + data.transport_mode : '';
         if (data.alive && data.handshake_ok) {
           setMcpVisualState('armed', data.tools_count || 0, data.pid);
-          // [v0.4.1 R3] Auto-refresh tool list when transitioning to armed
+          mcpStatusPid.textContent = (data.pid ? 'PID: ' + data.pid : 'Remote') + transportLabel;
           if (!_prevMcpArmed) { mcpFetchTools(); }
           _prevMcpArmed = true;
         } else if (data.alive) {
           setMcpVisualState('degraded', 0, data.pid);
+          mcpStatusPid.textContent = (data.pid ? 'PID: ' + data.pid : 'Remote') + transportLabel;
           _prevMcpArmed = false;
         } else {
           setMcpVisualState('offline', 0, null);
@@ -668,37 +742,21 @@
         const tools = data.tools || [];
         mcpToolsList.innerHTML = '';
         if (tools.length === 0) {
-          const empty = document.createElement('div');
-          empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 text-center';
-          const emptyP = document.createElement('p');
-          emptyP.className = 'text-xs text-slate-400';
-          emptyP.textContent = 'No tools discovered. Is the MCP process running?';
-          empty.appendChild(emptyP);
-          mcpToolsList.appendChild(empty);
-          return;
+          const empty = document.createElement('div'); empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 text-center';
+          const emptyP = document.createElement('p'); emptyP.className = 'text-xs text-slate-400'; emptyP.textContent = 'No tools discovered. Is the MCP process running?';
+          empty.appendChild(emptyP); mcpToolsList.appendChild(empty); return;
         }
         tools.forEach(tool => {
-          const card = document.createElement('div');
-          card.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 hover:border-violet-200 transition';
-          const header = document.createElement('div');
-          header.className = 'flex items-center justify-between mb-1';
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'font-bold text-sm text-dark font-mono';
-          nameSpan.textContent = tool.name;
-          const typeBadge = document.createElement('span');
-          typeBadge.className = 'text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-md uppercase tracking-wider';
-          typeBadge.textContent = 'Tool';
-          header.appendChild(nameSpan);
-          header.appendChild(typeBadge);
-          const desc = document.createElement('p');
-          desc.className = 'text-xs text-slate-500 mt-1';
-          desc.textContent = tool.description || '(no description)';
-          card.appendChild(header);
-          card.appendChild(desc);
+          const card = document.createElement('div'); card.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 hover:border-violet-200 transition';
+          const header = document.createElement('div'); header.className = 'flex items-center justify-between mb-1';
+          const nameSpan = document.createElement('span'); nameSpan.className = 'font-bold text-sm text-dark font-mono'; nameSpan.textContent = tool.name;
+          const typeBadge = document.createElement('span'); typeBadge.className = 'text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-md uppercase tracking-wider'; typeBadge.textContent = 'Tool';
+          header.appendChild(nameSpan); header.appendChild(typeBadge);
+          const desc = document.createElement('p'); desc.className = 'text-xs text-slate-500 mt-1'; desc.textContent = tool.description || '(no description)';
+          card.appendChild(header); card.appendChild(desc);
           const schema = tool.inputSchema;
           if (schema && schema.properties && Object.keys(schema.properties).length > 0) {
-            const paramLine = document.createElement('p');
-            paramLine.className = 'text-[10px] font-mono text-slate-400 mt-2';
+            const paramLine = document.createElement('p'); paramLine.className = 'text-[10px] font-mono text-slate-400 mt-2';
             const paramNames = Object.keys(schema.properties).join(', ');
             const required = (schema.required || []).join(', ');
             paramLine.textContent = 'params: ' + paramNames + (required ? '  (required: ' + required + ')' : '');
@@ -708,13 +766,9 @@
         });
       } catch {
         mcpToolsList.innerHTML = '';
-        const errDiv = document.createElement('div');
-        errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-4 text-center';
-        const errP = document.createElement('p');
-        errP.className = 'text-xs text-red-500';
-        errP.textContent = 'Failed to fetch tools. Server may be offline.';
-        errDiv.appendChild(errP);
-        mcpToolsList.appendChild(errDiv);
+        const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-4 text-center';
+        const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch tools. Server may be offline.';
+        errDiv.appendChild(errP); mcpToolsList.appendChild(errDiv);
       }
     }
 
@@ -724,19 +778,10 @@
       const s2 = document.createElement('span'); s2.textContent = 'Pinging...';
       mcpPingBtn.appendChild(s1); mcpPingBtn.appendChild(s2);
       try {
-        const res = await fetch(API_BASE + '/api/mcp/ping');
-        const data = await res.json();
-        if (data.pong) {
-          mcpPingResult.textContent = 'Pong! ' + data.ms + 'ms round-trip';
-          mcpPingResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
-        } else {
-          mcpPingResult.textContent = 'No pong: ' + (data.error || 'unknown');
-          mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
-        }
-      } catch {
-        mcpPingResult.textContent = 'Server unreachable';
-        mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
-      }
+        const res = await fetch(API_BASE + '/api/mcp/ping'); const data = await res.json();
+        if (data.pong) { mcpPingResult.textContent = 'Pong! ' + data.ms + 'ms round-trip'; mcpPingResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold'; }
+        else { mcpPingResult.textContent = 'No pong: ' + (data.error || 'unknown'); mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
+      } catch { mcpPingResult.textContent = 'Server unreachable'; mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
       mcpPingBtn.textContent = '';
       const r1 = document.createElement('span'); r1.textContent = '📡';
       const r2 = document.createElement('span'); r2.textContent = 'Ping MCP';
@@ -751,20 +796,10 @@
       mcpRestartBtn.appendChild(s1); mcpRestartBtn.appendChild(s2);
       mcpRestartBtn.disabled = true;
       try {
-        const res = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
-        const data = await res.json();
-        if (data.restarted) {
-          mcpRestartResult.textContent = 'Restarted successfully';
-          mcpRestartResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
-          setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500);
-        } else {
-          mcpRestartResult.textContent = 'Restart failed';
-          mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
-        }
-      } catch {
-        mcpRestartResult.textContent = 'Server unreachable';
-        mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
-      }
+        const res = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' }); const data = await res.json();
+        if (data.restarted) { mcpRestartResult.textContent = 'Restarted successfully'; mcpRestartResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold'; setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500); }
+        else { mcpRestartResult.textContent = 'Restart failed'; mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
+      } catch { mcpRestartResult.textContent = 'Server unreachable'; mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
       mcpRestartBtn.disabled = false;
       mcpRestartBtn.textContent = '';
       const r1 = document.createElement('span'); r1.textContent = '🔄';
@@ -775,8 +810,149 @@
 
     mcpRefreshToolsBtn.addEventListener('click', () => { mcpFetchTools(); });
 
+    // =============================================
+    // [v0.5.0] EVENT LEDGER
+    // =============================================
+    const ledgerContainer    = document.getElementById('ledgerContainer');
+    const ledgerTotalCount   = document.getElementById('ledgerTotalCount');
+    const ledgerFilterTool   = document.getElementById('ledgerFilterTool');
+    const ledgerFilterStatus = document.getElementById('ledgerFilterStatus');
+    const ledgerRefreshBtn   = document.getElementById('ledgerRefreshBtn');
+
+    const ledgerStatusColors = {
+      success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
+      error:   { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     text: 'text-red-700' },
+      timeout: { bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-500',   text: 'text-amber-700' },
+      pending: { bg: 'bg-slate-50',   border: 'border-slate-200',   dot: 'bg-slate-400',   text: 'text-slate-500' }
+    };
+
+    function buildLedgerRow(ev) {
+      const colors = ledgerStatusColors[ev.status] || ledgerStatusColors.pending;
+      const card = document.createElement('div');
+      card.className = colors.bg + ' border ' + colors.border + ' rounded-xl p-4 transition hover:shadow-sm';
+
+      const topRow = document.createElement('div');
+      topRow.className = 'flex items-center justify-between mb-2';
+
+      const leftGroup = document.createElement('div');
+      leftGroup.className = 'flex items-center space-x-2';
+
+      const dot = document.createElement('div');
+      dot.className = 'h-2 w-2 ' + colors.dot + ' rounded-full';
+
+      const toolSpan = document.createElement('span');
+      toolSpan.className = 'font-bold text-sm text-dark font-mono';
+      toolSpan.textContent = ev.tool_name || ev.method;
+
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'text-[10px] font-bold ' + colors.text + ' uppercase tracking-wider';
+      statusBadge.textContent = ev.status;
+
+      leftGroup.appendChild(dot);
+      leftGroup.appendChild(toolSpan);
+      leftGroup.appendChild(statusBadge);
+
+      const rightGroup = document.createElement('div');
+      rightGroup.className = 'flex items-center space-x-3';
+
+      if (ev.elapsed_ms !== null && ev.elapsed_ms !== undefined) {
+        const msSpan = document.createElement('span');
+        msSpan.className = 'text-[10px] font-mono text-slate-400';
+        msSpan.textContent = ev.elapsed_ms + 'ms';
+        rightGroup.appendChild(msSpan);
+      }
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'text-[10px] font-mono text-slate-400';
+      timeSpan.textContent = ev.timestamp ? ev.timestamp.replace('T', ' ').replace('Z', '') : '';
+      rightGroup.appendChild(timeSpan);
+
+      const idSpan = document.createElement('span');
+      idSpan.className = 'text-[10px] font-mono text-slate-300';
+      idSpan.textContent = '#' + ev.id;
+      rightGroup.appendChild(idSpan);
+
+      topRow.appendChild(leftGroup);
+      topRow.appendChild(rightGroup);
+      card.appendChild(topRow);
+
+      // Arguments line
+      if (ev.arguments) {
+        const argsP = document.createElement('p');
+        argsP.className = 'text-[10px] font-mono text-slate-500 truncate';
+        try { argsP.textContent = 'args: ' + ev.arguments; } catch { argsP.textContent = 'args: (parse error)'; }
+        card.appendChild(argsP);
+      }
+
+      // Result preview (collapsed by default, click to expand)
+      if (ev.result) {
+        const resultToggle = document.createElement('button');
+        resultToggle.className = 'text-[10px] font-bold text-cyan-600 hover:text-cyan-800 transition mt-1';
+        resultToggle.textContent = '▶ Show result';
+        const resultBlock = document.createElement('pre');
+        resultBlock.className = 'text-[10px] font-mono text-slate-500 mt-1 p-2 bg-white/50 rounded-lg overflow-x-auto hidden max-h-32 overflow-y-auto';
+        try {
+          const parsed = JSON.parse(ev.result);
+          resultBlock.textContent = JSON.stringify(parsed, null, 2);
+        } catch { resultBlock.textContent = ev.result; }
+        resultToggle.addEventListener('click', () => {
+          const isHidden = resultBlock.classList.contains('hidden');
+          resultBlock.classList.toggle('hidden');
+          resultToggle.textContent = isHidden ? '▼ Hide result' : '▶ Show result';
+        });
+        card.appendChild(resultToggle);
+        card.appendChild(resultBlock);
+      }
+
+      // Trigger + chain info
+      if (ev.trigger && ev.trigger !== 'auto') {
+        const triggerSpan = document.createElement('span');
+        triggerSpan.className = 'text-[10px] font-mono text-violet-400 mt-1 inline-block';
+        triggerSpan.textContent = 'trigger: ' + ev.trigger;
+        if (ev.chain_id) { triggerSpan.textContent += ' | chain: ' + ev.chain_id + ' step ' + ev.chain_step; }
+        card.appendChild(triggerSpan);
+      }
+
+      return card;
+    }
+
+    async function ledgerFetch() {
+      const toolFilter = ledgerFilterTool.value;
+      const statusFilter = ledgerFilterStatus.value;
+      let url = API_BASE + '/api/mcp/events?limit=50';
+      if (toolFilter) url += '&tool=' + encodeURIComponent(toolFilter);
+      if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const events = data.events || [];
+        ledgerTotalCount.textContent = data.total + ' total events';
+        ledgerContainer.innerHTML = '';
+
+        if (events.length === 0) {
+          const empty = document.createElement('div'); empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-6 text-center';
+          const emptyP = document.createElement('p'); emptyP.className = 'text-xs text-slate-400';
+          emptyP.textContent = toolFilter || statusFilter ? 'No events match this filter.' : 'No events recorded yet. Trigger an analysis to populate the ledger.';
+          empty.appendChild(emptyP); ledgerContainer.appendChild(empty); return;
+        }
+        events.forEach(ev => { ledgerContainer.appendChild(buildLedgerRow(ev)); });
+      } catch {
+        ledgerContainer.innerHTML = '';
+        const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-6 text-center';
+        const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch event ledger. Server may be offline.';
+        errDiv.appendChild(errP); ledgerContainer.appendChild(errDiv);
+      }
+    }
+
+    ledgerFilterTool.addEventListener('change', ledgerFetch);
+    ledgerFilterStatus.addEventListener('change', ledgerFetch);
+    ledgerRefreshBtn.addEventListener('click', ledgerFetch);
+
     init();
   });
   </script>
+
 </body>
 </html>

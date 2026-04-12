@@ -95,16 +95,21 @@
           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition">
           <span>⚙️</span><span>VPS Brain Routing</span>
         </a>
+        <!-- [v0.5.0] Event Ledger nav link -->
+        <a href="routing.html#eventLedgerSection"
+          class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">📋</span><span>Event Ledger</span>
+        </a>
       </nav>
     </div>
 
     <!-- ============================================= -->
     <!-- SIDEBAR BOTTOM: MCP Badge + Connection Badge  -->
-    <!-- [v0.4.1] MCP status badge + connection badge  -->
+    <!-- [v0.5.0] MCP status badge + connection badge  -->
     <!-- ============================================= -->
     <div class="p-6 space-y-3">
 
-      <!-- [v0.4.1] MCP Execution Layer Status Badge -->
+      <!-- [v0.5.0] MCP Execution Layer Status Badge -->
       <div id="mcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 cursor-pointer hover:bg-slate-100 transition" title="Click to view MCP tools">
         <div id="mcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div class="flex-1">
@@ -266,7 +271,7 @@
     const API_BASE = 'http://127.0.0.1:5000';
 
     // =============================================
-    // [M3] MOBILE SIDEBAR LOGIC
+    // MOBILE SIDEBAR LOGIC
     // =============================================
     const mobileMenuBtn   = document.getElementById('mobileMenuBtn');
     const closeSidebarBtn = document.getElementById('closeSidebarBtn');
@@ -285,9 +290,7 @@
       sidebar.classList.remove('translate-x-0');
       sidebar.classList.add('-translate-x-full');
       mobileBackdrop.classList.add('opacity-0');
-      setTimeout(() => {
-        mobileBackdrop.classList.add('hidden');
-      }, 300);
+      setTimeout(() => { mobileBackdrop.classList.add('hidden'); }, 300);
     };
 
     mobileMenuBtn.addEventListener('click', openSidebar);
@@ -338,28 +341,17 @@
         const res = await fetch(`${API_BASE}/api/settings`);
         if (res.ok) {
           const data = await res.json();
-          if (data.level) {
-            slider.value = data.level;
-            updateParanoiaUI(data.level);
-          }
+          if (data.level) { slider.value = data.level; updateParanoiaUI(data.level); }
         }
-      } catch (e) {
-        console.warn('⚠️ Could not sync paranoia level. Defaulting to 3.');
-      }
+      } catch (e) { console.warn('⚠️ Could not sync paranoia level. Defaulting to 3.'); }
     })();
 
     slider.addEventListener('input', async (e) => {
       const val = e.target.value;
       updateParanoiaUI(val);
       try {
-        await fetch(`${API_BASE}/api/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ level: val })
-        });
-      } catch (err) {
-        console.warn('⚠️ Sentinel offline.');
-      }
+        await fetch(`${API_BASE}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: val }) });
+      } catch (err) { console.warn('⚠️ Sentinel offline.'); }
     });
 
     // =============================================
@@ -375,12 +367,10 @@
 
     toggleBtn.addEventListener('click', async () => {
       shieldUp = !shieldUp;
-
       if (shieldUp) {
         shieldIconBox.className = 'h-32 w-32 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-pointer hover:scale-105 transition-all duration-300';
         shieldIcon.textContent = '🛡️';
-        shieldTitle.textContent = 'Shield is UP';
-        shieldTitle.className = 'text-3xl font-bold text-dark mb-2';
+        shieldTitle.textContent = 'Shield is UP'; shieldTitle.className = 'text-3xl font-bold text-dark mb-2';
         shieldDesc.textContent = 'ButterClaw is actively monitoring localhost sniffing and API token leaks.';
         shieldGradient.className = 'absolute top-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-emerald-500';
         toggleBtn.textContent = 'Disable Shield (Not Recommended)';
@@ -388,41 +378,32 @@
       } else {
         shieldIconBox.className = 'h-32 w-32 bg-red-100 rounded-full flex items-center justify-center mb-6 shadow-inner cursor-pointer animate-bounce transition-all duration-300';
         shieldIcon.textContent = '🦞';
-        shieldTitle.textContent = 'Claw is EXPOSED';
-        shieldTitle.className = 'text-3xl font-bold text-claw-600 mb-2 animate-pulse';
+        shieldTitle.textContent = 'Claw is EXPOSED'; shieldTitle.className = 'text-3xl font-bold text-claw-600 mb-2 animate-pulse';
         shieldDesc.textContent = 'WARNING: OpenClaw traffic is unmonitored. You are vulnerable to CSWH attacks.';
         shieldGradient.className = 'absolute top-0 w-full h-2 bg-gradient-to-r from-red-400 to-red-500';
         toggleBtn.textContent = 'ENABLE SHIELD';
         toggleBtn.className = 'mt-8 bg-emerald-500 text-white font-bold py-3 px-8 rounded-full hover:bg-emerald-600 shadow-lg hover:shadow-emerald-500/50 transition duration-300 transform hover:-translate-y-1';
       }
-
       try {
-        await fetch(`${API_BASE}/api/shield`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: shieldUp })
-        });
-      } catch (err) {
-        console.warn('⚠️ Backend offline.');
-      }
+        await fetch(`${API_BASE}/api/shield`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: shieldUp }) });
+      } catch (err) { console.warn('⚠️ Backend offline.'); }
     });
 
     // =============================================
-    // 3. BUTTERVAULT MODAL LOGIC 🧈 (v0.3)
+    // 3. BUTTERVAULT MODAL LOGIC 🧈
     // =============================================
-    const vaultLink    = document.getElementById('vaultSidebarLink');
-    const vaultModal   = document.getElementById('butterVaultModal');
-    const vaultContent = document.getElementById('bvContent');
+    const vaultLink     = document.getElementById('vaultSidebarLink');
+    const vaultModal    = document.getElementById('butterVaultModal');
+    const vaultContent  = document.getElementById('bvContent');
     const closeVaultBtn = document.getElementById('closeVaultBtn');
-    const panicBtn     = document.getElementById('panicBtn');
-    
-    const orStatusText = document.getElementById('orStatusText');
-    const orBadge = document.getElementById('orBadge');
-    const orBadgeDot = document.getElementById('orBadgeDot');
-    const orBadgeText = document.getElementById('orBadgeText');
-    const orInputGroup = document.getElementById('orInputGroup');
-    const orKeyInput = document.getElementById('orKeyInput');
-    const orSaveBtn = document.getElementById('orSaveBtn');
+    const panicBtn      = document.getElementById('panicBtn');
+    const orStatusText  = document.getElementById('orStatusText');
+    const orBadge       = document.getElementById('orBadge');
+    const orBadgeDot    = document.getElementById('orBadgeDot');
+    const orBadgeText   = document.getElementById('orBadgeText');
+    const orInputGroup  = document.getElementById('orInputGroup');
+    const orKeyInput    = document.getElementById('orKeyInput');
+    const orSaveBtn     = document.getElementById('orSaveBtn');
 
     const fetchVaultStatus = async () => {
       try {
@@ -430,25 +411,18 @@
         if (res.ok) {
           const status = await res.json();
           if (status.OpenRouter) {
-            orStatusText.textContent = 'Ciphertext Sealed';
-            orStatusText.className = 'text-xs text-emerald-600 font-mono mt-0.5 font-bold';
+            orStatusText.textContent = 'Ciphertext Sealed'; orStatusText.className = 'text-xs text-emerald-600 font-mono mt-0.5 font-bold';
             orBadge.className = 'bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1';
             orBadgeDot.className = 'w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse';
-            orBadgeText.textContent = 'Protected';
-            orInputGroup.classList.add('hidden');
+            orBadgeText.textContent = 'Protected'; orInputGroup.classList.add('hidden');
           } else {
-            orStatusText.textContent = 'Awaiting API Key';
-            orStatusText.className = 'text-xs text-slate-500 font-mono mt-0.5';
+            orStatusText.textContent = 'Awaiting API Key'; orStatusText.className = 'text-xs text-slate-500 font-mono mt-0.5';
             orBadge.className = 'bg-slate-100 text-slate-500 text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1';
             orBadgeDot.className = 'w-1.5 h-1.5 bg-slate-400 rounded-full mr-1';
-            orBadgeText.textContent = 'Unprotected';
-            orInputGroup.classList.remove('hidden');
-            orKeyInput.value = '';
+            orBadgeText.textContent = 'Unprotected'; orInputGroup.classList.remove('hidden'); orKeyInput.value = '';
           }
         }
-      } catch (e) {
-        orStatusText.textContent = 'Offline';
-      }
+      } catch (e) { orStatusText.textContent = 'Offline'; }
     };
 
     orSaveBtn.addEventListener('click', async () => {
@@ -456,98 +430,62 @@
       if (!key) return;
       orSaveBtn.textContent = 'Sealing...';
       try {
-        await fetch(`${API_BASE}/api/vault/key`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: 'OpenRouter', api_key: key })
-        });
+        await fetch(`${API_BASE}/api/vault/key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'OpenRouter', api_key: key }) });
         await fetchVaultStatus();
-      } catch (e) {
-        console.error('Failed to seal key', e);
-      } finally {
-        orSaveBtn.textContent = 'Seal';
-      }
+      } catch (e) { console.error('Failed to seal key', e); }
+      finally { orSaveBtn.textContent = 'Seal'; }
     });
 
     vaultLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      closeSidebar();
-      fetchVaultStatus();
+      e.preventDefault(); closeSidebar(); fetchVaultStatus();
       vaultModal.classList.remove('hidden');
-      setTimeout(() => {
-        vaultModal.classList.remove('opacity-0');
-        vaultContent.classList.remove('scale-95');
-      }, 10);
+      setTimeout(() => { vaultModal.classList.remove('opacity-0'); vaultContent.classList.remove('scale-95'); }, 10);
     });
 
     const closeModal = () => {
-      vaultModal.classList.add('opacity-0');
-      vaultContent.classList.add('scale-95');
+      vaultModal.classList.add('opacity-0'); vaultContent.classList.add('scale-95');
       setTimeout(() => vaultModal.classList.add('hidden'), 300);
     };
 
     closeVaultBtn.addEventListener('click', closeModal);
-    vaultModal.addEventListener('click', (e) => {
-      if (e.target === vaultModal) closeModal();
-    });
+    vaultModal.addEventListener('click', (e) => { if (e.target === vaultModal) closeModal(); });
 
     panicBtn.addEventListener('click', async () => {
       panicBtn.textContent = '';
-      const spinIcon = document.createElement('span');
-      spinIcon.textContent = '⏳';
-      const spinText = document.createElement('span');
-      spinText.textContent = 'Shredding Ciphertext...';
-      panicBtn.appendChild(spinIcon);
-      panicBtn.appendChild(spinText);
-      panicBtn.classList.replace('bg-red-500', 'bg-amber-500');
-      panicBtn.classList.replace('hover:bg-red-600', 'hover:bg-amber-600');
-
+      const spinIcon = document.createElement('span'); spinIcon.textContent = '⏳';
+      const spinText = document.createElement('span'); spinText.textContent = 'Shredding Ciphertext...';
+      panicBtn.appendChild(spinIcon); panicBtn.appendChild(spinText);
+      panicBtn.classList.replace('bg-red-500', 'bg-amber-500'); panicBtn.classList.replace('hover:bg-red-600', 'hover:bg-amber-600');
       try {
         await fetch(`${API_BASE}/api/rotate-keys`, { method: 'POST' });
         panicBtn.textContent = '';
-        const okIcon = document.createElement('span');
-        okIcon.textContent = '✅';
-        const okText = document.createElement('span');
-        okText.textContent = 'Keys Buttered';
-        panicBtn.appendChild(okIcon);
-        panicBtn.appendChild(okText);
-        panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500');
-        panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
-        
-        await fetchVaultStatus();
-        fetchLiveLogs();
+        const okIcon = document.createElement('span'); okIcon.textContent = '✅';
+        const okText = document.createElement('span'); okText.textContent = 'Keys Buttered';
+        panicBtn.appendChild(okIcon); panicBtn.appendChild(okText);
+        panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500'); panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
+        await fetchVaultStatus(); fetchLiveLogs();
       } catch (error) {
         panicBtn.textContent = '';
-        const errIcon = document.createElement('span');
-        errIcon.textContent = '❌';
-        const errText = document.createElement('span');
-        errText.textContent = 'Vault Offline';
-        panicBtn.appendChild(errIcon);
-        panicBtn.appendChild(errText);
+        const errIcon = document.createElement('span'); errIcon.textContent = '❌';
+        const errText = document.createElement('span'); errText.textContent = 'Vault Offline';
+        panicBtn.appendChild(errIcon); panicBtn.appendChild(errText);
       }
-      
       setTimeout(() => {
         panicBtn.textContent = '';
-        const normIcon = document.createElement('span');
-        normIcon.textContent = '☢️';
-        const normText = document.createElement('span');
-        normText.textContent = 'Butter Keys';
-        panicBtn.appendChild(normIcon);
-        panicBtn.appendChild(normText);
-        panicBtn.classList.replace('bg-emerald-500', 'bg-red-500');
-        panicBtn.classList.replace('bg-amber-500', 'bg-red-500');
-        panicBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
-        panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-red-600');
+        const normIcon = document.createElement('span'); normIcon.textContent = '☢️';
+        const normText = document.createElement('span'); normText.textContent = 'Butter Keys';
+        panicBtn.appendChild(normIcon); panicBtn.appendChild(normText);
+        panicBtn.classList.replace('bg-emerald-500', 'bg-red-500'); panicBtn.classList.replace('bg-amber-500', 'bg-red-500');
+        panicBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600'); panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-red-600');
       }, 3000);
     });
 
     // =============================================
     // 4. LIVE OOPSIE LOGS ENGINE 📋
     // =============================================
-    const oopsieContainer  = document.getElementById('oopsieContainer');
-    const emptyLogs        = document.getElementById('emptyLogs');
+    const oopsieContainer   = document.getElementById('oopsieContainer');
+    const emptyLogs         = document.getElementById('emptyLogs');
     const simulateAttackBtn = document.getElementById('simulateAttackBtn');
-
     let previousLogSignature = '';
 
     const createLogCard = (log, index) => {
@@ -555,52 +493,28 @@
       const card = document.createElement('div');
       card.className = `flex items-start p-4 bg-${color}-50 rounded-2xl border border-${color}-100 transform transition-all duration-500 ease-out`;
       if (index === 0) card.classList.add('animate-slide-down', 'opacity-100');
-      const iconDiv = document.createElement('div');
-      iconDiv.className = `bg-${color}-100 text-${color}-600 p-2 rounded-lg mr-4 text-lg shadow-sm`;
-      iconDiv.textContent = log.icon || '📋';
-      const contentDiv = document.createElement('div');
-      contentDiv.className = 'flex-1';
-      const title = document.createElement('h4');
-      title.className = `font-bold text-${color}-900 text-sm tracking-tight`;
-      title.textContent = log.title || 'Untitled Event';
-      const desc = document.createElement('p');
-      desc.className = `text-sm text-${color}-700 mt-1 leading-relaxed`;
-      desc.textContent = log.desc || '';
-      const action = document.createElement('p');
-      action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`;
-      action.textContent = `Action: ${log.action || 'None'}`;
-      contentDiv.appendChild(title);
-      contentDiv.appendChild(desc);
-      contentDiv.appendChild(action);
-      const timeSpan = document.createElement('span');
-      timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`;
-      timeSpan.textContent = log.time || '';
-      card.appendChild(iconDiv);
-      card.appendChild(contentDiv);
-      card.appendChild(timeSpan);
+      const iconDiv = document.createElement('div'); iconDiv.className = `bg-${color}-100 text-${color}-600 p-2 rounded-lg mr-4 text-lg shadow-sm`; iconDiv.textContent = log.icon || '📋';
+      const contentDiv = document.createElement('div'); contentDiv.className = 'flex-1';
+      const title = document.createElement('h4'); title.className = `font-bold text-${color}-900 text-sm tracking-tight`; title.textContent = log.title || 'Untitled Event';
+      const desc = document.createElement('p'); desc.className = `text-sm text-${color}-700 mt-1 leading-relaxed`; desc.textContent = log.desc || '';
+      const action = document.createElement('p'); action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`; action.textContent = `Action: ${log.action || 'None'}`;
+      contentDiv.appendChild(title); contentDiv.appendChild(desc); contentDiv.appendChild(action);
+      const timeSpan = document.createElement('span'); timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`; timeSpan.textContent = log.time || '';
+      card.appendChild(iconDiv); card.appendChild(contentDiv); card.appendChild(timeSpan);
       return card;
     };
 
     const fetchLiveLogs = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/logs`);
-        const logs = await response.json();
-        if (logs.length === 0) {
-          emptyLogs.classList.remove('hidden');
-          oopsieContainer.innerHTML = '';
-          return;
-        }
+        const response = await fetch(`${API_BASE}/api/logs`); const logs = await response.json();
+        if (logs.length === 0) { emptyLogs.classList.remove('hidden'); oopsieContainer.innerHTML = ''; return; }
         emptyLogs.classList.add('hidden');
         const signature = logs.map(l => l.time + l.title).join('|');
         if (signature === previousLogSignature) return;
         previousLogSignature = signature;
         oopsieContainer.innerHTML = '';
-        logs.forEach((log, index) => {
-          oopsieContainer.appendChild(createLogCard(log, index));
-        });
-      } catch (error) {
-        console.error('Brain disconnected.');
-      }
+        logs.forEach((log, index) => { oopsieContainer.appendChild(createLogCard(log, index)); });
+      } catch (error) { console.error('Brain disconnected.'); }
     };
 
     // =============================================
@@ -611,17 +525,10 @@
 
     const connectSSE = () => {
       const logStream = new EventSource(`${API_BASE}/api/stream`);
-      logStream.onmessage = (event) => {
-        sseRetryDelay = 1000;
-        fetchLiveLogs();
-        fetchVaultStatus(); 
-      };
+      logStream.onmessage = (event) => { sseRetryDelay = 1000; fetchLiveLogs(); fetchVaultStatus(); };
       logStream.onerror = () => {
         logStream.close();
-        setTimeout(() => {
-          connectSSE();
-          sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX_DELAY);
-        }, sseRetryDelay);
+        setTimeout(() => { connectSSE(); sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_MAX_DELAY); }, sseRetryDelay);
       };
     };
 
@@ -634,62 +541,33 @@
     simulateAttackBtn.addEventListener('click', async () => {
       simulateAttackBtn.classList.add('scale-95');
       setTimeout(() => simulateAttackBtn.classList.remove('scale-95'), 150);
-
       const payloads = [
-        {
-          threat_type: 'Cross-Site WebSocket Hijack',
-          raw_data: 'Origin: wss://malicious-vibe-coder.net attempting to bind to localhost:18789 with parameters: applySettingsFromUrl=True & exportAuthToken=True'
-        },
-        {
-          threat_type: 'Indirect Prompt Injection',
-          raw_data: 'Agent received invisible prompt from web. Executing file read on: ~/AppData/Local/ArcRaiders/logs/discord_bearer_tokens.txt. Attempting to cURL contents.'
-        },
-        {
-          threat_type: 'Routine Log',
-          raw_data: 'Agent woke up, checked system clock, verified no pending cron jobs. Returning to sleep state.'
-        }
+        { threat_type: 'Cross-Site WebSocket Hijack', raw_data: 'Origin: wss://malicious-vibe-coder.net attempting to bind to localhost:18789 with parameters: applySettingsFromUrl=True & exportAuthToken=True' },
+        { threat_type: 'Indirect Prompt Injection', raw_data: 'Agent received invisible prompt from web. Executing file read on: ~/AppData/Local/ArcRaiders/logs/discord_bearer_tokens.txt. Attempting to cURL contents.' },
+        { threat_type: 'Routine Log', raw_data: 'Agent woke up, checked system clock, verified no pending cron jobs. Returning to sleep state.' }
       ];
-
       const randomPayload = payloads[Math.floor(Math.random() * payloads.length)];
-
       simulateAttackBtn.textContent = '';
-      const stewIcon = document.createElement('span');
-      stewIcon.textContent = '⏳';
-      const stewText = document.createElement('span');
-      stewText.textContent = 'Stewing...';
-      simulateAttackBtn.appendChild(stewIcon);
-      simulateAttackBtn.appendChild(stewText);
-
+      const stewIcon = document.createElement('span'); stewIcon.textContent = '⏳';
+      const stewText = document.createElement('span'); stewText.textContent = 'Stewing...';
+      simulateAttackBtn.appendChild(stewIcon); simulateAttackBtn.appendChild(stewText);
       try {
-        await fetch(`${API_BASE}/api/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(randomPayload)
-        });
+        await fetch(`${API_BASE}/api/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(randomPayload) });
         simulateAttackBtn.textContent = '';
-        const okIcon = document.createElement('span');
-        okIcon.textContent = '👾';
-        const okText = document.createElement('span');
-        okText.textContent = 'Simulate Attack';
-        simulateAttackBtn.appendChild(okIcon);
-        simulateAttackBtn.appendChild(okText);
+        const okIcon = document.createElement('span'); okIcon.textContent = '👾';
+        const okText = document.createElement('span'); okText.textContent = 'Simulate Attack';
+        simulateAttackBtn.appendChild(okIcon); simulateAttackBtn.appendChild(okText);
         fetchLiveLogs();
       } catch (error) {
         simulateAttackBtn.textContent = '';
-        const errIcon = document.createElement('span');
-        errIcon.textContent = '❌';
-        const errText = document.createElement('span');
-        errText.textContent = 'Brain Offline';
-        simulateAttackBtn.appendChild(errIcon);
-        simulateAttackBtn.appendChild(errText);
+        const errIcon = document.createElement('span'); errIcon.textContent = '❌';
+        const errText = document.createElement('span'); errText.textContent = 'Brain Offline';
+        simulateAttackBtn.appendChild(errIcon); simulateAttackBtn.appendChild(errText);
         setTimeout(() => {
           simulateAttackBtn.textContent = '';
-          const restoreIcon = document.createElement('span');
-          restoreIcon.textContent = '👾';
-          const restoreText = document.createElement('span');
-          restoreText.textContent = 'Simulate Attack';
-          simulateAttackBtn.appendChild(restoreIcon);
-          simulateAttackBtn.appendChild(restoreText);
+          const restoreIcon = document.createElement('span'); restoreIcon.textContent = '👾';
+          const restoreText = document.createElement('span'); restoreText.textContent = 'Simulate Attack';
+          simulateAttackBtn.appendChild(restoreIcon); simulateAttackBtn.appendChild(restoreText);
         }, 2000);
       }
     });
@@ -723,21 +601,17 @@
       const timeout = setTimeout(() => controller.abort(), 5000);
       const t0 = performance.now();
       try {
-        const res = await fetch(API_BASE + '/api/health', { signal: controller.signal });
-        clearTimeout(timeout);
+        const res = await fetch(API_BASE + '/api/health', { signal: controller.signal }); clearTimeout(timeout);
         const latency = performance.now() - t0;
         setConnectionState(res.ok ? (latency > 2000 ? 'slow' : 'connected') : 'disconnected');
-      } catch (e) {
-        clearTimeout(timeout);
-        setConnectionState('disconnected');
-      }
+      } catch (e) { clearTimeout(timeout); setConnectionState('disconnected'); }
     };
 
     checkConnection();
     setInterval(checkConnection, 30000);
 
     // =============================================
-    // 8. MCP EXECUTION LAYER STATUS (v0.4.1) 🔫
+    // 8. MCP EXECUTION LAYER STATUS (v0.5.0) 🔫
     // =============================================
     const mcpDot       = document.getElementById('mcpDot');
     const mcpText      = document.getElementById('mcpText');
@@ -765,21 +639,13 @@
         const res = await fetch(`${API_BASE}/api/mcp/status`);
         if (!res.ok) { setMCPState('offline', 0); return; }
         const data = await res.json();
-        if (data.alive && data.handshake_ok) {
-          setMCPState('armed', data.tools_count || 0);
-        } else if (data.alive) {
-          setMCPState('degraded', 0);
-        } else {
-          setMCPState('offline', 0);
-        }
-      } catch (e) {
-        setMCPState('offline', 0);
-      }
+        if (data.alive && data.handshake_ok) { setMCPState('armed', data.tools_count || 0); }
+        else if (data.alive) { setMCPState('degraded', 0); }
+        else { setMCPState('offline', 0); }
+      } catch (e) { setMCPState('offline', 0); }
     };
 
-    mcpBadge.addEventListener('click', () => {
-      window.location.href = 'routing.html#mcpSection';
-    });
+    mcpBadge.addEventListener('click', () => { window.location.href = 'routing.html#mcpSection'; });
 
     checkMCPStatus();
     setInterval(checkMCPStatus, 30000);

@@ -1,5 +1,5 @@
 """
-ButterClaw v0.4.1 — Reasoning Engine + MCP Transport Layer
+ButterClaw v0.5.0 — The Nervous System (Reasoning Engine + MCP Transport)
 =====================================================================
 Changelog:
   [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
@@ -12,11 +12,20 @@ Changelog:
            - S3: TOCTOU fix in status() — snapshot process reference
            - S4: CRITICAL path checks MCP send() return values
            - S5: CONFIDENCE_THRESHOLD extracted to module-level constant
+  [v0.5.0] The Nervous System:
+           - Event Ledger: persistent append-only audit log (mcp_events table)
+           - MCPSSEClient: connects to remote MCP servers via SSE transport
+           - MCP transport selector: stdio (default) or sse (remote)
+           - /api/mcp/events endpoint for ledger queries
+           - /api/mcp/events/<id> endpoint for single event detail
+           - send() hooks: every MCP tool call is logged before + after
+           - Settings extended with mcp_transport, mcp_sse_url, mcp_sse_token
+           - Status extended with transport_mode, event_count
 """
 
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-import requests
+import requests as http_requests
 import datetime
 import logging
 import time
@@ -24,6 +33,7 @@ import sqlite3
 import threading
 import os
 import itertools
+import uuid
 from collections import deque
 from urllib.parse import urlparse
 import json
@@ -36,7 +46,7 @@ import buttervault
 # APP SETUP
 # =============================================
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 
 # [v0.4.1 S5] Module-level constant — referenced in both analyze_threat() and boot banner
 CONFIDENCE_THRESHOLD = 85
@@ -65,6 +75,11 @@ model_name = "butterclaw-optimized:latest"
 routing_mode = "local"
 remote_endpoint = ""
 
+# [v0.5.0] MCP transport configuration
+mcp_transport_mode = "stdio"    # "stdio" or "sse"
+mcp_sse_url = ""                # e.g. "http://remote-host:5001"
+mcp_sse_token = ""              # bearer token for SSE auth
+
 gate_states = {
     "sig_scan": True,
     "origin_ctx": True,
@@ -76,6 +91,7 @@ OLLAMA_LOCAL_BASE = "http://localhost:11434"
 OLLAMA_CHAT_PATH = "/api/chat"
 VALID_ROUTING_MODES = ("local", "remote")
 VALID_GATE_KEYS = frozenset(gate_states.keys())
+VALID_MCP_TRANSPORTS = ("stdio", "sse")
 
 # =============================================
 # SIMPLE RATE LIMITER
@@ -110,6 +126,7 @@ def get_db_connection():
 
 def init_db():
     conn = get_db_connection()
+    # Original oopsie logs table
     conn.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,6 +136,23 @@ def init_db():
             time TEXT,
             icon TEXT,
             color TEXT
+        )
+    ''')
+    # [v0.5.0] MCP Event Ledger — persistent append-only audit log
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS mcp_events (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp  TEXT NOT NULL,
+            req_id     INTEGER,
+            method     TEXT NOT NULL,
+            tool_name  TEXT,
+            arguments  TEXT,
+            status     TEXT NOT NULL DEFAULT 'pending',
+            result     TEXT,
+            elapsed_ms REAL,
+            trigger    TEXT DEFAULT 'auto',
+            chain_id   TEXT,
+            chain_step INTEGER
         )
     ''')
     conn.commit()
@@ -131,10 +165,155 @@ log.setLevel(logging.WARNING)
 
 
 # =============================================
-# MCP PROCESS MANAGER (v0.4.1 Transport Layer)
+# MCP EVENT LEDGER (v0.5.0)
 # =============================================
 
-class MCPProcessManager:
+def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="auto", chain_id=None, chain_step=None):
+    """Write a pending event to the ledger before MCP dispatch."""
+    try:
+        conn = get_db_connection()
+        conn.execute('''
+            INSERT INTO mcp_events (timestamp, req_id, method, tool_name, arguments, status, trigger, chain_id, chain_step)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        ''', (
+            datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            req_id,
+            method,
+            tool_name,
+            json.dumps(arguments) if arguments else None,
+            trigger,
+            chain_id,
+            chain_step
+        ))
+        event_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.commit()
+        conn.close()
+        return event_id
+    except sqlite3.Error as e:
+        print(f"⚠️ [LEDGER] Failed to log start: {e}")
+        return None
+
+
+def ledger_log_end(event_id, status, result=None, elapsed_ms=None):
+    """Update a pending event with its outcome."""
+    if event_id is None:
+        return
+    try:
+        result_str = None
+        if result is not None:
+            if isinstance(result, dict):
+                result_str = json.dumps(result)
+            else:
+                result_str = str(result)
+            # Truncate very long results to prevent DB bloat
+            if result_str and len(result_str) > 4096:
+                result_str = result_str[:4093] + "..."
+
+        conn = get_db_connection()
+        conn.execute('''
+            UPDATE mcp_events SET status = ?, result = ?, elapsed_ms = ? WHERE id = ?
+        ''', (status, result_str, elapsed_ms, event_id))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"⚠️ [LEDGER] Failed to log end: {e}")
+
+
+def ledger_query(limit=50, tool=None, status=None, since=None):
+    """Query the event ledger with optional filters."""
+    query = "SELECT * FROM mcp_events WHERE 1=1"
+    params = []
+
+    if tool:
+        query += " AND tool_name = ?"
+        params.append(tool)
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if since:
+        query += " AND timestamp >= ?"
+        params.append(since)
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(min(limit, 200))
+
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(query, params).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    except sqlite3.Error as e:
+        print(f"⚠️ [LEDGER] Query failed: {e}")
+        return []
+
+
+def ledger_get_event(event_id):
+    """Fetch a single event by ID."""
+    try:
+        conn = get_db_connection()
+        row = conn.execute('SELECT * FROM mcp_events WHERE id = ?', (event_id,)).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except sqlite3.Error as e:
+        print(f"⚠️ [LEDGER] Fetch failed: {e}")
+        return None
+
+
+def ledger_count():
+    """Return total event count for status endpoint."""
+    try:
+        conn = get_db_connection()
+        count = conn.execute('SELECT COUNT(*) FROM mcp_events').fetchone()[0]
+        conn.close()
+        return count
+    except sqlite3.Error:
+        return 0
+
+
+# =============================================
+# MCP MANAGER INTERFACE (v0.5.0)
+# Both MCPProcessManager and MCPSSEClient implement this
+# =============================================
+
+class BaseMCPManager:
+    """Common interface for MCP managers. Both stdio and SSE clients
+    implement send(), notify(), handshake(), status(), start(), stop(), restart()."""
+
+    def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
+        raise NotImplementedError
+
+    def notify(self, method, params=None):
+        raise NotImplementedError
+
+    def handshake(self):
+        raise NotImplementedError
+
+    def status(self):
+        raise NotImplementedError
+
+    def start(self):
+        raise NotImplementedError
+
+    def stop(self):
+        raise NotImplementedError
+
+    def restart(self):
+        raise NotImplementedError
+
+    @property
+    def is_alive(self):
+        raise NotImplementedError
+
+    @property
+    def transport_name(self):
+        raise NotImplementedError
+
+
+# =============================================
+# MCP PROCESS MANAGER — stdio transport (v0.5.0)
+# =============================================
+
+class MCPProcessManager(BaseMCPManager):
 
     MCP_PROTOCOL_VERSION = "2024-11-05"
 
@@ -153,13 +332,17 @@ class MCPProcessManager:
         self.protocol_version = self.MCP_PROTOCOL_VERSION
 
     @property
+    def transport_name(self):
+        return "stdio"
+
+    @property
     def is_alive(self):
         return self.process is not None and self.process.poll() is None
 
     def start(self):
         if self.is_alive:
             return True
-        print("🚀 [MCP] Spawning ButterClaw Execution Layer...")
+        print("🚀 [MCP] Spawning ButterClaw Execution Layer (stdio)...")
         try:
             self.process = subprocess.Popen(
                 [sys.executable, self.script_path],
@@ -217,7 +400,7 @@ class MCPProcessManager:
             return self.handshake()
         return False
 
-    def send(self, method, params=None, timeout=10):
+    def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
         # [S1] Auto-restart now chains start() + handshake()
         if not self.is_alive:
             if not self.start():
@@ -226,6 +409,21 @@ class MCPProcessManager:
                 print("⚠️ [MCP] Auto-restart handshake failed. Attempting send anyway (best-effort).")
 
         req_id = next(self._req_counter)  # [S2] thread-safe
+
+        # [v0.5.0] Extract tool info for ledger
+        tool_name = None
+        arguments = None
+        if method == "tools/call" and params:
+            tool_name = params.get("name")
+            arguments = params.get("arguments")
+
+        # [v0.5.0] Event Ledger — log before dispatch
+        event_id = ledger_log_start(
+            req_id=req_id, method=method, tool_name=tool_name,
+            arguments=arguments, trigger=trigger,
+            chain_id=chain_id, chain_step=chain_step
+        )
+        t0 = time.time()
 
         payload = {
             "jsonrpc": "2.0",
@@ -243,14 +441,21 @@ class MCPProcessManager:
                 self.process.stdin.flush()
         except (BrokenPipeError, OSError, AttributeError) as e:
             self._pending.pop(req_id, None)
-            return {"error": f"Pipe error: {e}"}
+            result = {"error": f"Pipe error: {e}"}
+            ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
+            return result
 
         if event.wait(timeout=timeout):
             entry = self._pending.pop(req_id, {})
-            return entry.get("result") or {"error": "Empty response"}
+            result = entry.get("result") or {"error": "Empty response"}
+            status = "error" if "error" in result else "success"
+            ledger_log_end(event_id, status, result, round((time.time() - t0) * 1000, 1))
+            return result
         else:
             self._pending.pop(req_id, None)
-            return {"error": f"Timeout ({timeout}s) on {method}"}
+            result = {"error": f"Timeout ({timeout}s) on {method}"}
+            ledger_log_end(event_id, "timeout", result, round((time.time() - t0) * 1000, 1))
+            return result
 
     def notify(self, method, params=None):
         if not self.is_alive:
@@ -309,7 +514,7 @@ class MCPProcessManager:
             "protocolVersion": self.MCP_PROTOCOL_VERSION,
             "clientInfo": {"name": "butterclaw-server", "version": VERSION},
             "capabilities": {}
-        }, timeout=10)
+        }, timeout=10, trigger="handshake")
 
         if "error" in init_resp:
             err = init_resp["error"]
@@ -329,7 +534,7 @@ class MCPProcessManager:
 
         self.notify("notifications/initialized")
 
-        tools_resp = self.send("tools/list", {}, timeout=5)
+        tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
         if "error" not in tools_resp and "result" in tools_resp:
             self.discovered_tools = tools_resp["result"].get("tools", [])
             print(f"🔫 [MCP] Discovered {len(self.discovered_tools)} tools:")
@@ -352,13 +557,361 @@ class MCPProcessManager:
             "server_info": self.server_info,
             "tools_count": len(self.discovered_tools),
             "pending_requests": len(self._pending),
-            "protocol_version": self.protocol_version
+            "protocol_version": self.protocol_version,
+            "transport_mode": "stdio",
+            "event_count": ledger_count()
         }
 
 
-mcp_manager = MCPProcessManager(
-    script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py")
-)
+# =============================================
+# MCP SSE CLIENT — remote SSE transport (v0.5.0)
+# Connects to a remote butterclaw_mcp.py running
+# with --transport sse. Uses requests (no new deps).
+# =============================================
+
+class MCPSSEClient(BaseMCPManager):
+    """
+    Connects to a remote MCP server running SSE transport.
+    POST /message → send JSON-RPC requests
+    GET  /sse     → receive JSON-RPC responses via SSE stream
+
+    Same interface as MCPProcessManager so server.py can
+    swap between them without changing any call sites.
+    """
+
+    MCP_PROTOCOL_VERSION = "2024-11-05"
+
+    def __init__(self, base_url, token=None):
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self._pending = {}
+        self._req_counter = itertools.count(1)
+        self._running = False
+        self._sse_thread = None
+        self._connected = False
+        self.discovered_tools = []
+        self.server_info = {}
+        self.handshake_ok = False
+        self.protocol_version = self.MCP_PROTOCOL_VERSION
+        self._message_url = None  # set by SSE endpoint event
+
+    @property
+    def transport_name(self):
+        return f"sse ({self.base_url})"
+
+    @property
+    def is_alive(self):
+        return self._running and self._connected
+
+    def _auth_headers(self):
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
+
+    def start(self):
+        if self._running:
+            return True
+        print(f"🚀 [MCP] Connecting to remote MCP server at {self.base_url} (SSE)...")
+
+        # Verify the remote server is alive
+        try:
+            health_resp = http_requests.get(
+                f"{self.base_url}/health",
+                headers=self._auth_headers(),
+                timeout=5
+            )
+            if health_resp.status_code != 200:
+                print(f"❌ [MCP] Remote health check failed: {health_resp.status_code}")
+                return False
+        except Exception as e:
+            print(f"❌ [MCP] Remote server unreachable: {e}")
+            return False
+
+        self._running = True
+        self._message_url = f"{self.base_url}/message"
+
+        # Start SSE reader thread
+        self._sse_thread = threading.Thread(
+            target=self._read_sse_stream, name="mcp-sse-reader", daemon=True
+        )
+        self._sse_thread.start()
+
+        # Wait briefly for SSE connection to establish
+        for _ in range(20):
+            if self._connected:
+                break
+            time.sleep(0.1)
+
+        if self._connected:
+            print(f"✅ [MCP] SSE stream connected to {self.base_url}")
+            return True
+        else:
+            print(f"⚠️ [MCP] SSE stream not yet connected, proceeding anyway...")
+            return True  # best-effort — POST may still work
+
+    def stop(self):
+        self._running = False
+        self._connected = False
+        for req_id, entry in list(self._pending.items()):
+            entry["result"] = {"error": "MCP SSE client stopped"}
+            entry["event"].set()
+        self._pending.clear()
+        self.handshake_ok = False
+        print("🛑 [MCP] SSE client stopped.")
+
+    def restart(self):
+        self.stop()
+        time.sleep(0.3)
+        if self.start():
+            return self.handshake()
+        return False
+
+    def _read_sse_stream(self):
+        """Background thread: reads the SSE stream for JSON-RPC responses."""
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        headers["Accept"] = "text/event-stream"
+        headers["Cache-Control"] = "no-cache"
+
+        while self._running:
+            try:
+                resp = http_requests.get(
+                    f"{self.base_url}/sse",
+                    headers=headers,
+                    stream=True,
+                    timeout=None
+                )
+                if resp.status_code != 200:
+                    print(f"⚠️ [MCP SSE] Stream returned {resp.status_code}, retrying in 5s...")
+                    time.sleep(5)
+                    continue
+
+                self._connected = True
+                event_type = None
+                data_buffer = ""
+
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not self._running:
+                        break
+
+                    if line is None or line == "":
+                        # Empty line = end of event
+                        if data_buffer and event_type:
+                            self._handle_sse_event(event_type, data_buffer.strip())
+                        event_type = None
+                        data_buffer = ""
+                        continue
+
+                    if line.startswith(":"):
+                        # Comment line (keepalive)
+                        continue
+
+                    if line.startswith("event: "):
+                        event_type = line[7:].strip()
+                    elif line.startswith("data: "):
+                        data_buffer += line[6:]
+                    elif line.startswith("data:"):
+                        data_buffer += line[5:]
+
+            except http_requests.exceptions.ConnectionError:
+                if self._running:
+                    print("⚠️ [MCP SSE] Connection lost, reconnecting in 5s...")
+                    self._connected = False
+                    time.sleep(5)
+            except Exception as e:
+                if self._running:
+                    print(f"❌ [MCP SSE] Stream error: {e}, reconnecting in 5s...")
+                    self._connected = False
+                    time.sleep(5)
+
+        self._connected = False
+        print("📡 [MCP] SSE reader exited.")
+
+    def _handle_sse_event(self, event_type, data):
+        """Process a complete SSE event."""
+        if event_type == "endpoint":
+            # Server tells us where to POST
+            self._message_url = data.strip()
+            print(f"📡 [MCP SSE] Endpoint received: {self._message_url}")
+            return
+
+        if event_type == "message":
+            try:
+                response = json.loads(data)
+                req_id = response.get("id")
+                preview = data[:150] + ("..." if len(data) > 150 else "")
+                print(f"📥 [MCP ACK] id={req_id} → {preview}")
+
+                if req_id is not None and req_id in self._pending:
+                    self._pending[req_id]["result"] = response
+                    self._pending[req_id]["event"].set()
+                elif req_id is not None:
+                    print(f"⚠️ [MCP] Orphaned SSE response (id={req_id})")
+            except json.JSONDecodeError as e:
+                print(f"⚠️ [MCP SSE] Malformed JSON in message event: {e}")
+
+    def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
+        if not self._running:
+            if not self.start():
+                return {"error": "MCP SSE client failed to connect"}
+
+        req_id = next(self._req_counter)
+        post_url = self._message_url or f"{self.base_url}/message"
+
+        # [v0.5.0] Extract tool info for ledger
+        tool_name = None
+        arguments = None
+        if method == "tools/call" and params:
+            tool_name = params.get("name")
+            arguments = params.get("arguments")
+
+        # [v0.5.0] Event Ledger — log before dispatch
+        event_id = ledger_log_start(
+            req_id=req_id, method=method, tool_name=tool_name,
+            arguments=arguments, trigger=trigger,
+            chain_id=chain_id, chain_step=chain_step
+        )
+        t0 = time.time()
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": req_id
+        }
+
+        # Register pending response
+        event = threading.Event()
+        self._pending[req_id] = {"event": event, "result": None}
+
+        # POST the request
+        try:
+            resp = http_requests.post(
+                post_url,
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=5
+            )
+            if resp.status_code not in (200, 202):
+                self._pending.pop(req_id, None)
+                result = {"error": f"POST failed: HTTP {resp.status_code}"}
+                ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
+                return result
+        except Exception as e:
+            self._pending.pop(req_id, None)
+            result = {"error": f"POST failed: {e}"}
+            ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
+            return result
+
+        # Wait for correlated response on SSE stream
+        if event.wait(timeout=timeout):
+            entry = self._pending.pop(req_id, {})
+            result = entry.get("result") or {"error": "Empty response"}
+            status = "error" if "error" in result else "success"
+            ledger_log_end(event_id, status, result, round((time.time() - t0) * 1000, 1))
+            return result
+        else:
+            self._pending.pop(req_id, None)
+            result = {"error": f"Timeout ({timeout}s) on {method}"}
+            ledger_log_end(event_id, "timeout", result, round((time.time() - t0) * 1000, 1))
+            return result
+
+    def notify(self, method, params=None):
+        if not self._running:
+            return
+        post_url = self._message_url or f"{self.base_url}/message"
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {}
+            # No "id" — this is a notification
+        }
+        try:
+            http_requests.post(
+                post_url,
+                json=payload,
+                headers=self._auth_headers(),
+                timeout=5
+            )
+        except Exception:
+            pass
+
+    def handshake(self):
+        init_resp = self.send("initialize", {
+            "protocolVersion": self.MCP_PROTOCOL_VERSION,
+            "clientInfo": {"name": "butterclaw-server", "version": VERSION},
+            "capabilities": {}
+        }, timeout=10, trigger="handshake")
+
+        if "error" in init_resp:
+            err = init_resp["error"]
+            if isinstance(err, dict):
+                err = err.get("message", str(err))
+            print(f"❌ [MCP] SSE handshake failed at initialize: {err}")
+            self.handshake_ok = False
+            return False
+
+        result = init_resp.get("result", {})
+        self.server_info = result.get("serverInfo", {})
+        self.protocol_version = result.get("protocolVersion", self.MCP_PROTOCOL_VERSION)
+
+        srv_name = self.server_info.get("name", "?")
+        srv_ver = self.server_info.get("version", "?")
+        print(f"📡 [MCP] Connected via SSE: {srv_name} v{srv_ver} (protocol {self.protocol_version})")
+
+        self.notify("notifications/initialized")
+
+        tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
+        if "error" not in tools_resp and "result" in tools_resp:
+            self.discovered_tools = tools_resp["result"].get("tools", [])
+            print(f"🔫 [MCP] Discovered {len(self.discovered_tools)} tools:")
+            for tool in self.discovered_tools:
+                print(f"   - {tool['name']}: {tool.get('description', '(no desc)')}")
+        else:
+            print("⚠️ [MCP] tools/list failed, continuing with 0 tools.")
+            self.discovered_tools = []
+
+        self.handshake_ok = True
+        return True
+
+    def status(self):
+        return {
+            "alive": self._connected,
+            "pid": None,
+            "handshake_ok": self.handshake_ok,
+            "server_info": self.server_info,
+            "tools_count": len(self.discovered_tools),
+            "pending_requests": len(self._pending),
+            "protocol_version": self.protocol_version,
+            "transport_mode": "sse",
+            "remote_url": self.base_url,
+            "event_count": ledger_count()
+        }
+
+
+# =============================================
+# MCP MANAGER FACTORY (v0.5.0)
+# =============================================
+
+def create_mcp_manager():
+    """Create the appropriate MCP manager based on config."""
+    with _state_lock:
+        mode = mcp_transport_mode
+        url = mcp_sse_url
+        token = mcp_sse_token
+
+    if mode == "sse" and url:
+        print(f"📡 [MCP] Using SSE transport → {url}")
+        return MCPSSEClient(base_url=url, token=token)
+    else:
+        print("📡 [MCP] Using stdio transport (local child process)")
+        return MCPProcessManager(
+            script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py")
+        )
+
+mcp_manager = create_mcp_manager()
 
 
 # =============================================
@@ -456,7 +1009,7 @@ def ask_guardian_agent(threat_type, raw_data):
     }
 
     try:
-        response = requests.post(ollama_url, json=payload, timeout=120)
+        response = http_requests.post(ollama_url, json=payload, timeout=120)
         raw_content = response.json().get("message", {}).get("content", "{}")
 
         try:
@@ -565,7 +1118,7 @@ def analyze_threat():
             gibson_resp = mcp_manager.send("tools/call", {
                 "name": "execute_gibson_kill",
                 "arguments": {"target_process": "openclaw"}
-            })
+            }, trigger="critical")
             if "error" in gibson_resp:
                 mcp_failures.append("gibson_kill")
                 print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
@@ -576,7 +1129,7 @@ def analyze_threat():
             rotate_resp = mcp_manager.send("tools/call", {
                 "name": "rotate_keys",
                 "arguments": {"provider": "OpenRouter"}
-            })
+            }, trigger="critical")
             if "error" in rotate_resp:
                 mcp_failures.append("rotate_keys")
                 print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
@@ -639,7 +1192,7 @@ def manual_key_rotation():
     rotate_resp = mcp_manager.send("tools/call", {
         "name": "rotate_keys",
         "arguments": {"provider": "Manual_Global"}
-    })
+    }, trigger="manual")
     mcp_note = ""
     if "error" in rotate_resp:
         mcp_note = f" (MCP rotate_keys failed: {rotate_resp['error']})"
@@ -675,6 +1228,7 @@ def manual_key_rotation():
 @app.route('/api/settings', methods=['GET', 'POST'])
 def settings():
     global current_level, routing_mode, model_name, remote_endpoint, gate_states
+    global mcp_transport_mode, mcp_sse_url, mcp_sse_token
 
     if request.method == 'GET':
         with _state_lock:
@@ -684,7 +1238,10 @@ def settings():
                 "routing_mode": routing_mode,
                 "model": model_name,
                 "endpoint": remote_endpoint,
-                "gates": dict(gate_states)
+                "gates": dict(gate_states),
+                "mcp_transport": mcp_transport_mode,
+                "mcp_sse_url": mcp_sse_url,
+                "mcp_sse_token_set": bool(mcp_sse_token)
             })
 
     data = request.json
@@ -747,6 +1304,31 @@ def settings():
                 active = [k for k, v in gate_states.items() if v]
                 print(f"🔒 [GATES] Updated. Active: {', '.join(active) if active else 'NONE'}")
 
+    # [v0.5.0] MCP transport settings
+    if "mcp_transport" in data:
+        new_transport = str(data["mcp_transport"]).lower().strip()
+        if new_transport not in VALID_MCP_TRANSPORTS:
+            errors.append(f"mcp_transport must be one of: {', '.join(VALID_MCP_TRANSPORTS)}")
+        else:
+            with _state_lock:
+                mcp_transport_mode = new_transport
+            print(f"📡 [MCP] Transport mode set to: {new_transport}")
+
+    if "mcp_sse_url" in data:
+        new_url = str(data["mcp_sse_url"]).strip()
+        if new_url and not _validate_endpoint_url(new_url):
+            errors.append("mcp_sse_url must be a valid http:// or https:// URL")
+        else:
+            with _state_lock:
+                mcp_sse_url = new_url
+            label = new_url if new_url else "(cleared)"
+            print(f"📡 [MCP] SSE URL set to: {label}")
+
+    if "mcp_sse_token" in data:
+        with _state_lock:
+            mcp_sse_token = str(data["mcp_sse_token"]).strip()
+        print("📡 [MCP] SSE token updated.")
+
     if errors:
         return jsonify({"status": "partial", "errors": errors}), 400
 
@@ -795,7 +1377,7 @@ def shield():
 
 
 # =============================================
-# MCP OBSERVABILITY ENDPOINTS (v0.4)
+# MCP OBSERVABILITY ENDPOINTS (v0.5.0)
 # =============================================
 
 @app.route('/api/mcp/status', methods=['GET'])
@@ -805,7 +1387,7 @@ def mcp_status():
 @app.route('/api/mcp/ping', methods=['GET'])
 def mcp_ping():
     start = time.time()
-    resp = mcp_manager.send("ping", {}, timeout=5)
+    resp = mcp_manager.send("ping", {}, timeout=5, trigger="ping")
     elapsed_ms = round((time.time() - start) * 1000, 1)
     if "error" in resp:
         return jsonify({"pong": False, "error": resp["error"], "ms": elapsed_ms}), 503
@@ -820,10 +1402,48 @@ def mcp_tools():
 
 @app.route('/api/mcp/restart', methods=['POST'])
 def mcp_restart():
+    global mcp_manager
+    # [v0.5.0] Check if transport mode changed — if so, create new manager
+    with _state_lock:
+        current_transport = mcp_transport_mode
+
+    if current_transport != mcp_manager.transport_name.split(" ")[0]:
+        mcp_manager.stop()
+        mcp_manager = create_mcp_manager()
+
     success = mcp_manager.restart()
     status = mcp_manager.status()
     code = 200 if success else 503
     return jsonify({"restarted": success, **status}), code
+
+
+# =============================================
+# MCP EVENT LEDGER ENDPOINTS (v0.5.0)
+# =============================================
+
+@app.route('/api/mcp/events', methods=['GET'])
+def mcp_events():
+    """Query the MCP event ledger with optional filters."""
+    limit = request.args.get('limit', 50, type=int)
+    tool = request.args.get('tool', None)
+    status_filter = request.args.get('status', None)
+    since = request.args.get('since', None)
+
+    events = ledger_query(limit=limit, tool=tool, status=status_filter, since=since)
+    return jsonify({
+        "events": events,
+        "count": len(events),
+        "total": ledger_count()
+    }), 200
+
+
+@app.route('/api/mcp/events/<int:event_id>', methods=['GET'])
+def mcp_event_detail(event_id):
+    """Fetch a single event with full result payload."""
+    event = ledger_get_event(event_id)
+    if event is None:
+        return jsonify({"error": f"Event {event_id} not found"}), 404
+    return jsonify(event), 200
 
 
 # =============================================
@@ -870,20 +1490,26 @@ if __name__ == '__main__':
     print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%")
     print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
     print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
+    print(f"   MCP Transport: {mcp_transport_mode}")
+    if mcp_transport_mode == "sse" and mcp_sse_url:
+        print(f"   MCP SSE URL: {mcp_sse_url}")
+        print(f"   MCP SSE Auth: {'token set' if mcp_sse_token else 'none'}")
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.4.1 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.5.0 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
         if mcp_manager.handshake():
             tool_count = len(mcp_manager.discovered_tools)
             print(f"✅ [MCP] Handshake complete. {tool_count} tools armed.")
+            print(f"   Transport: {mcp_manager.transport_name}")
         else:
             print("⚠️ [MCP] Handshake failed. MCP endpoints will report degraded status.")
     else:
         print("❌ [MCP] Failed to spawn execution layer. The Sentinel is unarmed.")
 
+    print(f"📋 [LEDGER] Event ledger initialized. {ledger_count()} historical events.")
     print("=" * 60 + "\n")
 
     app.run(host='127.0.0.1', port=5000)
