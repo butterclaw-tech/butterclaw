@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VPS Routing | ButterClaw 🦞</title>
 
+  <!-- [v0.4.1 R1] PATCHED: Removed HTML comment that was inside CSP content attribute.
+       The comment was being parsed as literal CSP text, breaking the img-src directive. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
                style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
-               connect-src 'self' http://localhost:5000 http://127.0.0.1:5000; <!-- PATCHED B1: removed wildcard * from connect-src -->
+               connect-src 'self' http://localhost:5000 http://127.0.0.1:5000;
                img-src 'self' data:;">
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -24,7 +26,6 @@
           }
         }
       },
-      // [C4] Tailwind safelist — covers all dynamic color classes used in JS
       safelist: [
         'bg-dark', 'bg-butter-400', 'bg-emerald-500', 'bg-red-500', 'bg-amber-400',
         'hover:bg-slate-800', 'hover:bg-butter-500', 'hover:bg-emerald-600',
@@ -88,12 +89,7 @@
       </nav>
     </div>
 
-    <!-- ============================================= -->
-    <!-- SIDEBAR BOTTOM: MCP Badge + Connection Badge  -->
-    <!-- [v0.4] Added MCP status badge                 -->
-    <!-- ============================================= -->
     <div class="p-6">
-      <!-- [v0.4] MCP Execution Layer Status Badge -->
       <div id="sidebarMcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 shadow-sm mb-3 cursor-pointer hover:bg-slate-100 transition" title="Scroll to MCP section">
         <div id="sidebarMcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div class="flex-1">
@@ -106,7 +102,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.4.0</div> <!-- PATCHED: v0.3.1 → v0.4.0 -->
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.4.1</div>
     </div>
   </aside>
 
@@ -175,7 +171,7 @@
             <div class="relative">
               <select id="modelSelect"
                       class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition bg-slate-50 text-slate-700 cursor-pointer font-medium shadow-sm appearance-none pr-10">
-                <option value="butterclaw-optimized:latest">ButterClaw Optimized (Tuned Gemma 4)</option> <!-- PATCHED I5 -->
+                <option value="butterclaw-optimized:latest">ButterClaw Optimized (Tuned Gemma 4)</option>
                 <option value="gemma4:e4b">Gemma 4 E4B (128K Agentic Brain)</option>
                 <option value="gemma4:26b">Gemma 4 26B MoE (VPS Heavy)</option>
                 <option value="phi3:latest">Phi-3 Mini (Legacy 4K Context)</option>
@@ -202,13 +198,11 @@
           <div class="bg-butter-100 text-butter-600 p-3 rounded-xl text-xl shadow-inner">🧠</div>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">Active Logic Gates</h3>
         </div>
-        <div id="gatesContainer" class="space-y-3">
-          </div>
+        <div id="gatesContainer" class="space-y-3"></div>
       </div>
 
       <!-- ============================================= -->
-      <!-- MCP CONNECTIONS — v0.4 LIVE PANEL              -->
-      <!-- Replaces disabled v0.3.1 placeholder           -->
+      <!-- MCP CONNECTIONS — v0.4.1 LIVE PANEL            -->
       <!-- ============================================= -->
       <div id="mcpSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-violet-400 to-fuchsia-500 left-0"></div>
@@ -218,9 +212,7 @@
           <span id="mcpVersionBadge" class="text-[10px] font-extrabold tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md uppercase">Checking...</span>
         </div>
 
-        <!-- MCP Status + Controls Row -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <!-- Status Card -->
           <div id="mcpStatusCard" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
               <div id="mcpStatusDot" class="h-2.5 w-2.5 bg-slate-400 rounded-full animate-pulse"></div>
@@ -230,7 +222,6 @@
             <p id="mcpStatusPid" class="text-[10px] font-mono text-slate-400 mt-1"></p>
           </div>
 
-          <!-- Ping Card -->
           <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
               <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">MCP Ping</span>
@@ -242,7 +233,6 @@
             <p id="mcpPingResult" class="text-[10px] font-mono text-slate-400 mt-2 text-center h-3"></p>
           </div>
 
-          <!-- Restart Card -->
           <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
               <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Lifecycle</span>
@@ -255,7 +245,6 @@
           </div>
         </div>
 
-        <!-- Transport Info -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Transport</label>
@@ -265,13 +254,13 @@
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Protocol Version</label>
-            <div class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono text-sm">
-              2024-11-05
+            <!-- [v0.4.1 R2] Now populated dynamically from /api/mcp/status -->
+            <div id="mcpProtocolVersion" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-mono text-sm">
+              Loading...
             </div>
           </div>
         </div>
 
-        <!-- Discovered Tools List -->
         <div class="mb-6">
           <div class="flex items-center justify-between mb-3">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Discovered Tools</label>
@@ -286,9 +275,8 @@
           </div>
         </div>
 
-        <!-- Info Box -->
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.4)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.4.1)</p>
           <p>Model Context Protocol server running via stdio. The reasoning engine (server.py) manages the child process with threaded readers, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence.</p>
         </div>
       </div>
@@ -299,11 +287,9 @@
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
-    // ── Constants ──────────────────────────────
-    const API_BASE = 'http://127.0.0.1:5000'; // Synced to index.html standard
-    const HEALTH_CHECK_INTERVAL = 30000; // 30s
+    const API_BASE = 'http://127.0.0.1:5000';
+    const HEALTH_CHECK_INTERVAL = 30000;
 
-    // ── DOM refs ───────────────────────────────
     const testPingBtn      = document.getElementById('testPingBtn');
     const endpointInput    = document.getElementById('endpointInput');
     const endpointFeedback = document.getElementById('endpointFeedback');
@@ -321,62 +307,48 @@
     const menuBackdrop     = document.getElementById('menuBackdrop');
     const sidebar          = document.getElementById('sidebar');
 
-    let currentMode = 'local'; // [F2] default routing mode
+    let currentMode = 'local';
 
-    // ── Gate definitions ───────────────────────
-    // [M2] Dynamic, toggleable logic gates
     const GATES = [
-      { id: 'sig_scan',   num: '01', name: 'Signature Scan',   desc: 'Checks for known CVE strings',         active: true,  dangerous: false },
-      { id: 'origin_ctx', num: '02', name: 'Origin Context',   desc: 'Verifies local vs external requests',  active: true,  dangerous: false },
-      { id: 'intent',     num: '03', name: 'Intent Analysis',  desc: 'LLM stews on behavioral state',        active: true,  dangerous: false },
-      { id: 'kill_sw',    num: '04', name: 'Gibson Kill Switch', desc: 'SIGKILLs process and butters keys',  active: true,  dangerous: true  }
+      { id: 'sig_scan',   num: '01', name: 'Signature Scan',     desc: 'Checks for known CVE strings',        active: true,  dangerous: false },
+      { id: 'origin_ctx', num: '02', name: 'Origin Context',     desc: 'Verifies local vs external requests', active: true,  dangerous: false },
+      { id: 'intent',     num: '03', name: 'Intent Analysis',    desc: 'LLM stews on behavioral state',       active: true,  dangerous: false },
+      { id: 'kill_sw',    num: '04', name: 'Gibson Kill Switch', desc: 'SIGKILLs process and butters keys',   active: true,  dangerous: true  }
     ];
 
-    // ── [M2] Build gate rows with DOM construction ──
     function buildGateRow(gate) {
       const row = document.createElement('div');
       row.id = 'gate-' + gate.id;
-
       if (gate.dangerous) {
         row.className = 'flex justify-between items-center p-3 bg-red-50 border border-red-100 rounded-xl transition cursor-pointer shadow-inner mt-2';
       } else {
         row.className = 'flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl transition cursor-pointer border border-transparent hover:border-slate-100';
       }
-
       const leftDiv = document.createElement('div');
       leftDiv.className = 'flex items-center space-x-3';
-
       const numSpan = document.createElement('span');
       numSpan.className = gate.dangerous ? 'text-red-300 font-mono text-xs' : 'text-slate-300 font-mono text-xs';
       numSpan.textContent = gate.num;
-
       const textDiv = document.createElement('div');
       const nameP = document.createElement('p');
       nameP.className = gate.dangerous ? 'font-bold text-sm text-red-900' : 'font-bold text-sm text-dark';
       nameP.textContent = gate.name;
-
       const descP = document.createElement('p');
       descP.className = gate.dangerous ? 'text-xs text-red-700' : 'text-xs text-slate-500';
       descP.textContent = gate.desc;
-
       textDiv.appendChild(nameP);
       textDiv.appendChild(descP);
       leftDiv.appendChild(numSpan);
       leftDiv.appendChild(textDiv);
-
       const badge = document.createElement('span');
       updateGateBadge(badge, gate);
-
       row.appendChild(leftDiv);
       row.appendChild(badge);
-
-      // [M2] Toggle gate on click
       row.addEventListener('click', () => {
         gate.active = !gate.active;
         updateGateBadge(badge, gate);
         saveGateStates();
       });
-
       return row;
     }
 
@@ -408,18 +380,15 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gates: states })
-        }).catch(() => {}); // Best-effort — gates still toggleable offline
+        }).catch(() => {});
       } catch (e) { /* offline graceful */ }
     }
 
     function renderGates() {
-      gatesContainer.innerHTML = ''; // Safe — no server data, rebuilding from local GATES array
-      GATES.forEach(gate => {
-        gatesContainer.appendChild(buildGateRow(gate));
-      });
+      gatesContainer.innerHTML = '';
+      GATES.forEach(gate => { gatesContainer.appendChild(buildGateRow(gate)); });
     }
 
-    // ── [M1] Mobile menu toggle ────────────────
     function openMobileMenu() {
       sidebar.classList.remove('-translate-x-full');
       sidebar.classList.add('translate-x-0');
@@ -433,10 +402,9 @@
       menuBackdrop.classList.add('opacity-0', 'pointer-events-none');
     }
     menuBtn.addEventListener('click', openMobileMenu);
-    if(closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeMobileMenu);
+    if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeMobileMenu);
     menuBackdrop.addEventListener('click', closeMobileMenu);
 
-    // ── [F2] Routing mode toggle ───────────────
     function setRoutingMode(mode) {
       currentMode = mode;
       if (mode === 'local') {
@@ -456,15 +424,12 @@
         endpointInput.disabled = false;
         endpointInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
         endpointInput.classList.add('bg-slate-50', 'text-slate-700');
-        if (endpointInput.value === 'localhost:11434 (Ollama)') {
-          endpointInput.value = '';
-        }
+        if (endpointInput.value === 'localhost:11434 (Ollama)') endpointInput.value = '';
       }
     }
     modeLocal.addEventListener('click', () => setRoutingMode('local'));
     modeRemote.addEventListener('click', () => setRoutingMode('remote'));
 
-    // ── [L1] Endpoint URL validation on blur ───
     endpointInput.addEventListener('blur', () => {
       if (currentMode === 'local') return;
       const val = endpointInput.value.trim();
@@ -480,9 +445,7 @@
           endpointFeedback.className = 'text-xs mt-1 h-4 text-emerald-600';
           endpointInput.classList.add('border-emerald-400');
           endpointInput.classList.remove('border-red-400');
-        } else {
-          throw new Error('bad protocol');
-        }
+        } else { throw new Error('bad protocol'); }
       } catch {
         endpointFeedback.textContent = '✗ Must be a valid http:// or https:// URL';
         endpointFeedback.className = 'text-xs mt-1 h-4 text-red-500';
@@ -491,17 +454,14 @@
       }
     });
 
-    // ── [C3] Save Configuration ────────────────
     saveConfigBtn.addEventListener('click', async () => {
       const payload = {
         routing_mode: currentMode,
         model: modelSelect.value,
-        endpoint: currentMode === 'remote' ? endpointInput.value.trim() : '' // PATCHED B2: send empty string in local mode — server uses Ollama default
+        endpoint: currentMode === 'remote' ? endpointInput.value.trim() : ''
       };
-
       saveConfigFeed.textContent = 'Saving...';
       saveConfigFeed.className = 'text-xs text-center h-4 text-slate-500';
-
       try {
         const res = await fetch(API_BASE + '/api/settings', {
           method: 'POST',
@@ -511,39 +471,27 @@
         if (res.ok) {
           saveConfigFeed.textContent = '✓ Configuration saved';
           saveConfigFeed.className = 'text-xs text-center h-4 text-emerald-600 font-bold';
-        } else {
-          throw new Error('Server returned ' + res.status);
-        }
+        } else { throw new Error('Server returned ' + res.status); }
       } catch (err) {
         saveConfigFeed.textContent = '✗ Save failed — is the server running?';
         saveConfigFeed.className = 'text-xs text-center h-4 text-red-500 font-bold';
       }
-
       setTimeout(() => { saveConfigFeed.textContent = ''; }, 4000);
     });
 
-    // ── [C1] Real Test Ping ────────────────────
-    // [M5] Uses DOM construction instead of innerHTML
     function setPingBtnState(emoji, label, bgClass, hoverClass, textClass) {
-      testPingBtn.textContent = ''; // Clear children
+      testPingBtn.textContent = '';
       const emojiSpan = document.createElement('span');
       emojiSpan.textContent = emoji;
       const labelSpan = document.createElement('span');
       labelSpan.textContent = label;
       testPingBtn.appendChild(emojiSpan);
       testPingBtn.appendChild(labelSpan);
-
-      // Reset known state classes
-      testPingBtn.classList.remove(
-        'bg-dark', 'bg-butter-400', 'bg-emerald-500', 'bg-red-500',
-        'hover:bg-slate-800', 'hover:bg-butter-500', 'hover:bg-emerald-600',
-        'text-white', 'text-dark'
-      );
+      testPingBtn.classList.remove('bg-dark','bg-butter-400','bg-emerald-500','bg-red-500','hover:bg-slate-800','hover:bg-butter-500','hover:bg-emerald-600','text-white','text-dark');
       testPingBtn.classList.add(bgClass, hoverClass, textClass);
     }
 
     testPingBtn.addEventListener('click', async () => {
-      // Determine target URL based on routing mode
       let pingUrl;
       if (currentMode === 'local') {
         pingUrl = API_BASE + '/api/health';
@@ -556,27 +504,19 @@
         }
         pingUrl = endpoint.replace(/\/+$/, '') + '/api/health';
       }
-
-      // State 1: Pinging
       setPingBtnState('⏳', 'Pinging...', 'bg-butter-400', 'hover:bg-butter-500', 'text-dark');
       testPingBtn.classList.add('scale-95');
       setTimeout(() => testPingBtn.classList.remove('scale-95'), 150);
-
       const t0 = performance.now();
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const res = await fetch(pingUrl, { signal: controller.signal });
         clearTimeout(timeout);
-
         const pingTime = Math.round(performance.now() - t0);
-
         if (res.ok) {
-          // State 2: Success
           setPingBtnState('⚡', 'Ping: ' + pingTime + 'ms', 'bg-emerald-500', 'hover:bg-emerald-600', 'text-white');
         } else {
-          // Server responded but with error
           setPingBtnState('⚠️', res.status + ' Error', 'bg-amber-400', 'hover:bg-butter-500', 'text-dark');
         }
       } catch (err) {
@@ -586,23 +526,17 @@
           setPingBtnState('❌', 'Unreachable', 'bg-red-500', 'hover:bg-slate-800', 'text-white');
         }
       }
-
-      // State 3: Reset after 3s
       setTimeout(() => setPingBtnState('📡', 'Test Ping', 'bg-dark', 'hover:bg-slate-800', 'text-white'), 3000);
     });
 
-    // ── [M3] Connection health check ───────────
     async function checkConnection() {
       try {
         const t0 = performance.now();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
-
         const res = await fetch(API_BASE + '/api/health', { signal: controller.signal });
         clearTimeout(timeout);
-
         const latency = Math.round(performance.now() - t0);
-
         if (res.ok && latency < 2000) {
           connectionDot.className = 'h-3 w-3 bg-emerald-500 rounded-full animate-pulse';
           connectionText.textContent = 'Brain Linked';
@@ -613,9 +547,7 @@
           connectionText.textContent = 'Slow Link';
           connectionText.className = 'text-xs font-bold text-amber-700 tracking-wide uppercase';
           connectionBadge.className = 'bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-center space-x-3 shadow-sm';
-        } else {
-          throw new Error('bad status');
-        }
+        } else { throw new Error('bad status'); }
       } catch {
         connectionDot.className = 'h-3 w-3 bg-red-500 rounded-full';
         connectionText.textContent = 'Disconnected';
@@ -624,12 +556,9 @@
       }
     }
 
-    // ── Initialization ─────────────────────────
     async function init() {
       renderGates();
-      setRoutingMode('local'); // [F2] Default to local
-
-      // Sync settings from server
+      setRoutingMode('local');
       try {
         const res = await fetch(API_BASE + '/api/settings');
         if (res.ok) {
@@ -638,97 +567,96 @@
           if (data.model) modelSelect.value = data.model;
           if (data.endpoint && data.routing_mode === 'remote') endpointInput.value = data.endpoint;
           if (data.gates) {
-            GATES.forEach(g => {
-              if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id];
-            });
+            GATES.forEach(g => { if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id]; });
             renderGates();
           }
         }
-      } catch {
-        // Server offline — use defaults, gates already rendered
-      }
-
-      // Run initial health check + schedule periodic
+      } catch { /* Server offline — use defaults */ }
       checkConnection();
       setInterval(checkConnection, HEALTH_CHECK_INTERVAL);
-
-      // [v0.4] Initialize MCP panel
       mcpCheckStatus();
       mcpFetchTools();
       setInterval(mcpCheckStatus, HEALTH_CHECK_INTERVAL);
     }
 
     // =============================================
-    // [v0.4] MCP EXECUTION LAYER — Live Panel
+    // [v0.4.1] MCP EXECUTION LAYER — Live Panel
     // =============================================
-    const mcpStatusDot      = document.getElementById('mcpStatusDot');
-    const mcpStatusLabel    = document.getElementById('mcpStatusLabel');
-    const mcpStatusPid      = document.getElementById('mcpStatusPid');
-    const mcpStatusCard     = document.getElementById('mcpStatusCard');
-    const mcpVersionBadge   = document.getElementById('mcpVersionBadge');
-    const mcpPingBtn        = document.getElementById('mcpPingBtn');
-    const mcpPingResult     = document.getElementById('mcpPingResult');
-    const mcpRestartBtn     = document.getElementById('mcpRestartBtn');
-    const mcpRestartResult  = document.getElementById('mcpRestartResult');
-    const mcpToolsList      = document.getElementById('mcpToolsList');
+    const mcpStatusDot       = document.getElementById('mcpStatusDot');
+    const mcpStatusLabel     = document.getElementById('mcpStatusLabel');
+    const mcpStatusPid       = document.getElementById('mcpStatusPid');
+    const mcpStatusCard      = document.getElementById('mcpStatusCard');
+    const mcpVersionBadge    = document.getElementById('mcpVersionBadge');
+    const mcpPingBtn         = document.getElementById('mcpPingBtn');
+    const mcpPingResult      = document.getElementById('mcpPingResult');
+    const mcpRestartBtn      = document.getElementById('mcpRestartBtn');
+    const mcpRestartResult   = document.getElementById('mcpRestartResult');
+    const mcpToolsList       = document.getElementById('mcpToolsList');
     const mcpRefreshToolsBtn = document.getElementById('mcpRefreshToolsBtn');
+    const mcpProtocolVersion = document.getElementById('mcpProtocolVersion');
 
-    // Sidebar MCP badge refs
-    const sidebarMcpDot  = document.getElementById('sidebarMcpDot');
-    const sidebarMcpText = document.getElementById('sidebarMcpText');
-    const sidebarMcpSub  = document.getElementById('sidebarMcpSub');
+    const sidebarMcpDot   = document.getElementById('sidebarMcpDot');
+    const sidebarMcpText  = document.getElementById('sidebarMcpText');
+    const sidebarMcpSub   = document.getElementById('sidebarMcpSub');
     const sidebarMcpBadge = document.getElementById('sidebarMcpBadge');
 
-    // Click sidebar badge → scroll to MCP section
+    // [v0.4.1 R3] Track previous armed state for auto-refresh on transition
+    let _prevMcpArmed = false;
+
     sidebarMcpBadge.addEventListener('click', () => {
       closeMobileMenu();
       document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' });
     });
 
-    // Handle #mcpSection hash on page load
     if (window.location.hash === '#mcpSection') {
-      setTimeout(() => {
-        document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' });
-      }, 300);
+      setTimeout(() => { document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' }); }, 300);
     }
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',    card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.4.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',    sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded', card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.4.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded', sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',  card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.4.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',  sSub: 'Process not running' },
-        checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',  badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.4.1 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.4.1 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.4.1 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
-
-      // Main panel
-      mcpStatusDot.className   = 'h-2.5 w-2.5 ' + s.dot + ' rounded-full animate-pulse';
+      mcpStatusDot.className    = 'h-2.5 w-2.5 ' + s.dot + ' rounded-full animate-pulse';
       mcpStatusLabel.textContent = s.label;
-      mcpStatusCard.className  = s.card + ' rounded-xl p-4 border';
+      mcpStatusCard.className   = s.card + ' rounded-xl p-4 border';
       mcpVersionBadge.className = 'text-[10px] font-extrabold tracking-widest ' + s.badge + ' px-2 py-0.5 rounded-md uppercase border';
       mcpVersionBadge.textContent = s.badgeText;
-      mcpStatusPid.textContent = pid ? 'PID: ' + pid : '';
-
-      // Sidebar badge
-      sidebarMcpDot.className  = 'h-3 w-3 ' + s.sDot + ' rounded-full animate-pulse';
+      mcpStatusPid.textContent  = pid ? 'PID: ' + pid : '';
+      sidebarMcpDot.className   = 'h-3 w-3 ' + s.sDot + ' rounded-full animate-pulse';
       sidebarMcpText.textContent = s.sText;
-      sidebarMcpSub.textContent = s.sSub;
+      sidebarMcpSub.textContent  = s.sSub;
     }
 
     async function mcpCheckStatus() {
       try {
         const res = await fetch(API_BASE + '/api/mcp/status');
-        if (!res.ok) { setMcpVisualState('offline', 0, null); return; }
+        if (!res.ok) { setMcpVisualState('offline', 0, null); _prevMcpArmed = false; return; }
         const data = await res.json();
+
+        // [v0.4.1 R2] Populate protocol version dynamically
+        if (data.protocol_version && mcpProtocolVersion) {
+          mcpProtocolVersion.textContent = data.protocol_version;
+        }
+
         if (data.alive && data.handshake_ok) {
           setMcpVisualState('armed', data.tools_count || 0, data.pid);
+          // [v0.4.1 R3] Auto-refresh tool list when transitioning to armed
+          if (!_prevMcpArmed) { mcpFetchTools(); }
+          _prevMcpArmed = true;
         } else if (data.alive) {
           setMcpVisualState('degraded', 0, data.pid);
+          _prevMcpArmed = false;
         } else {
           setMcpVisualState('offline', 0, null);
+          _prevMcpArmed = false;
         }
       } catch {
         setMcpVisualState('offline', 0, null);
+        _prevMcpArmed = false;
       }
     }
 
@@ -738,9 +666,7 @@
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         const tools = data.tools || [];
-
         mcpToolsList.innerHTML = '';
-
         if (tools.length === 0) {
           const empty = document.createElement('div');
           empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 text-center';
@@ -751,30 +677,24 @@
           mcpToolsList.appendChild(empty);
           return;
         }
-
         tools.forEach(tool => {
           const card = document.createElement('div');
           card.className = 'bg-slate-50 border border-slate-100 rounded-xl p-4 hover:border-violet-200 transition';
-
           const header = document.createElement('div');
           header.className = 'flex items-center justify-between mb-1';
-
           const nameSpan = document.createElement('span');
           nameSpan.className = 'font-bold text-sm text-dark font-mono';
           nameSpan.textContent = tool.name;
-
           const typeBadge = document.createElement('span');
           typeBadge.className = 'text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-md uppercase tracking-wider';
           typeBadge.textContent = 'Tool';
-
           header.appendChild(nameSpan);
           header.appendChild(typeBadge);
-
           const desc = document.createElement('p');
           desc.className = 'text-xs text-slate-500 mt-1';
           desc.textContent = tool.description || '(no description)';
-
-          // Show input params if available
+          card.appendChild(header);
+          card.appendChild(desc);
           const schema = tool.inputSchema;
           if (schema && schema.properties && Object.keys(schema.properties).length > 0) {
             const paramLine = document.createElement('p');
@@ -782,14 +702,8 @@
             const paramNames = Object.keys(schema.properties).join(', ');
             const required = (schema.required || []).join(', ');
             paramLine.textContent = 'params: ' + paramNames + (required ? '  (required: ' + required + ')' : '');
-            card.appendChild(header);
-            card.appendChild(desc);
             card.appendChild(paramLine);
-          } else {
-            card.appendChild(header);
-            card.appendChild(desc);
           }
-
           mcpToolsList.appendChild(card);
         });
       } catch {
@@ -804,16 +718,11 @@
       }
     }
 
-    // MCP Ping Button
     mcpPingBtn.addEventListener('click', async () => {
       mcpPingBtn.textContent = '';
-      const spinSpan = document.createElement('span');
-      spinSpan.textContent = '⏳';
-      const pingLabel = document.createElement('span');
-      pingLabel.textContent = 'Pinging...';
-      mcpPingBtn.appendChild(spinSpan);
-      mcpPingBtn.appendChild(pingLabel);
-
+      const s1 = document.createElement('span'); s1.textContent = '⏳';
+      const s2 = document.createElement('span'); s2.textContent = 'Pinging...';
+      mcpPingBtn.appendChild(s1); mcpPingBtn.appendChild(s2);
       try {
         const res = await fetch(API_BASE + '/api/mcp/ping');
         const data = await res.json();
@@ -828,36 +737,25 @@
         mcpPingResult.textContent = 'Server unreachable';
         mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
       }
-
       mcpPingBtn.textContent = '';
-      const resetIcon = document.createElement('span');
-      resetIcon.textContent = '📡';
-      const resetLabel = document.createElement('span');
-      resetLabel.textContent = 'Ping MCP';
-      mcpPingBtn.appendChild(resetIcon);
-      mcpPingBtn.appendChild(resetLabel);
-
+      const r1 = document.createElement('span'); r1.textContent = '📡';
+      const r2 = document.createElement('span'); r2.textContent = 'Ping MCP';
+      mcpPingBtn.appendChild(r1); mcpPingBtn.appendChild(r2);
       setTimeout(() => { mcpPingResult.textContent = ''; }, 5000);
     });
 
-    // MCP Restart Button
     mcpRestartBtn.addEventListener('click', async () => {
       mcpRestartBtn.textContent = '';
-      const spinSpan = document.createElement('span');
-      spinSpan.textContent = '⏳';
-      const restartLabel = document.createElement('span');
-      restartLabel.textContent = 'Restarting...';
-      mcpRestartBtn.appendChild(spinSpan);
-      mcpRestartBtn.appendChild(restartLabel);
+      const s1 = document.createElement('span'); s1.textContent = '⏳';
+      const s2 = document.createElement('span'); s2.textContent = 'Restarting...';
+      mcpRestartBtn.appendChild(s1); mcpRestartBtn.appendChild(s2);
       mcpRestartBtn.disabled = true;
-
       try {
         const res = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
         const data = await res.json();
         if (data.restarted) {
           mcpRestartResult.textContent = 'Restarted successfully';
           mcpRestartResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold';
-          // Refresh status + tools after restart
           setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500);
         } else {
           mcpRestartResult.textContent = 'Restart failed';
@@ -867,26 +765,17 @@
         mcpRestartResult.textContent = 'Server unreachable';
         mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
       }
-
       mcpRestartBtn.disabled = false;
       mcpRestartBtn.textContent = '';
-      const resetIcon = document.createElement('span');
-      resetIcon.textContent = '🔄';
-      const resetLabel = document.createElement('span');
-      resetLabel.textContent = 'Restart MCP';
-      mcpRestartBtn.appendChild(resetIcon);
-      mcpRestartBtn.appendChild(resetLabel);
-
+      const r1 = document.createElement('span'); r1.textContent = '🔄';
+      const r2 = document.createElement('span'); r2.textContent = 'Restart MCP';
+      mcpRestartBtn.appendChild(r1); mcpRestartBtn.appendChild(r2);
       setTimeout(() => { mcpRestartResult.textContent = ''; }, 5000);
     });
 
-    // Refresh tools button
-    mcpRefreshToolsBtn.addEventListener('click', () => {
-      mcpFetchTools();
-    });
+    mcpRefreshToolsBtn.addEventListener('click', () => { mcpFetchTools(); });
 
     init();
-
   });
   </script>
 </body>
