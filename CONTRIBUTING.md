@@ -15,7 +15,9 @@ We are looking for help in the following areas:
 4. **Submit:** Open a PR with a clear description of the "behavioral gap" your code addresses.
 
 ## Security Policy
-**Do not report security vulnerabilities via public issues.** If you find a vulnerability in ButterClaw itself, please email [security@butterclaw.tech] to follow a coordinated disclosure process.
+**Do not report security vulnerabilities via public issues.** If you discover a vulnerability in ButterClaw itself, please use GitHub's **Private Vulnerability Reporting** feature. 
+
+Navigate to the **Security** tab of this repository and click **"Report a vulnerability"** to initiate a coordinated and encrypted disclosure process.
 
 ## Code of Conduct
 ButterClaw follows the standard Linux Foundation/AAIF Code of Conduct. Be excellent to each other.
