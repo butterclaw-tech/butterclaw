@@ -33,7 +33,6 @@
           }
         }
       },
-      // [C2] Tailwind safelist
       safelist: [
         'bg-red-50', 'bg-red-100', 'bg-red-100/50', 'border-red-100',
         'text-red-400', 'text-red-600', 'text-red-700', 'text-red-900',
@@ -101,10 +100,11 @@
 
     <!-- ============================================= -->
     <!-- SIDEBAR BOTTOM: MCP Badge + Connection Badge  -->
+    <!-- [v0.4.1] MCP status badge + connection badge  -->
     <!-- ============================================= -->
     <div class="p-6 space-y-3">
 
-      <!-- [v0.4] MCP Execution Layer Status Badge -->
+      <!-- [v0.4.1] MCP Execution Layer Status Badge -->
       <div id="mcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 cursor-pointer hover:bg-slate-100 transition" title="Click to view MCP tools">
         <div id="mcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div class="flex-1">
@@ -263,9 +263,6 @@
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
-    // =============================================
-    // CONSTANTS & BACKEND URL
-    // =============================================
     const API_BASE = 'http://127.0.0.1:5000';
 
     // =============================================
@@ -419,7 +416,6 @@
     const closeVaultBtn = document.getElementById('closeVaultBtn');
     const panicBtn     = document.getElementById('panicBtn');
     
-    // OpenRouter Form Elements
     const orStatusText = document.getElementById('orStatusText');
     const orBadge = document.getElementById('orBadge');
     const orBadgeDot = document.getElementById('orBadgeDot');
@@ -428,7 +424,6 @@
     const orKeyInput = document.getElementById('orKeyInput');
     const orSaveBtn = document.getElementById('orSaveBtn');
 
-    // Fetch live status from backend
     const fetchVaultStatus = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/vault/status`);
@@ -456,11 +451,9 @@
       }
     };
 
-    // Save key to backend
     orSaveBtn.addEventListener('click', async () => {
       const key = orKeyInput.value.trim();
       if (!key) return;
-      
       orSaveBtn.textContent = 'Sealing...';
       try {
         await fetch(`${API_BASE}/api/vault/key`, {
@@ -498,7 +491,6 @@
       if (e.target === vaultModal) closeModal();
     });
 
-    // The Gibson Kill Switch Button
     panicBtn.addEventListener('click', async () => {
       panicBtn.textContent = '';
       const spinIcon = document.createElement('span');
@@ -560,42 +552,32 @@
 
     const createLogCard = (log, index) => {
       const color = log.color || 'slate';
-
       const card = document.createElement('div');
       card.className = `flex items-start p-4 bg-${color}-50 rounded-2xl border border-${color}-100 transform transition-all duration-500 ease-out`;
       if (index === 0) card.classList.add('animate-slide-down', 'opacity-100');
-
       const iconDiv = document.createElement('div');
       iconDiv.className = `bg-${color}-100 text-${color}-600 p-2 rounded-lg mr-4 text-lg shadow-sm`;
       iconDiv.textContent = log.icon || '📋';
-
       const contentDiv = document.createElement('div');
       contentDiv.className = 'flex-1';
-
       const title = document.createElement('h4');
       title.className = `font-bold text-${color}-900 text-sm tracking-tight`;
       title.textContent = log.title || 'Untitled Event';
-
       const desc = document.createElement('p');
       desc.className = `text-sm text-${color}-700 mt-1 leading-relaxed`;
       desc.textContent = log.desc || '';
-
       const action = document.createElement('p');
       action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`;
       action.textContent = `Action: ${log.action || 'None'}`;
-
       contentDiv.appendChild(title);
       contentDiv.appendChild(desc);
       contentDiv.appendChild(action);
-
       const timeSpan = document.createElement('span');
       timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`;
       timeSpan.textContent = log.time || '';
-
       card.appendChild(iconDiv);
       card.appendChild(contentDiv);
       card.appendChild(timeSpan);
-
       return card;
     };
 
@@ -603,24 +585,19 @@
       try {
         const response = await fetch(`${API_BASE}/api/logs`);
         const logs = await response.json();
-
         if (logs.length === 0) {
           emptyLogs.classList.remove('hidden');
           oopsieContainer.innerHTML = '';
           return;
         }
-
         emptyLogs.classList.add('hidden');
-
         const signature = logs.map(l => l.time + l.title).join('|');
         if (signature === previousLogSignature) return;
         previousLogSignature = signature;
-
         oopsieContainer.innerHTML = '';
         logs.forEach((log, index) => {
           oopsieContainer.appendChild(createLogCard(log, index));
         });
-
       } catch (error) {
         console.error('Brain disconnected.');
       }
@@ -634,13 +611,11 @@
 
     const connectSSE = () => {
       const logStream = new EventSource(`${API_BASE}/api/stream`);
-
       logStream.onmessage = (event) => {
         sseRetryDelay = 1000;
         fetchLiveLogs();
         fetchVaultStatus(); 
       };
-
       logStream.onerror = () => {
         logStream.close();
         setTimeout(() => {
@@ -762,7 +737,7 @@
     setInterval(checkConnection, 30000);
 
     // =============================================
-    // 8. MCP EXECUTION LAYER STATUS (v0.4) 🔫
+    // 8. MCP EXECUTION LAYER STATUS (v0.4.1) 🔫
     // =============================================
     const mcpDot       = document.getElementById('mcpDot');
     const mcpText      = document.getElementById('mcpText');
@@ -802,7 +777,6 @@
       }
     };
 
-    // Click MCP badge → navigate to routing page MCP section
     mcpBadge.addEventListener('click', () => {
       window.location.href = 'routing.html#mcpSection';
     });

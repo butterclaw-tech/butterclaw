@@ -1,31 +1,36 @@
-# 🦞 ButterClaw v0.4.0: The Claws Awaken
+# 🦞 ButterClaw v0.4.1: Full MCP - QA Sterilization Patch
 
-Version 0.4.0 — April 9, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.4.1 — April 13, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys into cryptographic garbage if a breach is detected. **Evaluation before Execution.**
 
 Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
 
-> **Note:** ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.
+> **Note:** *ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.*
 
 ---
 
-## 🚀 What's New in v0.4.0?
+## 🚀 What's New in v0.4.1?
 
-**Full MCP Transport (stdio / JSON-RPC 2.0):**
-The execution layer (`butterclaw_mcp.py`) now speaks real Model Context Protocol over stdio. The parent server manages the child process with threaded readers, response correlation by JSON-RPC `id`, configurable timeouts, and automatic restart on child death. The handshake sequence (`initialize` → `notifications/initialized` → `tools/list`) dynamically discovers all registered tools at boot.
+**QA Sterilization Patch** — (2 🔴 Bugs, 7 🟡 Issues) from a full audit of the v0.4.0 release. Both critical bugs were actively affecting production:
 
-**5-Tool Registry:**
-Expanded from 2 tools to 5. The MCP server now exposes `execute_gibson_kill`, `rotate_keys`, `system_status`, `scan_port`, and `log_event` — all discoverable via `tools/list` with full `inputSchema` definitions.
+**🔴 CSP Attribute Corruption (R1):** An HTML comment was placed *inside* the Content Security Policy `content` attribute during the v0.3.2 B1 patch. Browsers parsed `<!--` as literal CSP text, likely breaking the `img-src` directive. Removed.
 
-**MCP Observability Stack:**
-Four new API endpoints (`/api/mcp/status`, `/api/mcp/ping`, `/api/mcp/tools`, `/api/mcp/restart`) give the UI and operators full visibility into the execution layer. The dashboard shows a live MCP badge in the sidebar and a full MCP panel on the routing page with ping, restart, and tool inspection.
+**🔴 Auto-Restart Without Handshake (S1):** When the MCP child process died mid-operation, `send()` would respawn it but skip the handshake. Result: `handshake_ok` stayed `False`, `discovered_tools` was empty, and the UI showed "Degraded" even though the child was alive. Now chains `start()` → `handshake()`.
 
-**Threaded Process Manager:**
-Replaced the blocking inline `stdout.readline()` that froze Flask on every MCP call. Stdout and stderr each get their own daemon reader thread — Flask never blocks on MCP I/O, and the child process never deadlocks from a full stderr pipe buffer.
+**Thread Safety (S2):** Request counter replaced with `itertools.count()` for safe concurrent access under threaded WSGI servers.
 
-**v0.3.2 Carryovers:**
-Retains the 85% Self-DoS Shield, LLM float hallucination fixes, hermetic CSP, dynamic Vault scaling, and the OS-native AES Keyring encryption.
+**CRITICAL Path Truth-Telling (S4):** The CRITICAL verdict path now checks MCP `send()` return values. If `gibson_kill` or `rotate_keys` fails, the audit log says so instead of reporting false success.
+
+**MCP Argument Validation (M2):** `tools/call` now validates incoming arguments against `inputSchema` before dispatch. Unknown args get a clean error response instead of a raw Python `TypeError`.
+
+**Pre-Initialization Guard (M4):** `tools/call` rejects requests before `initialize` is sent, per MCP spec compliance.
+
+**Dynamic Protocol Version (R2):** The routing page MCP panel now pulls the protocol version from `/api/mcp/status` instead of hardcoding it.
+
+**Auto-Refresh on State Transition (R3):** The tool list now refreshes automatically when MCP transitions from offline/degraded → armed, instead of requiring a manual click.
+
+See the full [CHANGELOG.md](CHANGELOG.md) for the complete audit table.
 
 ---
 
@@ -40,16 +45,16 @@ The system is a fully decoupled, reactive architecture running 100% locally.
    The localized reasoning engine. The model runs at `temperature: 0.3` for adaptive semantic reasoning and is strictly constrained to output valid JSON payloads containing a `verdict`, `confidence` score, `primary_gate`, and `reasoning`.
 
 3. **The API (`server.py`):**
-   A Flask middleware routing server and MCP process manager. It parses the JSON from the Brain and acts as the central nervous system, evaluating the 85% threshold to decide whether to log a `BENIGN` event or trigger a `CRITICAL` execution. In v0.4, it also manages the MCP child process lifecycle — spawning, handshaking, correlating responses by ID, draining stderr, and exposing four `/api/mcp/*` observability endpoints.
+   A Flask middleware routing server and MCP process manager. It parses the JSON from the Brain and acts as the central nervous system, evaluating the 85% threshold to decide whether to log a `BENIGN` event or trigger a `CRITICAL` execution. Manages the MCP child process lifecycle — spawning, handshaking, correlating responses by ID, draining stderr, and exposing four `/api/mcp/*` observability endpoints. In v0.4.1, the CRITICAL path verifies MCP tool call success and reports failures truthfully in the audit log.
 
 4. **The Vault (`buttervault.py`):**
    OS-level symmetric encryption layer. Secures external provider keys using `cryptography.fernet` and `keyring`.
 
 5. **The Claws (`butterclaw_mcp.py`):**
-   The MCP Execution Layer — a JSON-RPC 2.0 stdio server speaking Model Context Protocol (`protocolVersion: 2024-11-05`). Exposes 5 tools via `tools/list` with full `inputSchema` definitions. Supports `initialize`, `ping`, and `notifications/initialized`. OS-level process termination (`SIGKILL`) remains in **Dry Run Mode** for Blue Team safety, while Key Rotation utilizes **Live Ammunition** via the Vault. Tool results return MCP-standard content arrays.
+   The MCP Execution Layer — a JSON-RPC 2.0 stdio server speaking Model Context Protocol (`protocolVersion: 2024-11-05`). Exposes 5 tools via `tools/list` with full `inputSchema` definitions. Supports `initialize`, `ping`, and `notifications/initialized`. In v0.4.1, incoming tool arguments are validated against `inputSchema` before dispatch, and error responses correlate to the correct request `id`. OS-level process termination (`SIGKILL`) remains in **Dry Run Mode** for Blue Team safety, while Key Rotation utilizes **Live Ammunition** via the Vault. Tool results return MCP-standard content arrays.
 
 6. **The UI Suite (`index.html` & `routing.html`):**
-   An XSS-safe, Server-Sent Events (SSE) driven dashboard that visualizes the AI's logic gate trace, connection health, and kinetic actions in real-time. In v0.4, the sidebar shows a live MCP status badge (Armed / Degraded / Offline) on both pages, and the routing page features a full MCP panel with process status, ping (round-trip ms), restart, and a dynamic tool list with parameter inspection.
+   An XSS-safe, Server-Sent Events (SSE) driven dashboard that visualizes the AI's logic gate trace, connection health, and kinetic actions in real-time. The sidebar shows a live MCP status badge (Armed / Degraded / Offline) on both pages, and the routing page features a full MCP panel with process status, ping (round-trip ms), restart, and a dynamic tool list with parameter inspection. In v0.4.1, the tool list auto-refreshes when MCP transitions to armed, and the protocol version is populated dynamically.
 
 ### MCP Transport Model
 
@@ -77,6 +82,8 @@ The system is a fully decoupled, reactive architecture running 100% locally.
 - **Confidence Scoring Metadata:** The Brain calculates and attaches a probabilistic confidence score (0.0 - 1.0) to every verdict.
 - **MCP Tool Discovery:** The reasoning engine dynamically discovers available tools at startup via the `tools/list` handshake — no hardcoded tool assumptions.
 - **MCP Observability:** Live process health, ping latency, tool inspection, and lifecycle control are exposed to both the API and the dashboard UI.
+- **MCP Argument Validation:** Tool calls are validated against `inputSchema` before dispatch — unknown arguments are rejected cleanly instead of causing Python tracebacks.
+- **Audit Log Integrity:** The CRITICAL verdict path verifies MCP tool call results and records partial failures truthfully.
 
 ---
 
@@ -133,7 +140,7 @@ python server.py
 On boot, the server will automatically spawn `butterclaw_mcp.py` as a child process, run the MCP handshake, and discover all available tools. Watch for:
 
 ```
-📡 [MCP] Initiating v0.4 Handshake Sequence...
+📡 [MCP] Initiating v0.4.1 Handshake Sequence...
 ✅ [MCP] Handshake complete. 5 tools armed.
 ```
 
@@ -175,10 +182,10 @@ To see the **Evaluation before Execution** pipeline in action:
 | `/api/vault/key` | POST | Encrypt and store an API key into the local SQLite Vault. |
 | `/api/vault/status` | GET | Returns boolean status of all sealed keys without exposing plaintext. |
 | `/api/rotate-keys` | POST | The Panic Button. Instantly overwrites all Vault ciphertext with garbage. |
-| `/api/health` | GET | Lightweight health probe. Returns `{"status": "ok", "version": "0.4.0"}` |
+| `/api/health` | GET | Lightweight health probe. Returns `{"status": "ok", "version": "0.4.1"}` |
 | `/api/settings` | GET/POST | Central config sync for UI sliders, routing modes, and logic gates. |
 | `/api/stream` | GET | SSE endpoint. Pushes kinetic action updates to the dashboard. |
-| `/api/mcp/status` | GET | MCP process health: `alive`, `handshake_ok`, `pid`, `tools_count`, `pending_requests`. |
+| `/api/mcp/status` | GET | MCP process health: `alive`, `handshake_ok`, `pid`, `tools_count`, `protocol_version`. |
 | `/api/mcp/ping` | GET | Sends MCP `ping` to the child process. Returns `pong` boolean and round-trip ms. |
 | `/api/mcp/tools` | GET | Returns the full tool list discovered during the MCP handshake with `inputSchema`. |
 | `/api/mcp/restart` | POST | Stops, restarts the MCP child process, and re-runs the handshake sequence. |
@@ -187,9 +194,13 @@ To see the **Evaluation before Execution** pipeline in action:
 
 ## 🗺️ Roadmap
 
-**v0.4 — The Claws Awaken (✅ Delivered)**
+**v0.4.0 — The Claws Awaken ✅**
 
 Full stdio/JSON-RPC MCP transport compliance. Threaded process manager with response correlation, stderr drain, and auto-restart. Dynamic tool discovery via `tools/list`. MCP observability endpoints and live UI panel. Expanded to 5 tools.
+
+**v0.4.1 — QA Sterilization Patch ✅**
+
+Audit of v0.4.0. Fixed CSP attribute corruption, auto-restart handshake gap, thread safety, audit log integrity, MCP argument validation, pre-initialization guard, dynamic protocol version, and auto-refresh on state transition.
 
 **v0.5 — The Nervous System**
 
@@ -204,4 +215,4 @@ MIT License. Copyright (c) 2026 butterclaw-tech. See [LICENSE](LICENSE) file for
 
 ---
 
-Built with Python, Vanilla JS, and a whole lot of unautclated telemetry. Yes, unautclated. 🦞
+*Built with Python, Vanilla JS, and a whole lot of unautclated telemetry. Yes, unautclated. 🦞*

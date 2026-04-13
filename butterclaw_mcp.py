@@ -1,5 +1,5 @@
 """
-ButterClaw v0.4.0 — The Claws (MCP Execution Layer)
+ButterClaw v0.4.1 — The Claws (MCP Execution Layer)
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.
@@ -14,6 +14,11 @@ Changelog:
            - notifications/initialized handling
            - Expanded tool registry (system_status, scan_port, log_event)
            - Dispatch table architecture (no more if/elif chains)
+  [v0.4.1] QA Sterilization Patch:
+           - M1: Error responses now correlate to request id when available
+           - M2: Argument validation against inputSchema before dispatch
+           - M3: Module-level basicConfig documented as architecturally correct
+           - M4: Pre-initialization guard on tools/call (MCP spec compliance)
 
 *** KINETIC OS ACTIONS REMAIN IN DRY RUN / SIMULATION MODE ***
 """
@@ -28,6 +33,10 @@ import socket
 
 # =====================================================================
 # LOGGING — strictly stderr to protect the JSON-RPC stdout pipe
+# [M3] Module-level basicConfig is architecturally correct here.
+# This file runs as a standalone subprocess (spawned by server.py),
+# never imported as a library. The v0.3.2 I6 fix (move to function
+# scope) addressed import-time collision, which does not apply.
 # =====================================================================
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(message)s")
@@ -37,7 +46,7 @@ logger = logging.getLogger("butterclaw.mcp")
 # CONFIGURATION
 # =====================================================================
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 PROTOCOL_VERSION = "2024-11-05"  # MCP spec version this server speaks
 DRY_RUN = True                  # SAFETY HARNESS — kinetic actions are simulated
 
@@ -197,6 +206,12 @@ TOOL_DEFINITIONS = [
     }
 ]
 
+# Build allowed-args lookup from inputSchema for validation [M2]
+_TOOL_ALLOWED_ARGS = {}
+for _td in TOOL_DEFINITIONS:
+    _schema = _td.get("inputSchema", {})
+    _TOOL_ALLOWED_ARGS[_td["name"]] = set(_schema.get("properties", {}).keys())
+
 # Dispatch table — maps tool name → callable
 TOOL_DISPATCH = {
     "execute_gibson_kill": execute_gibson_kill,
@@ -225,7 +240,6 @@ class ButterClawMCPServer:
     # ----- MCP Method Handlers -----
 
     def handle_initialize(self, params, req_id):
-        """MCP initialize — returns protocol version, server info, capabilities."""
         self.initialized = True
         return {
             "jsonrpc": "2.0",
@@ -243,16 +257,13 @@ class ButterClawMCPServer:
         }
 
     def handle_initialized_notification(self, params):
-        """notifications/initialized — client acknowledges init. No response."""
         logger.info("📡 [MCP] Client acknowledged initialization.")
         return None
 
     def handle_ping(self, params, req_id):
-        """MCP ping — keepalive check."""
         return {"jsonrpc": "2.0", "id": req_id, "result": {}}
 
     def handle_tools_list(self, params, req_id):
-        """tools/list — returns all registered tools with inputSchema."""
         return {
             "jsonrpc": "2.0",
             "id": req_id,
@@ -260,7 +271,14 @@ class ButterClawMCPServer:
         }
 
     def handle_tools_call(self, params, req_id):
-        """tools/call — executes a tool, returns MCP content array format."""
+        # [M4] Guard: reject tools/call before initialization (MCP spec compliance)
+        if not self.initialized:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32002, "message": "Server not initialized. Send 'initialize' first."}
+            }
+
         tool_name = params.get("name")
         tool_args = params.get("arguments", {})
 
@@ -269,6 +287,19 @@ class ButterClawMCPServer:
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "error": {"code": -32602, "message": f"Unknown tool: {tool_name}"}
+            }
+
+        # [M2] Validate arguments against inputSchema before dispatch
+        allowed_args = _TOOL_ALLOWED_ARGS.get(tool_name, set())
+        unknown_args = set(tool_args.keys()) - allowed_args
+        if unknown_args:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": f"Invalid arguments: {', '.join(sorted(unknown_args))}. Allowed: {', '.join(sorted(allowed_args)) or '(none)'}"}],
+                    "isError": True
+                }
             }
 
         try:
@@ -303,7 +334,6 @@ class ButterClawMCPServer:
     }
 
     def route(self, request):
-        """Routes a JSON-RPC request to the correct handler."""
         method = request.get("method")
         params = request.get("params", {})
         req_id = request.get("id")
@@ -312,17 +342,15 @@ class ButterClawMCPServer:
 
         if handler_name is None:
             if req_id is not None:
-                # Unknown method with an id → error response
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "error": {"code": -32601, "message": f"Method not found: {method}"}
                 }
-            return None  # Unknown notification → ignore silently
+            return None
 
         handler = getattr(self, handler_name)
 
-        # Notifications (no id) → call handler, return nothing
         if req_id is None:
             handler(params)
             return None
@@ -342,6 +370,9 @@ def main():
 
     server = ButterClawMCPServer()
 
+    # Track last successfully parsed request for error correlation [M1]
+    last_request = {}
+
     while True:
         try:
             line = sys.stdin.readline()
@@ -354,14 +385,15 @@ def main():
                 continue
 
             request = json.loads(line)
+            last_request = request  # [M1] save for error correlation
             response = server.route(request)
 
-            # Only write a response for requests (not notifications)
             if response is not None:
                 sys.stdout.write(json.dumps(response) + "\n")
                 sys.stdout.flush()
 
         except json.JSONDecodeError as e:
+            # No valid request exists — id must be None per JSON-RPC spec
             logger.error(f"❌ JSON parse error: {e}")
             err = {"jsonrpc": "2.0", "id": None,
                    "error": {"code": -32700, "message": f"Parse error: {e}"}}
@@ -369,11 +401,17 @@ def main():
             sys.stdout.flush()
 
         except Exception as e:
-            logger.error(f"❌ Unhandled exception: {e}")
-            err = {"jsonrpc": "2.0", "id": None,
+            # [M1] Correlate error response to request id when available
+            # If we parsed the request successfully but routing/handling
+            # threw unexpectedly, we can return the correct id so the
+            # parent's stdout reader delivers the error instead of timing out.
+            correlated_id = last_request.get("id") if last_request else None
+            logger.error(f"❌ Unhandled exception (id={correlated_id}): {e}")
+            err = {"jsonrpc": "2.0", "id": correlated_id,
                    "error": {"code": -32603, "message": f"Internal error: {e}"}}
             sys.stdout.write(json.dumps(err) + "\n")
             sys.stdout.flush()
+            last_request = {}  # Reset after error
 
 
 if __name__ == "__main__":

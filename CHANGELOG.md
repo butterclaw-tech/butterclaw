@@ -6,6 +6,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+### Patched — v0.4.0 QA Audit for v0.4.1
+
+Audit Date: April 13, 2026
+Scope: Full codebase review of v0.4.0 release — 4 files audited
+Findings: 15 total — 2 🔴 Bugs, 7 🟡 Issues, 6 🟢 Notes
+
+#### `routing.html` — 3 patches (R1, R2, R3)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| R1 | 🔴 Bug | HTML comment placed **inside** the CSP `content` attribute: `<!-- PATCHED B1: removed wildcard * from connect-src -->`. Browsers parse `<!--` as literal CSP text, not as a comment — likely breaking the `img-src 'self' data:` directive that follows. **Introduced by the v0.3.2 B1 patch itself** (fix was correct, comment placement was not). | Removed the comment from inside the attribute. Audit trail preserved as a normal HTML comment above the `<meta>` tag. |
+| R2 | 🟡 Issue | Protocol version `"2024-11-05"` hardcoded in a static `<div>` in the MCP info grid. If `butterclaw_mcp.py` updates its `protocolVersion`, the UI shows stale info. | Changed to dynamic: `mcpProtocolVersion` div populated from `/api/mcp/status` response (`data.protocol_version`). `status()` dict in `server.py` now includes `protocol_version`. |
+| R3 | 🟡 Issue | `mcpFetchTools()` runs once at page load and on manual Refresh click — not on a periodic interval. When the server transitions from offline → online, `mcpCheckStatus()` updates the badge, but the tool list stays empty until manual refresh. | Added `_prevMcpArmed` state tracking. `mcpCheckStatus()` now calls `mcpFetchTools()` automatically when state transitions from non-armed → armed. |
+
+#### `server.py` — 5 patches (S1, S2, S3, S4, S5)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| S1 | 🔴 Bug | **`send()` auto-restart skips handshake.** When `send()` detects a dead child, it calls `self.start()` but **not** `self.handshake()`. After auto-restart: `handshake_ok` stays `False`, `discovered_tools` is empty/stale, and the UI shows "Degraded" even though the child is alive. The `restart()` method correctly chains `start()` → `handshake()`, but the auto-restart path inside `send()` does not. | Added `self.handshake()` after `self.start()` in the auto-restart block inside `send()`. Handshake failure is logged but send proceeds (best-effort recovery). |
+| S2 | 🟡 Issue | `_req_counter += 1` is not atomic. Two concurrent Flask threads calling `send()` could receive the same `req_id`, causing response correlation collisions in `_pending`. Safe under Flask's default single-threaded `app.run()`, but breaks under any multi-threaded WSGI server (gunicorn with threads, waitress). | Replaced with `itertools.count(1)` — thread-safe in CPython without requiring a lock. |
+| S3 | 🟡 Issue | `status()` has a TOCTOU race on `self.process`. Between the truthiness check and `.pid` access, another thread could call `stop()` and set `self.process = None`, raising `AttributeError`. | Snapshot the reference: `proc = self.process` at the top of `status()`, use `proc` throughout. |
+| S4 | 🟡 Issue | **CRITICAL verdict path ignores MCP `send()` return values.** In `analyze_threat()`, the CRITICAL block calls `mcp_manager.send("tools/call", ...)` for `execute_gibson_kill` and `rotate_keys` but discards both return values. If the MCP child is dead or calls timeout, `action` still reports `"SIGKILL | Keys Buttered"`. Note: `buttervault.butter_keys()` IS a direct local call, so keys ARE buttered — but gibson_kill success is unverified. Same pattern in `manual_key_rotation()`. | Capture return values. Check for `"error"` key. Append failure details to the action string so the audit log tells the truth: `"Keys Buttered | MCP partial failure: gibson_kill"`. |
+| S5 | 🟡 Issue | `CONFIDENCE_THRESHOLD = 85` defined as a local variable inside `analyze_threat()`, but the boot banner hardcodes `85` in a separate print statement. The two references are not linked — changing the threshold in one place leaves the other stale. | Extracted `CONFIDENCE_THRESHOLD` to module-level constant. Both `analyze_threat()` and the boot banner reference it. |
+
+#### `butterclaw_mcp.py` — 4 patches (M1, M2, M3, M4)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| M1 | 🟡 Issue | General exception handler in the main loop sends `"id": None` in the error response even though the parsed `request` dict may be in scope. Parent's stdout reader can't correlate the response → falls through as "Orphaned response" → parent times out instead of getting the error. | Track `last_request` after successful JSON parse. General `except Exception` block now sends `"id": last_request.get("id")`. `JSONDecodeError` block still sends `"id": None` (correct — no valid request exists). |
+| M2 | 🟡 Issue | `handle_tools_call` passes `**tool_args` directly to tool functions with no schema validation. If an MCP client sends unexpected arguments, the function raises `TypeError` with an unhelpful Python traceback message instead of a clean schema violation response. | Built `_TOOL_ALLOWED_ARGS` lookup from `inputSchema.properties` at module load. `handle_tools_call` intersects incoming keys against allowed keys, returns a clean `isError: true` content response for unknown args before dispatch. |
+| M3 | 🟢 Note | `logging.basicConfig()` is at module level — this was flagged as I6 in v0.3.2 and moved into function scope. However, in v0.4.0 this file runs as a **standalone subprocess** (not imported by server.py), so module-level config is architecturally correct. **Not a regression.** | No code fix needed. Added architectural comment documenting the justification. |
+| M4 | 🟢 Note | `initialized` flag is set in `handle_initialize` but never checked — `tools/call` doesn't gate on whether `initialize` was called first. MCP spec says servers SHOULD reject pre-initialization requests. Currently harmless because the parent always handshakes first. | Added `if not self.initialized` guard in `handle_tools_call` returning `-32002` (Server not initialized). Defense-in-depth only. |
+
+#### `index.html` — Clean (version alignment only)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| — | 🟢 Clean | No issues found. CSP is tight, all dynamic content uses `textContent` and `createElement`, MCP badge integration follows existing sidebar patterns. | Version comments updated from v0.4.0 → v0.4.1 for alignment. |
+
+#### Cross-File Audit Notes — 🟢 Positive
+
+| # | Scope | Finding |
+|---|-------|---------|
+| N1 | `index.html`, `routing.html` | XSS safety maintained — all new MCP panel code uses `textContent` and `createElement` for dynamic content. No `innerHTML` with server data anywhere in the v0.4.0 patch set. |
+| N2 | `index.html`, `routing.html` | MCP badge visual states are consistent — both pages use the same three-state model (Armed / Degraded / Offline) with matching color schemes and logic. |
+| N3 | `server.py` | ButterVault remains a direct local call — `buttervault.butter_keys()` in the CRITICAL path is a direct function call, not routed through MCP. Key destruction does not depend on the child process being alive. Correct architectural decision. |
+| N4 | `server.py` | Reader thread shutdown is clean — `_read_stdout` and `_read_stderr` both exit gracefully on pipe closure. `stop()` properly wakes all waiting threads via `event.set()` before clearing `_pending`. No zombie threads. |
+| N5 | `butterclaw_mcp.py` | `notify()` is spec-correct — omits `"id"` from the JSON-RPC payload, producing a valid notification per JSON-RPC 2.0. Handshake sends `notifications/initialized` correctly as a notification, not a request. |
+| N6 | `server.py` | stderr drain solved — the v0.3.2-era problem of stderr filling and deadlocking the child is fully resolved. `_read_stderr` runs as a daemon thread, continuously draining and logging child stderr. |
+
+---
+
 # Changelog: ButterClaw v0.4.0
 
 Release Date: April 9, 2026
@@ -314,3 +366,16 @@ Files Patched: `routing.html`, `server.py`, `watcher.py`, `butterclaw_mcp.py`, `
 - Ollama + Phi-3 local inference
 - SQLite short-term memory
 - SSE log streaming
+
+
+
+
+### 📦 v0.4.1 Complete Delivery Recap
+
+| File | Status | Key Fixes |
+|---|---|---|
+| **`routing.html`** | ✅ Delivered | R1 🔴 CSP comment removed; R2 🟡 dynamic protocol version; R3 🟡 auto-refresh on armed transition |
+| **`server.py`** | ✅ Delivered | S1 🔴 auto-restart chains handshake; S2–S5 🟡 thread safety, TOCTOU, MCP truth-telling, module-level threshold |
+| **`butterclaw_mcp.py`** | ✅ Delivered | M1 🟡 error correlation; M2 🟡 arg validation; M3 🟢 basicConfig documented; M4 🟢 pre-init guard |
+| **`index.html`** | ✅ Delivered | Clean — version alignment only |
+| **`CHANGELOG.md`** | ✅ Delivered | Full v0.4.1 QA audit entry with all 15 findings |
