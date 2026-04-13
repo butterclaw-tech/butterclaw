@@ -946,6 +946,22 @@ def ask_guardian_agent(threat_type, raw_data):
         level = current_level
         active_model = model_name
         gates = dict(gate_states)
+        
+    # --- [v0.5.0] THE MEMORY INJECTION PATCH ---
+    # Fetch the last 5 successful tool calls to provide temporal context
+    # This turns "Amnesia" into "Behavioral Tracking"
+    mcp_history = ledger_query(limit=5, status="success")
+    timeline_context = ""
+    
+    if mcp_history:
+        timeline_context = "RECENT SENTINEL ACTIONS (Sliding Window):\n"
+        for event in reversed(mcp_history):
+            if event['method'] == 'tools/call':
+                timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {event['status']}\n"
+        timeline_context += "\n"
+    # -------------------------------------------
+
+    # ... (mode_instructions and gate_context logic remains the same)
 
     mode_instructions = "Mode: RELAXED. Be lenient unless it's a clear RCE."
     if level == "2":
@@ -990,22 +1006,21 @@ def ask_guardian_agent(threat_type, raw_data):
         "messages": [
             {
                 "role": "system",
-                "content": f"You are ButterClaw, an expert Blue Team cybersecurity Guardian AI. {mode_instructions}{gate_context} {json_schema}"
+                "content": f"You are the ButterClaw Sentinel. {mode_instructions}{gate_context} {json_schema}"
             },
             {
                 "role": "user",
                 "content": (
-                    f"Analyze this local AI agent event:\n"
+                    f"{timeline_context}"  # Context injected here
+                    f"Analyze this NEW telemetry event:\n"
                     f"Threat Type: {threat_type}\n"
-                    f"Raw Data/Log: {raw_data}\n\n"
-                    f"Determine if this is a CSWH attempt, an Indirect Prompt Injection, or benign noise."
+                    f"Raw Log: {raw_data}\n\n"
+                    f"Evaluate the NEW event in light of RECENT ACTIONS. Is this a multi-stage attack or benign background noise?"
                 )
             }
         ],
         "stream": False,
-        "options": {
-            "temperature": 0.3
-        }
+        "options": {"temperature": 0.3}
     }
 
     try:
@@ -1035,6 +1050,45 @@ def ask_guardian_agent(threat_type, raw_data):
     except Exception as e:
         return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"Brain failure: {str(e)}"}
 
+# =============================================
+# THE AUDITOR
+# =============================================
+
+def run_self_audit(original_threat):
+    # 1. Let the system breathe. Wait 30 seconds so all MCP kinetic 
+    # actions finish logging to the temporal ledger.
+    time.sleep(30)
+    
+    # 2. Fetch the recent ledger history
+    mcp_history = ledger_query(limit=5, status="success")
+    timeline_context = "RECENT SENTINEL ACTIONS:\n"
+    # ... (format ledger history)
+
+    # 3. The Stateless Override (Hit the SAME model, but change the rules)
+    payload = {
+        "model": model_name, # Same butterclaw-optimized model
+        "format": "json",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are the ButterClaw Auditor. Review the RECENT ACTIONS. "
+                    "Your job is to determine if the system overreacted to a False Positive. "
+                    "Respond in JSON: {\"audit_verdict\": \"AGREEMENT\"|\"FALSE_POSITIVE\", \"reasoning\": \"...\"}"
+                )
+            },
+            {
+                "role": "user",
+                "content": f"{timeline_context}\nOriginal Trigger: {original_threat}\nDid we overreact?"
+            }
+        ],
+        "stream": False,
+        "options": {"temperature": 0.0} # Absolute zero. Cold logic only.
+    }
+
+    # 4. Execute the API call
+    # 5. If verdict is FALSE_POSITIVE, write a yellow/amber warning to the UI logs table.
+    # CRITICAL: We do NOT change `current_level`. Human must do that.
 
 # =============================================
 # API ROUTES
@@ -1140,6 +1194,16 @@ def analyze_threat():
                 action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
+
+        # --- THE AUDIT TRIGGER (Step B) ---
+        # Fire and forget. Let the auditor wake up in 30 seconds.
+        threading.Thread(
+            target=run_self_audit, 
+            args=(threat_type,), 
+            daemon=True
+        ).start()
+        # ----------------------------------
+        
     elif verdict_upper == "WARNING":
         color = "amber"
         icon = "⚠️"
