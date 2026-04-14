@@ -43,6 +43,14 @@ python butterclaw_mcp.py --transport sse --bind 0.0.0.0 --token x  # remote SSE
 
 **New UI controls:** Transport selector (stdio/SSE toggle) in the routing page MCP panel, with SSE URL and token config fields.
 
+### 🧠 Temporal Memory & Stateless Self-Reflection
+
+ButterClaw's cognitive architecture has been completely overhauled to eliminate "LLM amnesia" and prevent "Red Alert exhaustion":
+
+- **The Memory Injection Patch:** The reasoning engine now queries the `mcp_events` ledger before evaluating a new log. By reading a sliding window of its own recent kinetic actions, the AI tracks *behavioral drift* over time rather than treating every event in a vacuum.
+- **The Auditor (Stateless Self-Reflection):** A single-model, split-timeline audit loop. When a `CRITICAL` verdict fires, a non-blocking daemon thread waits 30 seconds for the kinetic actions to settle, then hits the exact same Gemma 4 model with a cold `temperature: 0.0` prompt. It reviews the sanitized event ledger (immune to the original prompt injection) to check its own math. If it detects a hallucination, it pushes a "🧐 Likely False Positive" amber warning to the UI, allowing human review without giving the AI the dangerous authority to autonomously lower its own shields.
+- **Plug-and-Play Portability:** The complex JSON schemas and dual-persona system prompts (The Instinct vs. The Auditor) are managed dynamically within `server.py`. This ensures the repository remains 100% plug-and-play for anyone running a vanilla `gemma4:e4b` model out of the box.
+
 ### 🔐 OAuth Provider Registry (Infrastructure)
 
 **New file:** `oauth_config.py` — Skeleton registry mapping providers to OAuth endpoints. Google Cloud and GitHub are configured and ready. Anthropic and OpenRouter remain API-key-only until they ship OAuth. The ButterVault OAuth token storage (`store_oauth_token` / `refresh_token_if_needed`) is scoped for v0.5.2.
@@ -59,7 +67,7 @@ The system is a fully decoupled, reactive architecture running 100% locally.
    A Python log-tail daemon monitoring live OS-level gateway logs. It sanitizes payloads (up to 4096 chars), dispatches HTTP requests to the API, and maintains an in-memory retry queue for transient failures.
 
 2. **The Brain (Ollama / Gemma 4):**
-   The localized reasoning engine. The model runs at `temperature: 0.3` for adaptive semantic reasoning and is strictly constrained to output valid JSON payloads containing a `verdict`, `confidence` score, `primary_gate`, and `reasoning`.
+   The localized reasoning engine utilizing a dual-persona, single-model architecture. It operates first as **The Instinct** (`temperature: 0.3`), evaluating raw OS telemetry against its recent temporal memory to catch obfuscated threats. It then acts as **The Auditor** (`temperature: 0.0`), performing background, stateless self-reflection on the sanitized ledger to flag false positive cascades. It is strictly constrained to output valid JSON payloads containing a `verdict`, `confidence` score, `primary_gate`, and `reasoning`.
 
 3. **The API (`server.py`):**
    A Flask middleware routing server, MCP process manager, and event ledger host. It parses the JSON from the Brain and acts as the central nervous system, evaluating the 85% threshold to decide whether to log a `BENIGN` event or trigger a `CRITICAL` execution. Manages the MCP lifecycle via two interchangeable managers — `MCPProcessManager` (stdio) and `MCPSSEClient` (remote SSE) — both behind a common `BaseMCPManager` interface. Every MCP tool call is logged to the event ledger before dispatch and updated on completion. Exposes six `/api/mcp/*` observability endpoints.
@@ -129,6 +137,8 @@ CREATE TABLE mcp_events (
 
 - **The ButterVault:** 100% protection against supply-chain credential harvesters — including the LiteLLM/TeamPCP poisoned package attack (March 2026) and the npm/Axios compromise (March 31, 2026).
 - **Event Ledger:** Persistent, append-only audit trail of every MCP tool invocation with timestamps, arguments, results, elapsed time, and trigger source. Queryable via API and inspectable in the dashboard.
+- **Temporal Memory (Behavioral Drift Tracking):** The AI reads a sliding window of recent tool executions to understand the context of the room, curing traditional "LLM amnesia."
+- **Stateless Self-Auditing:** A background daemon leverages a cold-logic `temperature: 0.0` prompt to review sanitized ledger data, safely catching its own hallucinations without exposing the audit loop to raw, poisoned logs.
 - **Dual MCP Transport:** stdio for local child process mode (default), SSE for network-accessible remote clients. Same protocol, same tools, same ledger — just different I/O.
 - **Logic Gate Trace (The Mind Reader):** The UI explicitly displays which analytical vector (`Intent`, `Origin`, or `Signature`) the LLM used to reach its conclusion.
 - **Structured JSON Intelligence:** The LLM is physically constrained to return parseable JSON, eliminating brittle regex string-matching.

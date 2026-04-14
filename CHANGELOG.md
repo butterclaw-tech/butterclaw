@@ -6,6 +6,215 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+# Changelog: ButterClaw v0.5.0
+
+Release Date: April 13, 2026
+
+## [0.5.0] - The Nervous System (Event Ledger + SSE Transport)
+
+### Added
+
+- **MCP Event Ledger (`server.py`):** Persistent, append-only audit log of every MCP tool invocation. New `mcp_events` SQLite table tracks timestamp, JSON-RPC id, method, tool name, arguments, status (pending/success/error/timeout), result (truncated to 4KB), elapsed time in ms, trigger source (auto/manual/critical/handshake/ping), and chain metadata (chain_id, chain_step) for future v0.5.1 tool chaining. Every `send()` call in both `MCPProcessManager` and `MCPSSEClient` writes a `pending` row before dispatch, then updates it with the outcome after response/timeout/error.
+
+- **Event Ledger API Endpoints (`server.py`):**
+  - `GET /api/mcp/events` — Query the ledger with optional filters: `?limit=`, `?tool=`, `?status=`, `?since=`. Returns events array, count, and total.
+  - `GET /api/mcp/events/<id>` — Fetch a single event with full result payload.
+
+- **Event Ledger UI Panel (`routing.html`):** New "Event Ledger" section below the MCP panel with a cyan/teal gradient header. Features:
+  - Filterable by tool name and status via dropdown selectors
+  - Each event row shows tool name, status dot (color-coded), elapsed ms, timestamp, and event ID
+  - Collapsible result preview — click "Show result" to expand the JSON response inline
+  - Arguments displayed as a truncated mono line
+  - Trigger source and chain metadata shown for non-auto events
+  - Auto-refreshes every 30s alongside MCP status polling
+  - Manual refresh button
+
+- **Event Ledger Nav Link (`index.html`):** New sidebar navigation entry "Event Ledger" linking to `routing.html#eventLedgerSection`.
+
+- **Temporal Memory Injection (`server.py`):** Cured "LLM amnesia" by patching `ask_guardian_agent()` to query the new `mcp_events` ledger before evaluating a log. The Brain now receives a sliding window of recent tool executions (temporal context) to detect behavioral drift over time rather than evaluating isolated snapshots.
+
+- **Stateless Self-Reflection / The Auditor (`server.py`):** Added `run_self_audit()`, a non-blocking background daemon thread that fires 30 seconds after any `CRITICAL` verdict. It hits the exact same model with a cold `temperature: 0.0` prompt to review the sanitized event ledger. If it detects a hallucination, it logs a "🧐 Likely False Positive" amber warning to the UI without lowering the system paranoia level (preserving the one-way ratchet).
+
+- **Dynamic Dual-Persona Prompting (`server.py`):** Embedded complex JSON schemas and dual-persona instructions (The Instinct vs. The Auditor) directly into the Flask API request payloads. This guarantees 100% plug-and-play portability for users cloning the repo and running vanilla `gemma4:e4b`, eliminating the strict requirement for a custom compiled `Modelfile`.
+
+- **Transport Abstraction Layer (`mcp_transport.py` — NEW FILE):** Decouples MCP I/O from protocol logic. Two transport implementations behind a common `BaseTransport` interface (`read()`, `write()`, `start()`, `stop()`):
+  - `StdioTransport` — Wraps stdin/stdout. Extracts the I/O loop that was previously inline in `butterclaw_mcp.py`'s `main()`.
+  - `SSETransport` — Runs a threaded HTTP server using stdlib `http.server` (zero new pip dependencies). `GET /sse` opens a Server-Sent Events stream, `POST /message` receives JSON-RPC requests. Supports optional bearer token authentication. Sends 30s keepalive comments to prevent connection timeout. First SSE event is `event: endpoint` telling the client where to POST (MCP SSE spec compliant).
+  - `create_transport()` factory function for CLI flag → transport instance creation.
+
+- **SSE Transport CLI Flags (`butterclaw_mcp.py`):** New argparse flags:
+  - `--transport stdio|sse` — Select transport mode (default: stdio)
+  - `--bind HOST` — Bind address for SSE (default: 127.0.0.1)
+  - `--port PORT` — Port for SSE (default: 5001)
+  - `--token SECRET` — Bearer token for SSE auth. Required when binding to 0.0.0.0.
+  - Safety: binding to 0.0.0.0 without --token is rejected at startup.
+
+- **MCPSSEClient (`server.py` — NEW CLASS):** Connects to a remote MCP server running SSE transport. Same interface as `MCPProcessManager` (`BaseMCPManager`):
+  - `send()` POSTs JSON-RPC to `/message`, waits for correlated response on the SSE stream
+  - `_read_sse_stream()` background thread parses SSE events, handles endpoint discovery, message correlation, and automatic reconnection (5s backoff)
+  - Health check via `GET /health` on startup
+  - Auth via `Authorization: Bearer <token>` header on all requests
+  - Ledger integration: every `send()` logs to the event ledger identically to stdio manager
+
+- **BaseMCPManager Interface (`server.py`):** Abstract base class defining the common interface for both `MCPProcessManager` and `MCPSSEClient`. Both implement `send()`, `notify()`, `handshake()`, `status()`, `start()`, `stop()`, `restart()`, `is_alive`, and `transport_name`.
+
+- **MCP Manager Factory (`server.py`):** `create_mcp_manager()` reads `mcp_transport_mode` and `mcp_sse_url` from config to instantiate the correct manager. `mcp_restart` endpoint detects transport mode changes and swaps the manager instance.
+
+- **Transport Selector UI (`routing.html`):** New toggle in the MCP panel — stdio vs SSE buttons with violet highlight. Selecting SSE reveals a config panel with URL input, token input, and "Save SSE Config & Restart MCP" button. Saves to `/api/settings` then triggers `/api/mcp/restart`.
+
+- **MCP Transport Settings (`server.py`):** Three new config fields exposed via `/api/settings`:
+  - `mcp_transport` — "stdio" or "sse"
+  - `mcp_sse_url` — Remote MCP server URL
+  - `mcp_sse_token_set` — Boolean (token existence, never exposes the actual token)
+
+- **OAuth Provider Registry (`oauth_config.py` — NEW FILE):** Skeleton configuration mapping provider names to OAuth endpoints, scopes, and metadata. Four providers registered:
+  - Anthropic (Claude) — api_key only (no public OAuth as of April 2026)
+  - OpenRouter — api_key only
+  - Google Cloud (Gemini) — OAuth 2.0 supported, endpoints configured
+  - GitHub — OAuth 2.0 supported, endpoints configured
+  - Helper functions: `get_provider()`, `list_providers()`, `list_oauth_capable()`, `list_api_key_only()`, `get_auth_method()`
+
+### Changed
+
+- **`butterclaw_mcp.py` Main Loop:** Refactored from raw `sys.stdin.readline()` / `sys.stdout.write()` to `transport.read()` / `transport.write()`. Protocol handler (`ButterClawMCPServer.route()`) was already transport-agnostic — only the I/O layer changed. Added `KeyboardInterrupt` handler and `finally` block for clean transport shutdown.
+
+- **`server.py` Import Alias:** `import requests` renamed to `import requests as http_requests` to avoid collision with Flask's `request` object now that both are used in the SSE client.
+
+- **`/api/mcp/status` Response:** Now includes `transport_mode` ("stdio" or "sse"), `event_count` (total ledger entries), and `remote_url` (for SSE clients).
+
+- **`/api/mcp/restart` Endpoint:** Detects if the transport mode changed since the current manager was created. If so, stops the old manager and creates a new one via the factory before restarting.
+
+- **`/api/mcp/ping` Endpoint:** Now passes `trigger="ping"` to `send()`, so pings are recorded in the event ledger.
+
+- **`/api/settings` GET Response:** Now includes `mcp_transport`, `mcp_sse_url`, and `mcp_sse_token_set`.
+
+- **Version Strings:** All files updated to `v0.5.0` — `server.py`, `butterclaw_mcp.py`, `routing.html` footer/badges, `index.html` comments.
+
+- **MCP Info Box Text (`routing.html`):** Updated description to mention dual transport and event ledger.
+
+### Architecture Notes
+
+**Transport Abstraction:**
+```
+ButterClawMCPServer.route(request) → response
+        ↑                    ↓
+   transport.read()    transport.write()
+        ↑                    ↓
+   ┌────┴────┐         ┌────┴────┐
+   │  stdio  │         │   SSE   │
+   │ (local) │         │(network)│
+   └─────────┘         └─────────┘
+```
+
+**Event Ledger Schema:**
+```sql
+CREATE TABLE mcp_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp  TEXT NOT NULL,          -- ISO 8601 UTC
+    req_id     INTEGER,                -- JSON-RPC id
+    method     TEXT NOT NULL,          -- e.g. "tools/call"
+    tool_name  TEXT,                   -- e.g. "execute_gibson_kill"
+    arguments  TEXT,                   -- JSON string of input args
+    status     TEXT NOT NULL,          -- pending | success | error | timeout
+    result     TEXT,                   -- JSON string (truncated to 4KB)
+    elapsed_ms REAL,                   -- round-trip time
+    trigger    TEXT DEFAULT 'auto',    -- auto | manual | critical | handshake | ping
+    chain_id   TEXT,                   -- groups steps in a chain (v0.5.1)
+    chain_step INTEGER                 -- step number within chain (v0.5.1)
+);
+```
+
+**Dual Manager Architecture:**
+```
+server.py
+    │
+    ├── mcp_manager = create_mcp_manager()
+    │       │
+    │       ├── MCPProcessManager (stdio)     ← local child process
+    │       │       ├── stdin writer
+    │       │       ├── stdout reader thread
+    │       │       ├── stderr drain thread
+    │       │       └── ledger hooks in send()
+    │       │
+    │       └── MCPSSEClient (sse)            ← remote HTTP
+    │               ├── POST /message sender
+    │               ├── SSE stream reader thread
+    │               ├── auto-reconnect (5s backoff)
+    │               └── ledger hooks in send()
+    │
+    └── Both implement BaseMCPManager interface
+```
+
+**New Dependencies:** None. SSE transport uses stdlib `http.server` and `threading`. SSE client uses existing `requests` library.
+
+**New Files:**
+- `mcp_transport.py` — Transport abstraction layer (~250 lines)
+- `oauth_config.py` — OAuth provider registry skeleton (~100 lines)
+
+---
+
+### 📦 v0.4.1 Complete Delivery Recap
+
+| File | Status | Key Fixes |
+|---|---|---|
+| **`routing.html`** | ✅ Delivered | R1 🔴 CSP comment removed; R2 🟡 dynamic protocol version; R3 🟡 auto-refresh on armed transition |
+| **`server.py`** | ✅ Delivered | S1 🔴 auto-restart chains handshake; S2–S5 🟡 thread safety, TOCTOU, MCP truth-telling, module-level threshold |
+| **`butterclaw_mcp.py`** | ✅ Delivered | M1 🟡 error correlation; M2 🟡 arg validation; M3 🟢 basicConfig documented; M4 🟢 pre-init guard |
+| **`index.html`** | ✅ Delivered | Clean — version alignment only |
+| **`CHANGELOG.md`** | ✅ Delivered | Full v0.4.1 QA audit entry with all 15 findings |
+
+### Patched — v0.4.0 QA Audit for v0.4.1
+
+Audit Date: April 11, 2026
+Scope: Full codebase review of v0.4.0 release — 4 files audited
+Findings: 15 total — 2 🔴 Bugs, 7 🟡 Issues, 6 🟢 Notes
+
+#### `routing.html` — 3 patches (R1, R2, R3)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| R1 | 🔴 Bug | HTML comment placed **inside** the CSP `content` attribute: `<!-- PATCHED B1: removed wildcard * from connect-src -->`. Browsers parse `<!--` as literal CSP text, not as a comment — likely breaking the `img-src 'self' data:` directive that follows. **Introduced by the v0.3.2 B1 patch itself** (fix was correct, comment placement was not). | Removed the comment from inside the attribute. Audit trail preserved as a normal HTML comment above the `<meta>` tag. |
+| R2 | 🟡 Issue | Protocol version `"2024-11-05"` hardcoded in a static `<div>` in the MCP info grid. If `butterclaw_mcp.py` updates its `protocolVersion`, the UI shows stale info. | Changed to dynamic: `mcpProtocolVersion` div populated from `/api/mcp/status` response (`data.protocol_version`). `status()` dict in `server.py` now includes `protocol_version`. |
+| R3 | 🟡 Issue | `mcpFetchTools()` runs once at page load and on manual Refresh click — not on a periodic interval. When the server transitions from offline → online, `mcpCheckStatus()` updates the badge, but the tool list stays empty until manual refresh. | Added `_prevMcpArmed` state tracking. `mcpCheckStatus()` now calls `mcpFetchTools()` automatically when state transitions from non-armed → armed. |
+
+#### `server.py` — 5 patches (S1, S2, S3, S4, S5)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| S1 | 🔴 Bug | **`send()` auto-restart skips handshake.** When `send()` detects a dead child, it calls `self.start()` but **not** `self.handshake()`. After auto-restart: `handshake_ok` stays `False`, `discovered_tools` is empty/stale, and the UI shows "Degraded" even though the child is alive. The `restart()` method correctly chains `start()` → `handshake()`, but the auto-restart path inside `send()` does not. | Added `self.handshake()` after `self.start()` in the auto-restart block inside `send()`. Handshake failure is logged but send proceeds (best-effort recovery). |
+| S2 | 🟡 Issue | `_req_counter += 1` is not atomic. Two concurrent Flask threads calling `send()` could receive the same `req_id`, causing response correlation collisions in `_pending`. Safe under Flask's default single-threaded `app.run()`, but breaks under any multi-threaded WSGI server (gunicorn with threads, waitress). | Replaced with `itertools.count(1)` — thread-safe in CPython without requiring a lock. |
+| S3 | 🟡 Issue | `status()` has a TOCTOU race on `self.process`. Between the truthiness check and `.pid` access, another thread could call `stop()` and set `self.process = None`, raising `AttributeError`. | Snapshot the reference: `proc = self.process` at the top of `status()`, use `proc` throughout. |
+| S4 | 🟡 Issue | **CRITICAL verdict path ignores MCP `send()` return values.** In `analyze_threat()`, the CRITICAL block calls `mcp_manager.send("tools/call", ...)` for `execute_gibson_kill` and `rotate_keys` but discards both return values. If the MCP child is dead or calls timeout, `action` still reports `"SIGKILL | Keys Buttered"`. Note: `buttervault.butter_keys()` IS a direct local call, so keys ARE buttered — but gibson_kill success is unverified. Same pattern in `manual_key_rotation()`. | Capture return values. Check for `"error"` key. Append failure details to the action string so the audit log tells the truth: `"Keys Buttered | MCP partial failure: gibson_kill"`. |
+| S5 | 🟡 Issue | `CONFIDENCE_THRESHOLD = 85` defined as a local variable inside `analyze_threat()`, but the boot banner hardcodes `85` in a separate print statement. The two references are not linked — changing the threshold in one place leaves the other stale. | Extracted `CONFIDENCE_THRESHOLD` to module-level constant. Both `analyze_threat()` and the boot banner reference it. |
+
+#### `butterclaw_mcp.py` — 4 patches (M1, M2, M3, M4)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| M1 | 🟡 Issue | General exception handler in the main loop sends `"id": None` in the error response even though the parsed `request` dict may be in scope. Parent's stdout reader can't correlate the response → falls through as "Orphaned response" → parent times out instead of getting the error. | Track `last_request` after successful JSON parse. General `except Exception` block now sends `"id": last_request.get("id")`. `JSONDecodeError` block still sends `"id": None` (correct — no valid request exists). |
+| M2 | 🟡 Issue | `handle_tools_call` passes `**tool_args` directly to tool functions with no schema validation. If an MCP client sends unexpected arguments, the function raises `TypeError` with an unhelpful Python traceback message instead of a clean schema violation response. | Built `_TOOL_ALLOWED_ARGS` lookup from `inputSchema.properties` at module load. `handle_tools_call` intersects incoming keys against allowed keys, returns a clean `isError: true` content response for unknown args before dispatch. |
+| M3 | 🟢 Note | `logging.basicConfig()` is at module level — this was flagged as I6 in v0.3.2 and moved into function scope. However, in v0.4.0 this file runs as a **standalone subprocess** (not imported by server.py), so module-level config is architecturally correct. **Not a regression.** | No code fix needed. Added architectural comment documenting the justification. |
+| M4 | 🟢 Note | `initialized` flag is set in `handle_initialize` but never checked — `tools/call` doesn't gate on whether `initialize` was called first. MCP spec says servers SHOULD reject pre-initialization requests. Currently harmless because the parent always handshakes first. | Added `if not self.initialized` guard in `handle_tools_call` returning `-32002` (Server not initialized). Defense-in-depth only. |
+
+#### `index.html` — Clean (version alignment only)
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| — | 🟢 Clean | No issues found. CSP is tight, all dynamic content uses `textContent` and `createElement`, MCP badge integration follows existing sidebar patterns. | Version comments updated from v0.4.0 → v0.4.1 for alignment. |
+
+#### Cross-File Audit Notes — 🟢 Positive
+
+| # | Scope | Finding |
+|---|-------|---------|
+| N1 | `index.html`, `routing.html` | XSS safety maintained — all new MCP panel code uses `textContent` and `createElement` for dynamic content. No `innerHTML` with server data anywhere in the v0.4.0 patch set. |
+| N2 | `index.html`, `routing.html` | MCP badge visual states are consistent — both pages use the same three-state model (Armed / Degraded / Offline) with matching color schemes and logic. |
+| N3 | `server.py` | ButterVault remains a direct local call — `buttervault.butter_keys()` in the CRITICAL path is a direct function call, not routed through MCP. Key destruction does not depend on the child process being alive. Correct architectural decision. |
+| N4 | `server.py` | Reader thread shutdown is clean — `_read_stdout` and `_read_stderr` both exit gracefully on pipe closure. `stop()` properly wakes all waiting threads via `event.set()` before clearing `_pending`. No zombie threads. |
+| N5 | `butterclaw_mcp.py` | `notify()` is spec-correct — omits `"id"` from the JSON-RPC payload, producing a valid notification per JSON-RPC 2.0. Handshake sends `notifications/initialized` correctly as a notification, not a request. |
+| N6 | `server.py` | stderr drain solved — the v0.3.2-era problem of stderr filling and deadlocking the child is fully resolved. `_read_stderr` runs as a daemon thread, continuously draining and logging child stderr. |
+
+---
+
 # Changelog: ButterClaw v0.4.0
 
 Release Date: April 9, 2026
