@@ -147,6 +147,25 @@ server.py
 
 ---
 
+### Changes from v0.4.1 → v0.5.0 README:
+
+| Section | Change |
+|---|---|
+| **Title** | `v0.4.1: QA Sterilization Patch` → `v0.5.0: The Nervous System` |
+| **Date** | April 11 → April 12, 2026 |
+| **What's New** | Rewritten — three subsections: Event Ledger, SSE Transport, OAuth Registry |
+| **Architecture §3** | Added event ledger host role, dual manager description, six endpoints |
+| **Architecture §5** | Added transport abstraction, CLI flags, dual transport description |
+| **Architecture §6** | Added Event Ledger panel, transport selector, nav link |
+| **New sections** | Transport Abstraction diagram, Dual Manager diagram, Event Ledger Schema |
+| **Key Features** | +2 bullets: Event Ledger, Dual MCP Transport |
+| **Quick Start** | Added SSE transport instructions section, ledger boot log line |
+| **Live Simulation** | Added step 7: check event ledger for tool call records |
+| **API Reference** | +2 endpoints (`/api/mcp/events`, `/api/mcp/events/<id>`), updated descriptions |
+| **Roadmap** | v0.5.0 ✅, added v0.5.1 (Tool Chaining) and v0.5.2 (OAuth) |
+
+---
+
 ### 📦 v0.4.1 Complete Delivery Recap
 
 | File | Status | Key Fixes |
