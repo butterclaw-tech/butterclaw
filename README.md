@@ -12,7 +12,7 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 ## 🚀 What's New in v0.5.0?
 
-**The Nervous System** — two major pillars plus infrastructure groundwork:
+**The Nervous System** — two major pillars, a memory upgrade to the core engine, plus infrastructure groundwork:
 
 ### 📋 Event Ledger (Persistent Audit Log)
 
