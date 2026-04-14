@@ -6,9 +6,160 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+# Changelog: ButterClaw v0.5.0
+
+Release Date: April 14, 2026
+
+## [0.5.0] - The Nervous System (Event Ledger + SSE Transport)
+
+### Added
+
+- **MCP Event Ledger (`server.py`):** Persistent, append-only audit log of every MCP tool invocation. New `mcp_events` SQLite table tracks timestamp, JSON-RPC id, method, tool name, arguments, status (pending/success/error/timeout), result (truncated to 4KB), elapsed time in ms, trigger source (auto/manual/critical/handshake/ping), and chain metadata (chain_id, chain_step) for future v0.5.1 tool chaining. Every `send()` call in both `MCPProcessManager` and `MCPSSEClient` writes a `pending` row before dispatch, then updates it with the outcome after response/timeout/error.
+
+- **Event Ledger API Endpoints (`server.py`):**
+  - `GET /api/mcp/events` — Query the ledger with optional filters: `?limit=`, `?tool=`, `?status=`, `?since=`. Returns events array, count, and total.
+  - `GET /api/mcp/events/<id>` — Fetch a single event with full result payload.
+
+- **Event Ledger UI Panel (`routing.html`):** New "Event Ledger" section below the MCP panel with a cyan/teal gradient header. Features:
+  - Filterable by tool name and status via dropdown selectors
+  - Each event row shows tool name, status dot (color-coded), elapsed ms, timestamp, and event ID
+  - Collapsible result preview — click "Show result" to expand the JSON response inline
+  - Arguments displayed as a truncated mono line
+  - Trigger source and chain metadata shown for non-auto events
+  - Auto-refreshes every 30s alongside MCP status polling
+  - Manual refresh button
+
+- **Event Ledger Nav Link (`index.html`):** New sidebar navigation entry "Event Ledger" linking to `routing.html#eventLedgerSection`.
+
+- **Transport Abstraction Layer (`mcp_transport.py` — NEW FILE):** Decouples MCP I/O from protocol logic. Two transport implementations behind a common `BaseTransport` interface (`read()`, `write()`, `start()`, `stop()`):
+  - `StdioTransport` — Wraps stdin/stdout. Extracts the I/O loop that was previously inline in `butterclaw_mcp.py`'s `main()`.
+  - `SSETransport` — Runs a threaded HTTP server using stdlib `http.server` (zero new pip dependencies). `GET /sse` opens a Server-Sent Events stream, `POST /message` receives JSON-RPC requests. Supports optional bearer token authentication. Sends 30s keepalive comments to prevent connection timeout. First SSE event is `event: endpoint` telling the client where to POST (MCP SSE spec compliant).
+  - `create_transport()` factory function for CLI flag → transport instance creation.
+
+- **SSE Transport CLI Flags (`butterclaw_mcp.py`):** New argparse flags:
+  - `--transport stdio|sse` — Select transport mode (default: stdio)
+  - `--bind HOST` — Bind address for SSE (default: 127.0.0.1)
+  - `--port PORT` — Port for SSE (default: 5001)
+  - `--token SECRET` — Bearer token for SSE auth. Required when binding to 0.0.0.0.
+  - Safety: binding to 0.0.0.0 without --token is rejected at startup.
+
+- **MCPSSEClient (`server.py` — NEW CLASS):** Connects to a remote MCP server running SSE transport. Same interface as `MCPProcessManager` (`BaseMCPManager`):
+  - `send()` POSTs JSON-RPC to `/message`, waits for correlated response on the SSE stream
+  - `_read_sse_stream()` background thread parses SSE events, handles endpoint discovery, message correlation, and automatic reconnection (5s backoff)
+  - Health check via `GET /health` on startup
+  - Auth via `Authorization: Bearer <token>` header on all requests
+  - Ledger integration: every `send()` logs to the event ledger identically to stdio manager
+
+- **BaseMCPManager Interface (`server.py`):** Abstract base class defining the common interface for both `MCPProcessManager` and `MCPSSEClient`. Both implement `send()`, `notify()`, `handshake()`, `status()`, `start()`, `stop()`, `restart()`, `is_alive`, and `transport_name`.
+
+- **MCP Manager Factory (`server.py`):** `create_mcp_manager()` reads `mcp_transport_mode` and `mcp_sse_url` from config to instantiate the correct manager. `mcp_restart` endpoint detects transport mode changes and swaps the manager instance.
+
+- **Transport Selector UI (`routing.html`):** New toggle in the MCP panel — stdio vs SSE buttons with violet highlight. Selecting SSE reveals a config panel with URL input, token input, and "Save SSE Config & Restart MCP" button. Saves to `/api/settings` then triggers `/api/mcp/restart`.
+
+- **MCP Transport Settings (`server.py`):** Three new config fields exposed via `/api/settings`:
+  - `mcp_transport` — "stdio" or "sse"
+  - `mcp_sse_url` — Remote MCP server URL
+  - `mcp_sse_token_set` — Boolean (token existence, never exposes the actual token)
+
+- **OAuth Provider Registry (`oauth_config.py` — NEW FILE):** Skeleton configuration mapping provider names to OAuth endpoints, scopes, and metadata. Four providers registered:
+  - Anthropic (Claude) — api_key only (no public OAuth as of April 2026)
+  - OpenRouter — api_key only
+  - Google Cloud (Gemini) — OAuth 2.0 supported, endpoints configured
+  - GitHub — OAuth 2.0 supported, endpoints configured
+  - Helper functions: `get_provider()`, `list_providers()`, `list_oauth_capable()`, `list_api_key_only()`, `get_auth_method()`
+
+### Changed
+
+- **`butterclaw_mcp.py` Main Loop:** Refactored from raw `sys.stdin.readline()` / `sys.stdout.write()` to `transport.read()` / `transport.write()`. Protocol handler (`ButterClawMCPServer.route()`) was already transport-agnostic — only the I/O layer changed. Added `KeyboardInterrupt` handler and `finally` block for clean transport shutdown.
+
+- **`server.py` Import Alias:** `import requests` renamed to `import requests as http_requests` to avoid collision with Flask's `request` object now that both are used in the SSE client.
+
+- **`/api/mcp/status` Response:** Now includes `transport_mode` ("stdio" or "sse"), `event_count` (total ledger entries), and `remote_url` (for SSE clients).
+
+- **`/api/mcp/restart` Endpoint:** Detects if the transport mode changed since the current manager was created. If so, stops the old manager and creates a new one via the factory before restarting.
+
+- **`/api/mcp/ping` Endpoint:** Now passes `trigger="ping"` to `send()`, so pings are recorded in the event ledger.
+
+- **`/api/settings` GET Response:** Now includes `mcp_transport`, `mcp_sse_url`, and `mcp_sse_token_set`.
+
+- **Version Strings:** All files updated to `v0.5.0` — `server.py`, `butterclaw_mcp.py`, `routing.html` footer/badges, `index.html` comments.
+
+- **MCP Info Box Text (`routing.html`):** Updated description to mention dual transport and event ledger.
+
+### Architecture Notes
+
+**Transport Abstraction:**
+```
+ButterClawMCPServer.route(request) → response
+        ↑                    ↓
+   transport.read()    transport.write()
+        ↑                    ↓
+   ┌────┴────┐         ┌────┴────┐
+   │  stdio  │         │   SSE   │
+   │ (local) │         │(network)│
+   └─────────┘         └─────────┘
+```
+
+**Event Ledger Schema:**
+```sql
+CREATE TABLE mcp_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp  TEXT NOT NULL,          -- ISO 8601 UTC
+    req_id     INTEGER,                -- JSON-RPC id
+    method     TEXT NOT NULL,          -- e.g. "tools/call"
+    tool_name  TEXT,                   -- e.g. "execute_gibson_kill"
+    arguments  TEXT,                   -- JSON string of input args
+    status     TEXT NOT NULL,          -- pending | success | error | timeout
+    result     TEXT,                   -- JSON string (truncated to 4KB)
+    elapsed_ms REAL,                   -- round-trip time
+    trigger    TEXT DEFAULT 'auto',    -- auto | manual | critical | handshake | ping
+    chain_id   TEXT,                   -- groups steps in a chain (v0.5.1)
+    chain_step INTEGER                 -- step number within chain (v0.5.1)
+);
+```
+
+**Dual Manager Architecture:**
+```
+server.py
+    │
+    ├── mcp_manager = create_mcp_manager()
+    │       │
+    │       ├── MCPProcessManager (stdio)     ← local child process
+    │       │       ├── stdin writer
+    │       │       ├── stdout reader thread
+    │       │       ├── stderr drain thread
+    │       │       └── ledger hooks in send()
+    │       │
+    │       └── MCPSSEClient (sse)            ← remote HTTP
+    │               ├── POST /message sender
+    │               ├── SSE stream reader thread
+    │               ├── auto-reconnect (5s backoff)
+    │               └── ledger hooks in send()
+    │
+    └── Both implement BaseMCPManager interface
+```
+
+**New Dependencies:** None. SSE transport uses stdlib `http.server` and `threading`. SSE client uses existing `requests` library.
+
+**New Files:**
+- `mcp_transport.py` — Transport abstraction layer (~250 lines)
+- `oauth_config.py` — OAuth provider registry skeleton (~100 lines)
+
+---
+
+### 📦 v0.4.1 Complete Delivery Recap
+
+| File | Status | Key Fixes |
+|---|---|---|
+| **`routing.html`** | ✅ Delivered | R1 🔴 CSP comment removed; R2 🟡 dynamic protocol version; R3 🟡 auto-refresh on armed transition |
+| **`server.py`** | ✅ Delivered | S1 🔴 auto-restart chains handshake; S2–S5 🟡 thread safety, TOCTOU, MCP truth-telling, module-level threshold |
+| **`butterclaw_mcp.py`** | ✅ Delivered | M1 🟡 error correlation; M2 🟡 arg validation; M3 🟢 basicConfig documented; M4 🟢 pre-init guard |
+| **`index.html`** | ✅ Delivered | Clean — version alignment only |
+| **`CHANGELOG.md`** | ✅ Delivered | Full v0.4.1 QA audit entry with all 15 findings |
+
 ### Patched — v0.4.0 QA Audit for v0.4.1
 
-Audit Date: April 13, 2026
+Audit Date: April 11, 2026
 Scope: Full codebase review of v0.4.0 release — 4 files audited
 Findings: 15 total — 2 🔴 Bugs, 7 🟡 Issues, 6 🟢 Notes
 
@@ -366,16 +517,3 @@ Files Patched: `routing.html`, `server.py`, `watcher.py`, `butterclaw_mcp.py`, `
 - Ollama + Phi-3 local inference
 - SQLite short-term memory
 - SSE log streaming
-
-
-
-
-### 📦 v0.4.1 Complete Delivery Recap
-
-| File | Status | Key Fixes |
-|---|---|---|
-| **`routing.html`** | ✅ Delivered | R1 🔴 CSP comment removed; R2 🟡 dynamic protocol version; R3 🟡 auto-refresh on armed transition |
-| **`server.py`** | ✅ Delivered | S1 🔴 auto-restart chains handshake; S2–S5 🟡 thread safety, TOCTOU, MCP truth-telling, module-level threshold |
-| **`butterclaw_mcp.py`** | ✅ Delivered | M1 🟡 error correlation; M2 🟡 arg validation; M3 🟢 basicConfig documented; M4 🟢 pre-init guard |
-| **`index.html`** | ✅ Delivered | Clean — version alignment only |
-| **`CHANGELOG.md`** | ✅ Delivered | Full v0.4.1 QA audit entry with all 15 findings |

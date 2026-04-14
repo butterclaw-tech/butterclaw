@@ -1,5 +1,5 @@
 """
-ButterClaw v0.4.1 — The Claws (MCP Execution Layer)
+ButterClaw v0.5.0 — The Claws (MCP Execution Layer)
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.
@@ -19,10 +19,17 @@ Changelog:
            - M2: Argument validation against inputSchema before dispatch
            - M3: Module-level basicConfig documented as architecturally correct
            - M4: Pre-initialization guard on tools/call (MCP spec compliance)
+  [v0.5.0] The Nervous System:
+           - Transport abstraction: main loop now uses BaseTransport interface
+           - CLI flags: --transport stdio|sse, --host, --port, --token
+           - SSE transport runs a threaded HTTP server (stdlib, zero new deps)
+           - stdio remains the default for local child process mode
+           - Protocol logic unchanged — only I/O layer refactored
 
 *** KINETIC OS ACTIONS REMAIN IN DRY RUN / SIMULATION MODE ***
 """
 
+import argparse
 import logging
 import time
 import json
@@ -30,6 +37,8 @@ import sys
 import os
 import platform
 import socket
+
+from mcp_transport import create_transport
 
 # =====================================================================
 # LOGGING — strictly stderr to protect the JSON-RPC stdout pipe
@@ -46,7 +55,7 @@ logger = logging.getLogger("butterclaw.mcp")
 # CONFIGURATION
 # =====================================================================
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 PROTOCOL_VERSION = "2024-11-05"  # MCP spec version this server speaks
 DRY_RUN = True                  # SAFETY HARNESS — kinetic actions are simulated
 
@@ -223,13 +232,14 @@ TOOL_DISPATCH = {
 
 
 # =====================================================================
-# MCP SERVER — Protocol Handler
+# MCP SERVER — Protocol Handler (transport-agnostic)
 # =====================================================================
 
 class ButterClawMCPServer:
     """
-    MCP-compliant stdio JSON-RPC 2.0 server.
-    Speaks the Model Context Protocol over stdin/stdout.
+    MCP-compliant JSON-RPC 2.0 protocol handler.
+    Transport-agnostic: takes a dict in, returns a dict out.
+    The I/O layer (stdio, SSE, etc.) is handled by mcp_transport.
     """
 
     def __init__(self):
@@ -359,59 +369,132 @@ class ButterClawMCPServer:
 
 
 # =====================================================================
-# STDIO MAIN LOOP
+# CLI ARGUMENT PARSER
+# =====================================================================
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="ButterClaw MCP Execution Layer — Model Context Protocol server.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Transport modes:
+  stdio   Read JSON-RPC from stdin, write to stdout. (default)
+          Used when spawned as a child process by server.py.
+
+  sse     Run a threaded HTTP server. Clients connect via GET /sse
+          for Server-Sent Events and POST /message for JSON-RPC.
+          Used for remote or network-accessible MCP clients.
+
+Examples:
+  python butterclaw_mcp.py                              # stdio (default)
+  python butterclaw_mcp.py --transport sse               # SSE on 127.0.0.1:5001
+  python butterclaw_mcp.py --transport sse --port 6001   # SSE on custom port
+  python butterclaw_mcp.py --transport sse --bind 0.0.0.0 --token mysecret
+        """
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"ButterClaw MCP v{VERSION}"
+    )
+    parser.add_argument(
+        "--transport", choices=["stdio", "sse"], default="stdio",
+        help="Transport mode: stdio (default) or sse."
+    )
+    parser.add_argument(
+        "--bind", default="127.0.0.1", metavar="HOST",
+        help="Bind address for SSE transport (default: 127.0.0.1). "
+             "Use 0.0.0.0 for remote access (requires --token)."
+    )
+    parser.add_argument(
+        "--port", type=int, default=5001,
+        help="Port for SSE transport (default: 5001)."
+    )
+    parser.add_argument(
+        "--token", default=None, metavar="SECRET",
+        help="Bearer token for SSE transport authentication. "
+             "Required when binding to 0.0.0.0."
+    )
+    return parser.parse_args()
+
+
+# =====================================================================
+# MAIN LOOP — Transport-agnostic
+# [v0.5.0] Refactored to use BaseTransport interface.
+# The protocol handler (ButterClawMCPServer) takes a dict and returns
+# a dict. The transport handles all I/O serialization.
 # =====================================================================
 
 def main():
-    logger.info(f"🦞 ButterClaw MCP v{VERSION} starting (PID {os.getpid()})...")
-    logger.info(f"   Protocol: {PROTOCOL_VERSION}")
-    logger.info(f"   DRY_RUN:  {DRY_RUN}")
-    logger.info(f"   Tools:    {len(TOOL_DEFINITIONS)}")
+    args = parse_args()
 
+    # Safety check: remote binding without a token is dangerous
+    if args.transport == "sse" and args.bind == "0.0.0.0" and not args.token:
+        logger.error("❌ Binding SSE to 0.0.0.0 without --token is not allowed.")
+        logger.error("   Use --token <secret> to require authentication for remote clients.")
+        sys.exit(1)
+
+    logger.info(f"🦞 ButterClaw MCP v{VERSION} starting (PID {os.getpid()})...")
+    logger.info(f"   Protocol:  {PROTOCOL_VERSION}")
+    logger.info(f"   Transport: {args.transport}")
+    logger.info(f"   DRY_RUN:   {DRY_RUN}")
+    logger.info(f"   Tools:     {len(TOOL_DEFINITIONS)}")
+
+    if args.transport == "sse":
+        logger.info(f"   Bind:      {args.bind}:{args.port}")
+        logger.info(f"   Auth:      {'token required' if args.token else 'none (local only)'}")
+
+    # Create the transport
+    transport = create_transport(
+        transport_type=args.transport,
+        host=args.bind,
+        port=args.port,
+        token=args.token
+    )
+
+    # Create the protocol handler
     server = ButterClawMCPServer()
+
+    # Start the transport
+    transport.start()
 
     # Track last successfully parsed request for error correlation [M1]
     last_request = {}
 
-    while True:
-        try:
-            line = sys.stdin.readline()
-            if not line:
-                logger.info("📡 [MCP] stdin closed. Shutting down.")
-                break
+    try:
+        while True:
+            try:
+                request = transport.read()
 
-            line = line.strip()
-            if not line:
-                continue
+                if request is None:
+                    logger.info("📡 [MCP] Transport closed. Shutting down.")
+                    break
 
-            request = json.loads(line)
-            last_request = request  # [M1] save for error correlation
-            response = server.route(request)
+                last_request = request  # [M1] save for error correlation
+                response = server.route(request)
 
-            if response is not None:
-                sys.stdout.write(json.dumps(response) + "\n")
-                sys.stdout.flush()
+                if response is not None:
+                    transport.write(response)
 
-        except json.JSONDecodeError as e:
-            # No valid request exists — id must be None per JSON-RPC spec
-            logger.error(f"❌ JSON parse error: {e}")
-            err = {"jsonrpc": "2.0", "id": None,
-                   "error": {"code": -32700, "message": f"Parse error: {e}"}}
-            sys.stdout.write(json.dumps(err) + "\n")
-            sys.stdout.flush()
+            except json.JSONDecodeError as e:
+                # No valid request exists — id must be None per JSON-RPC spec
+                logger.error(f"❌ JSON parse error: {e}")
+                err = {"jsonrpc": "2.0", "id": None,
+                       "error": {"code": -32700, "message": f"Parse error: {e}"}}
+                transport.write(err)
 
-        except Exception as e:
-            # [M1] Correlate error response to request id when available
-            # If we parsed the request successfully but routing/handling
-            # threw unexpectedly, we can return the correct id so the
-            # parent's stdout reader delivers the error instead of timing out.
-            correlated_id = last_request.get("id") if last_request else None
-            logger.error(f"❌ Unhandled exception (id={correlated_id}): {e}")
-            err = {"jsonrpc": "2.0", "id": correlated_id,
-                   "error": {"code": -32603, "message": f"Internal error: {e}"}}
-            sys.stdout.write(json.dumps(err) + "\n")
-            sys.stdout.flush()
-            last_request = {}  # Reset after error
+            except Exception as e:
+                # [M1] Correlate error response to request id when available
+                correlated_id = last_request.get("id") if last_request else None
+                logger.error(f"❌ Unhandled exception (id={correlated_id}): {e}")
+                err = {"jsonrpc": "2.0", "id": correlated_id,
+                       "error": {"code": -32603, "message": f"Internal error: {e}"}}
+                transport.write(err)
+                last_request = {}  # Reset after error
+
+    except KeyboardInterrupt:
+        logger.info("📡 [MCP] Interrupted. Shutting down.")
+    finally:
+        transport.stop()
+        logger.info(f"🦞 ButterClaw MCP v{VERSION} stopped.")
 
 
 if __name__ == "__main__":
