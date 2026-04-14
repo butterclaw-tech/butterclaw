@@ -21,6 +21,19 @@ Changelog:
            - send() hooks: every MCP tool call is logged before + after
            - Settings extended with mcp_transport, mcp_sse_url, mcp_sse_token
            - Status extended with transport_mode, event_count
+  [v0.5.1] Tool Chaining:
+           - ChainExecutor: Brain can compose multi-step MCP tool sequences
+           - Condition evaluator with safe operator whitelist (no eval)
+           - Chain-aware CRITICAL path with hardcoded fallback
+           - 10-step max, 60s timeout safety rails
+
+           previous [v0.5.1] Tool Chaining Comments:
+           - ChainExecutor class for multi-step MCP tool sequences
+           - Condition evaluator: whitelist of safe string comparisons
+           - Brain prompt extended with chain schema + available tools
+           - CRITICAL path routes to ChainExecutor when chain is present
+           - Chain-aware ledger logging (chain_id, chain_step now populated)
+           - Safety: max 10 steps, 60s total timeout, no eval()
 """
 
 from flask import Flask, request, jsonify, Response
@@ -46,7 +59,10 @@ import buttervault
 # APP SETUP
 # =============================================
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
+
+# [v0.5.1] Module-level dry run flag — disables actual MCP calls in ChainExecutor
+DRY_RUN = False
 
 # [v0.4.1 S5] Module-level constant — referenced in both analyze_threat() and boot banner
 CONFIDENCE_THRESHOLD = 85
@@ -268,6 +284,153 @@ def ledger_count():
         return count
     except sqlite3.Error:
         return 0
+
+
+# =============================================
+# CHAIN EXECUTOR (v0.5.1)
+# Brain-composed multi-step MCP tool sequences
+# =============================================
+
+# If a tool returns "Port status: OPEN" but the 
+# Brain's condition looks for expected: "open", 
+# the condition will fail and skip the step.
+#VALID_CONDITION_OPERATORS = {
+#    "contains":     lambda val, exp: str(exp) in str(val),
+#    "not_contains": lambda val, exp: str(exp) not in str(val),
+#    "equals":       lambda val, exp: str(val) == str(exp),
+#    "not_equals":   lambda val, exp: str(val) != str(exp),
+#    "starts_with":  lambda val, exp: str(val).startswith(str(exp)),
+#}
+
+VALID_CONDITION_OPERATORS = {
+    "contains":     lambda val, exp: str(exp).lower() in str(val).lower(),
+    "not_contains": lambda val, exp: str(exp).lower() not in str(val).lower(),
+    "equals":       lambda val, exp: str(val).strip().lower() == str(exp).strip().lower(),
+    "not_equals":   lambda val, exp: str(val).strip().lower() != str(exp).strip().lower(),
+    "starts_with":  lambda val, exp: str(val).strip().lower().startswith(str(exp).strip().lower()),
+}
+
+
+class ChainExecutor:
+    """Executes a Brain-composed sequence of MCP tool calls with
+    optional inter-step conditions. Safety rails: 10-step max, 60s timeout,
+    no eval() — conditions use a closed operator whitelist."""
+
+    MAX_STEPS = 10
+    TIMEOUT = 60  # seconds
+
+    def __init__(self, mcp_manager, chain_steps, dry_run=False):
+        if not isinstance(chain_steps, list):
+            raise ValueError("chain_steps must be a list")
+        self.mcp_manager = mcp_manager
+        self.chain_steps = chain_steps[:self.MAX_STEPS]
+        self.dry_run = dry_run
+        self.results = {}
+        self.executed = []
+        self.chain_id = uuid.uuid4().hex[:12]
+        self.start_time = time.time()
+        self.timeout = self.TIMEOUT
+
+    def execute(self):
+        """Run the chain. Returns summary dict."""
+        print(f"\n🔗 [CHAIN {self.chain_id}] Starting {len(self.chain_steps)}-step chain"
+              f"{' [DRY RUN]' if self.dry_run else ''}")
+
+        for idx, step in enumerate(self.chain_steps):
+            elapsed = time.time() - self.start_time
+            if elapsed > self.timeout:
+                print(f"⏱️ [CHAIN {self.chain_id}] Timeout after {elapsed:.1f}s at step {idx}")
+                break
+
+            try:
+                self._execute_step(step, idx)
+            except Exception as e:
+                tool_name = step.get('tool', f'step_{idx}')
+                print(f"❌ [CHAIN {self.chain_id}] Step {idx} ({tool_name}) failed: {e}")
+                self.executed.append({"step": idx, "tool": tool_name, "status": "failed", "error": str(e)})
+                ledger_log_start(
+                    method="tools/call", tool_name=tool_name,
+                    arguments=step.get("args", {}), # params changed to arguments
+                    trigger="chain", chain_id=self.chain_id, chain_step=idx
+                )
+                continue
+
+        step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
+        action_summary = f"Chain [{self.chain_id}]: {len(self.executed)}/{len(self.chain_steps)} steps — {', '.join(step_names)}"
+
+        print(f"🔗 [CHAIN {self.chain_id}] Complete. {action_summary}")
+
+        return {
+            "chain_id": self.chain_id,
+            "steps_executed": len(self.executed),
+            "steps_total": len(self.chain_steps),
+            "results": self.results,
+            "action_summary": action_summary
+        }
+
+    def _execute_step(self, step, step_index):
+        """Execute a single chain step with optional condition check."""
+        tool_name = step.get('tool')
+        if not tool_name:
+            raise ValueError(f"Step {step_index} missing required 'tool' key")
+
+        # Check condition (if present)
+        condition = step.get('condition')
+        if condition:
+            if not self._evaluate_condition(condition):
+                print(f"⏭️ [CHAIN {self.chain_id}] Step {step_index} ({tool_name}) skipped — condition not met")
+                self.executed.append({"step": step_index, "tool": tool_name, "status": "skipped"})
+                # Log skipped step to ledger
+                event_id = ledger_log_start(
+                    method="tools/call", tool_name=tool_name,
+                    arguments=step.get("args", {}), # changed from params to arguments
+                    trigger="chain", chain_id=self.chain_id, chain_step=step_index
+                )
+                if event_id:
+                    ledger_log_end(event_id, status="skipped", result={"reason": "condition_not_met"})
+                return
+
+        args = step.get('args', {})
+        store_as = step.get('store_as', tool_name)
+
+        if self.dry_run:
+            print(f"🧪 [CHAIN {self.chain_id}] [DRY RUN] Step {step_index}: {tool_name}({args})")
+            result = {"dry_run": True, "tool": tool_name, "args": args}
+        else:
+            result = self.mcp_manager.send("tools/call", {
+                "name": tool_name,
+                "arguments": args
+            }, trigger="chain", chain_id=self.chain_id, chain_step=step_index)
+
+        self.results[store_as] = result
+        self.executed.append({"step": step_index, "tool": tool_name, "status": "executed"})
+        print(f"✅ [CHAIN {self.chain_id}] Step {step_index}: {tool_name} → stored as '{store_as}'")
+
+    def _evaluate_condition(self, condition):
+        """Evaluate a step condition using the safe operator whitelist.
+        Returns True if condition is met, False otherwise."""
+        if not isinstance(condition, dict):
+            return False
+
+        source = condition.get('source')
+        operator = condition.get('operator')
+        expected = condition.get('expected')
+
+        if source not in self.results:
+            print(f"⚠️ [CHAIN {self.chain_id}] Condition source '{source}' not in results — skipping")
+            return False
+
+        if operator not in VALID_CONDITION_OPERATORS:
+            print(f"⚠️ [CHAIN {self.chain_id}] Unknown operator '{operator}' — skipping")
+            return False
+
+        source_value = str(self.results[source])
+        return VALID_CONDITION_OPERATORS[operator](source_value, expected)
+
+    def summary(self):
+        """Return human-readable action summary string."""
+        step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
+        return f"Chain [{self.chain_id}]: {len(self.executed)}/{len(self.chain_steps)} steps — {', '.join(step_names)}"
 
 
 # =============================================
@@ -988,6 +1151,28 @@ def ask_guardian_agent(threat_type, raw_data):
         )
         if not gates.get("kill_sw"):
             gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
+    
+    # [v0.5.1] Build available tools context for chain composition
+    tools_list = []
+    for tool in mcp_manager.discovered_tools:
+        tool_name = tool.get('name', 'unknown_tool')
+        desc = tool.get('description', 'No description')
+        tools_list.append(f"  - {tool_name}: {desc}")
+
+    # [v0.5.1] Build available tools context for chain composition - causes bug - 
+    # During the MCP handshake, mcp_manager.discovered_tools is populated from 
+    # the MCP tools/list response. According to the MCP spec 
+    # (handshake method), discovered_tools is a list of dictionaries, not a dictionary.
+    # Calling .items() on a list will immediately throw an AttributeError: 'list' object 
+    # has no attribute 'items', completely crashing the Brain before it can even 
+    # send the prompt to Ollama.
+
+    #tools_list = []
+    #for tool_name, tool_info in mcp_manager.discovered_tools.items():
+    #    desc = tool_info.get('description', 'No description')
+    #    tools_list.append(f"  - {tool_name}: {desc}")
+
+    tools_context = "\n".join(tools_list) if tools_list else "  No MCP tools discovered yet."
 
     json_schema = (
         'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
@@ -995,7 +1180,15 @@ def ask_guardian_agent(threat_type, raw_data):
         '"verdict": "CRITICAL" | "WARNING" | "BENIGN", '
         '"confidence": float 0.0-1.0, '
         '"primary_gate": "Signature" | "Origin" | "Intent" | "None", '
-        '"reasoning": "2-sentence explanation."}'
+        '"reasoning": "2-sentence explanation."} '
+        'For CRITICAL verdicts, you MAY include an optional "chain" array to compose a multi-step tool sequence: '
+        '"chain": [{"tool": "tool_name", "args": {"key": "value"}, "store_as": "result_label", '
+        '"condition": {"source": "previous_result_label", '
+        '"operator": "contains|not_contains|equals|not_equals|starts_with", '
+        '"expected": "value"}}] '
+        f'Available MCP tools:\n{tools_context}\n'
+        'Chain rules: max 10 steps, conditions reference previous store_as labels, '
+        'first step cannot have a condition. If unsure, omit chain — hardcoded fallback will execute.'
     )
 
     ollama_url = _resolve_ollama_url()
@@ -1040,7 +1233,8 @@ def ask_guardian_agent(threat_type, raw_data):
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
                 "confidence": clamped_conf,
                 "primary_gate": str(parsed.get("primary_gate", "None")),
-                "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning."))
+                "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning.")),
+                "chain": parsed.get("chain")  # v0.5.1 — pass through chain if present
             }
         except json.JSONDecodeError:
             return {
@@ -1214,32 +1408,48 @@ def analyze_threat():
         color = "red"
         icon = "🚨"
         if kill_sw_armed:
-            # [S4] Check MCP return values — report truth in action string
-            mcp_failures = []
+            # [v0.5.1] Check for Brain-composed chain
+            chain_steps = analysis.get('chain') if isinstance(analysis, dict) else None
 
-            gibson_resp = mcp_manager.send("tools/call", {
-                "name": "execute_gibson_kill",
-                "arguments": {"target_process": "openclaw"}
-            }, trigger="critical")
-            if "error" in gibson_resp:
-                mcp_failures.append("gibson_kill")
-                print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
+            if chain_steps and isinstance(chain_steps, list) and len(chain_steps) > 0:
+                # v0.5.1 — Chain execution path
+                print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
+                executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
+                chain_result = executor.execute()
 
-            # buttervault is a direct local call — always succeeds independently
-            buttervault.butter_keys()
+                # ALWAYS butter keys on CRITICAL regardless of chain content
+                buttervault.butter_keys()
 
-            rotate_resp = mcp_manager.send("tools/call", {
-                "name": "rotate_keys",
-                "arguments": {"provider": "OpenRouter"}
-            }, trigger="critical")
-            if "error" in rotate_resp:
-                mcp_failures.append("rotate_keys")
-                print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
-
-            if mcp_failures:
-                action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}"
+                action = chain_result['action_summary']
+                print(f"🔗 CHAIN EXECUTED: {action}")
             else:
-                action = "SIGKILL | Keys Buttered"
+                # Hardcoded fallback (pre-v0.5.1 behavior)
+                # [S4] Check MCP return values — report truth in action string
+                mcp_failures = []
+
+                gibson_resp = mcp_manager.send("tools/call", {
+                    "name": "execute_gibson_kill",
+                    "arguments": {"target_process": "openclaw"}
+                }, trigger="critical")
+                if "error" in gibson_resp:
+                    mcp_failures.append("gibson_kill")
+                    print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
+
+                # buttervault is a direct local call — always succeeds independently
+                buttervault.butter_keys()
+
+                rotate_resp = mcp_manager.send("tools/call", {
+                    "name": "rotate_keys",
+                    "arguments": {"provider": "OpenRouter"}
+                }, trigger="critical")
+                if "error" in rotate_resp:
+                    mcp_failures.append("rotate_keys")
+                    print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
+
+                if mcp_failures:
+                    action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}"
+                else:
+                    action = "SIGKILL | Keys Buttered"
         else:
             action = "ALERT | Kill Switch Disarmed"
 
@@ -1608,7 +1818,7 @@ if __name__ == '__main__':
         print(f"   MCP SSE Auth: {'token set' if mcp_sse_token else 'none'}")
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.5.0 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.5.1 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
