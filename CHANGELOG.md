@@ -6,11 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
-# Changelog: ButterClaw v0.5.0
+# Changelog: ButterClaw v0.5.0.1
 
-Release Date: April 14, 2026
+Release Date: April 15, 2026
 
-## [0.5.0] - The Nervous System (Event Ledger + SSE Transport)
+## [0.5.0.1] - The Nervous System with Memory (Event Ledger + SSE Transport)
 
 ### Added
 
@@ -30,6 +30,12 @@ Release Date: April 14, 2026
   - Manual refresh button
 
 - **Event Ledger Nav Link (`index.html`):** New sidebar navigation entry "Event Ledger" linking to `routing.html#eventLedgerSection`.
+
+- **Temporal Memory Injection (`server.py`):** Cured "LLM amnesia" by patching `ask_guardian_agent()` to query the new `mcp_events` ledger before evaluating a log. The Brain now receives a sliding window of recent tool executions (temporal context) to detect behavioral drift over time rather than evaluating isolated snapshots.
+
+- **Stateless Self-Reflection / The Auditor (`server.py`):** Added `run_self_audit()`, a non-blocking background daemon thread that fires 30 seconds after any `CRITICAL` verdict. It hits the exact same model with a cold `temperature: 0.0` prompt to review the sanitized event ledger. If it detects a hallucination, it logs a "🧐 Likely False Positive" amber warning to the UI without lowering the system paranoia level (preserving the one-way ratchet).
+
+- **Dynamic Dual-Persona Prompting (`server.py`):** Embedded complex JSON schemas and dual-persona instructions (The Instinct vs. The Auditor) directly into the Flask API request payloads. This guarantees 100% plug-and-play portability for users cloning the repo and running vanilla `gemma4:e4b`, eliminating the strict requirement for a custom compiled `Modelfile`.
 
 - **Transport Abstraction Layer (`mcp_transport.py` — NEW FILE):** Decouples MCP I/O from protocol logic. Two transport implementations behind a common `BaseTransport` interface (`read()`, `write()`, `start()`, `stop()`):
   - `StdioTransport` — Wraps stdin/stdout. Extracts the I/O loop that was previously inline in `butterclaw_mcp.py`'s `main()`.
