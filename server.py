@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.0 — The Nervous System (Reasoning Engine + MCP Transport)
+ButterClaw v0.5.1 — The Nervous System with Memory (Tool Chaining)
 =====================================================================
 Changelog:
   [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
@@ -27,7 +27,7 @@ Changelog:
            - Chain-aware CRITICAL path with hardcoded fallback
            - 10-step max, 60s timeout safety rails
 
-           previous [v0.5.1] Tool Chaining Comments:
+           previous [v0.5.1] Tool Chaining Comments:  <- need to clean these up/combine notes for [v0.5.1]
            - ChainExecutor class for multi-step MCP tool sequences
            - Condition evaluator: whitelist of safe string comparisons
            - Brain prompt extended with chain schema + available tools
@@ -349,6 +349,7 @@ class ChainExecutor:
                 print(f"❌ [CHAIN {self.chain_id}] Step {idx} ({tool_name}) failed: {e}")
                 self.executed.append({"step": idx, "tool": tool_name, "status": "failed", "error": str(e)})
                 ledger_log_start(
+                    req_id=None,
                     method="tools/call", tool_name=tool_name,
                     arguments=step.get("args", {}), # params changed to arguments
                     trigger="chain", chain_id=self.chain_id, chain_step=idx
@@ -382,6 +383,7 @@ class ChainExecutor:
                 self.executed.append({"step": step_index, "tool": tool_name, "status": "skipped"})
                 # Log skipped step to ledger
                 event_id = ledger_log_start(
+                    req_id=None,
                     method="tools/call", tool_name=tool_name,
                     arguments=step.get("args", {}), # changed from params to arguments
                     trigger="chain", chain_id=self.chain_id, chain_step=step_index
