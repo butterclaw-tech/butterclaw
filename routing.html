@@ -100,7 +100,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.5.0</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.5.1</div>
     </div>
   </aside>
 
@@ -286,8 +286,9 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.5.0)</p>
-          <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger.</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.5.1)</p>
+          <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
+
         </div>
       </div>
 
@@ -818,11 +819,20 @@
     const ledgerFilterTool   = document.getElementById('ledgerFilterTool');
     const ledgerFilterStatus = document.getElementById('ledgerFilterStatus');
     const ledgerRefreshBtn   = document.getElementById('ledgerRefreshBtn');
+/***
+    const ledgerStatusColors = {
+      success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
+      error:   { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     text: 'text-red-700' },
+      timeout: { bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-500',   text: 'text-amber-700' },
+      pending: { bg: 'bg-slate-50',   border: 'border-slate-200',   dot: 'bg-slate-400',   text: 'text-slate-500' }
+    };
+***/
 
     const ledgerStatusColors = {
       success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
       error:   { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     text: 'text-red-700' },
       timeout: { bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-500',   text: 'text-amber-700' },
+      skipped: { bg: 'bg-violet-50',  border: 'border-violet-100',  dot: 'bg-violet-400',  text: 'text-violet-700' },
       pending: { bg: 'bg-slate-50',   border: 'border-slate-200',   dot: 'bg-slate-400',   text: 'text-slate-500' }
     };
 
@@ -915,7 +925,7 @@
 
       return card;
     }
-
+/*** v0.5.0
     async function ledgerFetch() {
       const toolFilter = ledgerFilterTool.value;
       const statusFilter = ledgerFilterStatus.value;
@@ -938,6 +948,145 @@
           empty.appendChild(emptyP); ledgerContainer.appendChild(empty); return;
         }
         events.forEach(ev => { ledgerContainer.appendChild(buildLedgerRow(ev)); });
+      } catch {
+        ledgerContainer.innerHTML = '';
+        const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-6 text-center';
+        const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch event ledger. Server may be offline.';
+        errDiv.appendChild(errP); ledgerContainer.appendChild(errDiv);
+      }
+    }
+***/
+
+    // [v0.5.1] Build a chain group wrapper with step badges
+    function buildChainGroup(chainId, chainEvents) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'border-l-4 border-violet-300 rounded-r-xl pl-3 space-y-1 py-2';
+
+      // Chain header bar
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between mb-1 px-2';
+
+      const headerLeft = document.createElement('div');
+      headerLeft.className = 'flex items-center space-x-2';
+
+      const chainIcon = document.createElement('span');
+      chainIcon.textContent = '⛓️';
+      chainIcon.className = 'text-sm';
+
+      const chainLabel = document.createElement('span');
+      chainLabel.className = 'text-[10px] font-bold text-violet-600 uppercase tracking-wider';
+      chainLabel.textContent = 'Chain ' + chainId;
+
+      const stepCount = document.createElement('span');
+      stepCount.className = 'text-[10px] font-mono text-violet-400';
+      stepCount.textContent = chainEvents.length + ' steps';
+
+      headerLeft.appendChild(chainIcon);
+      headerLeft.appendChild(chainLabel);
+      headerLeft.appendChild(stepCount);
+
+      // Status icon summary (✅❌⏭️⏱️)
+      const headerRight = document.createElement('div');
+      headerRight.className = 'flex items-center space-x-1';
+
+      const statusMap = { success: '✅', error: '❌', skipped: '⏭️', timeout: '⏱️', pending: '⏳' };
+      chainEvents
+        .sort((a, b) => (a.chain_step || 0) - (b.chain_step || 0))
+        .forEach(ev => {
+          const icon = document.createElement('span');
+          icon.className = 'text-xs';
+          icon.textContent = statusMap[ev.status] || '❓';
+          icon.title = 'Step ' + (ev.chain_step || '?') + ': ' + (ev.tool_name || ev.method) + ' → ' + ev.status;
+          headerRight.appendChild(icon);
+        });
+
+      header.appendChild(headerLeft);
+      header.appendChild(headerRight);
+      wrapper.appendChild(header);
+
+      // Render each step with step number badge
+      chainEvents
+        .sort((a, b) => (a.chain_step || 0) - (b.chain_step || 0))
+        .forEach(ev => {
+          const row = buildLedgerRow(ev);
+          // Prepend step number badge
+          const badge = document.createElement('div');
+          badge.className = 'absolute -left-7 top-4 w-5 h-5 bg-violet-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center';
+          badge.textContent = ev.chain_step || '?';
+          row.style.position = 'relative';
+          row.style.marginLeft = '12px';
+          row.appendChild(badge);
+          wrapper.appendChild(row);
+        });
+
+      return wrapper;
+    }
+
+    async function ledgerFetch() {
+      const toolFilter = ledgerFilterTool.value;
+      const statusFilter = ledgerFilterStatus.value;
+      let url = API_BASE + '/api/mcp/events?limit=50';
+      if (toolFilter) url += '&tool=' + encodeURIComponent(toolFilter);
+      if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        const events = data.events || [];
+        ledgerTotalCount.textContent = data.total + ' total events';
+        ledgerContainer.innerHTML = '';
+
+        if (events.length === 0) {
+          const empty = document.createElement('div'); empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-6 text-center';
+          const emptyP = document.createElement('p'); emptyP.className = 'text-xs text-slate-400';
+          emptyP.textContent = toolFilter || statusFilter ? 'No events match this filter.' : 'No events recorded yet. Trigger an analysis to populate the ledger.';
+          empty.appendChild(emptyP); ledgerContainer.appendChild(empty); return;
+        }
+
+        // [v0.5.1] Group chain events, render non-chain events standalone
+        const chainGroups = {};  // chain_id → [events]
+        const standaloneEvents = [];
+
+        events.forEach(ev => {
+          if (ev.chain_id) {
+            if (!chainGroups[ev.chain_id]) chainGroups[ev.chain_id] = [];
+            chainGroups[ev.chain_id].push(ev);
+          } else {
+            standaloneEvents.push(ev);
+          }
+        });
+
+        // Interleave chain groups and standalone events by timestamp
+        // Build a mixed list: each entry is { type: 'chain'|'event', timestamp, data }
+        const mixed = [];
+
+        Object.keys(chainGroups).forEach(chainId => {
+          const group = chainGroups[chainId];
+          // Use the earliest timestamp in the group as the sort key
+          const earliest = group.reduce((min, ev) => ev.timestamp < min ? ev.timestamp : min, group[0].timestamp);
+          mixed.push({ type: 'chain', timestamp: earliest, chainId: chainId, events: group });
+        });
+
+        standaloneEvents.forEach(ev => {
+          mixed.push({ type: 'event', timestamp: ev.timestamp, event: ev });
+        });
+
+        // Sort descending by timestamp (newest first)
+        mixed.sort((a, b) => {
+          if (a.timestamp > b.timestamp) return -1;
+          if (a.timestamp < b.timestamp) return 1;
+          return 0;
+        });
+
+        mixed.forEach(item => {
+          if (item.type === 'chain') {
+            ledgerContainer.appendChild(buildChainGroup(item.chainId, item.events));
+          } else {
+            ledgerContainer.appendChild(buildLedgerRow(item.event));
+          }
+        });
+
       } catch {
         ledgerContainer.innerHTML = '';
         const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-6 text-center';

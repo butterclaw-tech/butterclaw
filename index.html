@@ -95,7 +95,7 @@
           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition">
           <span>⚙️</span><span>VPS Brain Routing</span>
         </a>
-        <!-- [v0.5.0] Event Ledger nav link -->
+        <!-- [v0.5.1] Event Ledger nav link -->
         <a href="routing.html#eventLedgerSection"
           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">📋</span><span>Event Ledger</span>
@@ -497,8 +497,32 @@
       const contentDiv = document.createElement('div'); contentDiv.className = 'flex-1';
       const title = document.createElement('h4'); title.className = `font-bold text-${color}-900 text-sm tracking-tight`; title.textContent = log.title || 'Untitled Event';
       const desc = document.createElement('p'); desc.className = `text-sm text-${color}-700 mt-1 leading-relaxed`; desc.textContent = log.desc || '';
+            const action = document.createElement('p'); action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`; action.textContent = `Action: ${log.action || 'None'}`;
+      contentDiv.appendChild(title); contentDiv.appendChild(desc); contentDiv.appendChild(action);
+
+      // [v0.5.1] Chain visualization — if action contains "Chain [", add ledger link
+      if (log.action && log.action.indexOf('Chain [') !== -1) {
+        const chainRow = document.createElement('div');
+        chainRow.className = 'flex items-center space-x-2 mt-2';
+
+        const chainBadge = document.createElement('span');
+        chainBadge.className = 'text-[10px] font-bold text-violet-600 bg-violet-100 border border-violet-200 px-2 py-0.5 rounded-md uppercase tracking-wider';
+        chainBadge.textContent = '⛓️ Multi-Step Chain';
+
+        const ledgerLink = document.createElement('a');
+        ledgerLink.href = 'routing.html#eventLedgerSection';
+        ledgerLink.className = 'text-[10px] text-violet-600 font-bold hover:text-violet-800 hover:underline transition';
+        ledgerLink.textContent = 'View in Ledger →';
+
+        chainRow.appendChild(chainBadge);
+        chainRow.appendChild(ledgerLink);
+        contentDiv.appendChild(chainRow);
+      }  
+      
+      /*** [v0.5.0]
       const action = document.createElement('p'); action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`; action.textContent = `Action: ${log.action || 'None'}`;
       contentDiv.appendChild(title); contentDiv.appendChild(desc); contentDiv.appendChild(action);
+      ***/
       const timeSpan = document.createElement('span'); timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`; timeSpan.textContent = log.time || '';
       card.appendChild(iconDiv); card.appendChild(contentDiv); card.appendChild(timeSpan);
       return card;
