@@ -6,9 +6,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.5.1] - Tool Chaining (Multi-Step Execution) - 2026-04-16
+
+### Added
+- **ChainExecutor (`server.py`):** New engine allowing the Brain to compose and execute sequential, multi-step MCP tool chains for custom threat response strategies.
+- **Condition Evaluator (`server.py`):** Added conditional logic between chain steps using a safe, whitelist-based operator dictionary (`contains`, `not_contains`, `equals`, `not_equals`, `starts_with`). Explicitly avoids arbitrary code execution/`eval()`. Operator logic is case-insensitive and stripped of whitespace.
+- **Event Ledger Chain Grouping (`routing.html`):** The ledger UI now visually groups related chain events together by their `chain_id`. Chain blocks feature a consolidated header with a step count, aggregated status icons, and individual step-number badges for each tool execution.
+- **Oopsie Card Chain Links (`index.html`):** CRITICAL alerts triggered by a multi-step chain now dynamically render a violet "Multi-Step Chain" badge in the UI action field, alongside a "View in Ledger →" link to trace the execution path.
+- **Dynamic Brain Prompting (`server.py`):** The LLM system prompt now dynamically builds the available MCP `tools_context` from the handshake and includes the optional `"chain"` array JSON schema instructions.
+- **Safety Rails (`server.py`):** Enforced a hard limit of `MAX_STEPS = 10` and a cumulative total `TIMEOUT = 60` seconds for all chain executions to prevent infinite reasoning loops or stalling.
+
+### Changed
+- **CRITICAL Path Routing (`server.py`):** The `analyze_threat` function now intercepts the `"chain"` field from the Brain's output and routes to `ChainExecutor`. If no chain is present, it safely falls back to the legacy hardcoded tool sequence (backward compatible).
+- **Vault Integrity Guarantee (`server.py`):** Ensured `buttervault.butter_keys()` is ALWAYS executed locally during a CRITICAL verdict, independently of whether the Brain included `rotate_keys` in its MCP chain contents.
+- **Event Ledger Integration (`server.py`):** Tool calls invoked via the `ChainExecutor` now actively populate the `chain_id` and `chain_step` columns in the `mcp_events` SQLite table, linking step sequences together.
+- **Step Enumeration (`server.py`):** Improved LLM token efficiency by removing the requirement for the Brain to output specific step numbers, instead deriving `chain_step` dynamically using Python's `enumerate()`.
+- **UI State & Copy (`routing.html`, `index.html`):** Version footers bumped to v0.5.1, the MCP Info Box updated to document conditional chaining, and the `ledgerStatusColors` dictionary expanded to support the new `skipped` (violet) step status.
+
+### Fixed
+- **Tools List Iteration (`server.py`):** Fixed an `AttributeError` crash during prompt generation by correctly iterating over the `mcp_manager.discovered_tools` list of dicts, complying with the MCP spec.
+- **Ledger Logging Signature (`server.py`):** Fixed a `TypeError` trap in the `ChainExecutor` error handling by replacing the incorrect `params=` keyword with `arguments=` to correctly match the `ledger_log_start` definition.
+
+---
+
+### Changes from v0.5.0.1 → v0.5.1 README:
+
+| Section | Change |
+|---|---|
+| **Title** | `v0.5.0.1` → `v0.5.1: Tool Chaining` |
+| **What's New** | Replaced with `Tool Chaining` features (Autonomous Execution, Condition Evaluator, Safety Rails). Preserved v0.5.0 features as note. |
+| **Architecture §2** | Updated Brain node to mention outputting `chain` arrays. |
+| **Architecture §3** | Updated API node to mention `ChainExecutor` routing. |
+| **Event Ledger Schema** | Updated `chain_id` and `chain_step` columns to note v0.5.1 active usage. |
+| **Key Features** | Added `Autonomous Tool Chaining` and `Safe Condition Evaluator`. |
+| **API Reference** | Updated `/api/health` version, updated `/api/analyze` description to mention Tool Chaining. |
+| **Roadmap** | Marked v0.5.1 as ✅ with summary. Advanced focus to v0.5.2. |
+
+---
+
 # Changelog: ButterClaw v0.5.0
 
-Release Date: April 13, 2026
+Release Date: April 14, 2026
 
 ## [0.5.0] - The Nervous System (Event Ledger + SSE Transport)
 

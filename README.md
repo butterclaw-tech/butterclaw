@@ -1,16 +1,32 @@
-# 🦞 ButterClaw v0.5.0: The Nervous System (Event Ledger + SSE Transport)
+# 🦞 ButterClaw v0.5.1: The Nervous System with Memory (Tool Chaining)
 
-Version 0.5.0 — April 13, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.5.1 — April 15, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys into cryptographic garbage if a breach is detected. **Evaluation before Execution.**
 
 Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
 
-> **Note:** ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.
+> **Note:** *ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.*
 
 ---
 
-## 🚀 What's New in v0.5.0?
+## 🚀 What's New in v0.5.1?
+
+**Tool Chaining (Multi-Step Execution)** — The Brain is no longer restricted to a static, hardcoded response playbook. It can now dynamically compose custom response strategies:
+
+### 🔗 Autonomous Tool Chaining
+The `ChainExecutor` engine allows the Brain to compose and execute sequential, multi-step MCP tool chains in response to a `CRITICAL` verdict. For example, the Brain can now decide to execute `scan_port` first, log the result, and *then* decide whether to fire a kinetic kill command. 
+
+### 🛡️ Safe Condition Evaluator
+Chains support conditional logic between steps (e.g., skip step 3 if step 1 returned "CLOSED"). To maintain the Sovereign Seal, this avoids arbitrary code execution entirely. Conditions use a closed, case-insensitive whitelist of string operators (`contains`, `not_contains`, `equals`, `not_equals`, `starts_with`).
+
+### ⏱️ Strict Safety Rails
+Infinite reasoning loops are physically impossible. The execution engine enforces a hard limit of **10 maximum steps** and a cumulative **60-second total timeout** across the entire chain.
+
+*Note: This release builds directly on top of the recent **v0.5.0 / v0.5.0.1** features:*
+* **📋 Event Ledger:** Persistent SQLite audit log for all MCP tool invocations.
+* **📡 SSE Transport:** Dual-mode MCP supporting both `stdio` and remote `SSE` transports.
+* **🧠 Temporal Memory & The Auditor:** Behavioral drift tracking via sliding-window ledger queries and a `0.0` temperature stateless self-reflection loop to catch false positives.
 
 **The Nervous System** — two major pillars, a memory upgrade to the core engine, plus infrastructure groundwork:
 
@@ -135,6 +151,8 @@ CREATE TABLE mcp_events (
 
 ## ✨ Key Features
 
+- **Autonomous Tool Chaining:** The Brain can dynamically compose custom multi-step defense sequences utilizing dynamically discovered MCP tools.
+- **Safe Condition Evaluator:** Conditional chain execution utilizing a strict whitelist of safe, case-insensitive string comparisons. Zero `eval()` risk.
 - **The ButterVault:** 100% protection against supply-chain credential harvesters — including the LiteLLM/TeamPCP poisoned package attack (March 2026) and the npm/Axios compromise (March 31, 2026).
 - **Event Ledger:** Persistent, append-only audit trail of every MCP tool invocation with timestamps, arguments, results, elapsed time, and trigger source. Queryable via API and inspectable in the dashboard.
 - **Temporal Memory (Behavioral Drift Tracking):** The AI reads a sliding window of recent tool executions to understand the context of the room, curing traditional "LLM amnesia."
@@ -286,7 +304,7 @@ To see the **Evaluation before Execution** pipeline in action:
 
 ## 🗺️ Roadmap
 
-**v0.4.0 — The Claws Awaken ✅**
+**v0.4.0 — The Claws Awaken (Full MCP)✅**
 
 Full stdio/JSON-RPC MCP transport compliance. Threaded process manager with response correlation, stderr drain, and auto-restart. Dynamic tool discovery via `tools/list`. MCP observability endpoints and live UI panel. Expanded to 5 tools.
 
@@ -294,11 +312,14 @@ Full stdio/JSON-RPC MCP transport compliance. Threaded process manager with resp
 
 15-finding audit of v0.4.0. Fixed CSP attribute corruption, auto-restart handshake gap, thread safety, audit log integrity, MCP argument validation, pre-initialization guard, dynamic protocol version, and auto-refresh on state transition.
 
-**v0.5.0 — The Nervous System ✅**
+**v0.5.0 — The Nervous System (Event Ledger + SSE Transport)✅**
 
 Event Ledger for persistent MCP audit trails. Dual-transport MCP (stdio + SSE) with transport abstraction layer. MCPSSEClient for remote MCP connections. Event Ledger UI panel with filtering and collapsible results. OAuth provider registry skeleton.
 
-**v0.5.1 — Tool Chaining**
+**v0.5.0.1 — The Nervous System with Memory ✅**
+Temporal context injection and background Auditor daemon.
+
+**v0.5.1 — Tool Chaining ✅**
 
 - Let the Brain compose multi-tool sequences (e.g., `scan_port` → `log_event` → conditional `execute_gibson_kill`)
 - Chain schema with conditional execution and stored intermediate results
@@ -319,22 +340,3 @@ MIT License. Copyright (c) 2026 butterclaw-tech. See [LICENSE](LICENSE) file for
 ---
 
 *Built with Python, Vanilla JS, and a whole lot of unautclated telemetry. Yes, unautclated. 🦞*
-
----
-
-### Changes from v0.4.1 → v0.5.0 README:
-
-| Section | Change |
-|---|---|
-| **Title** | `v0.4.1: QA Sterilization Patch` → `v0.5.0: The Nervous System` |
-| **Date** | April 11 → April 12, 2026 |
-| **What's New** | Rewritten — three subsections: Event Ledger, SSE Transport, OAuth Registry |
-| **Architecture §3** | Added event ledger host role, dual manager description, six endpoints |
-| **Architecture §5** | Added transport abstraction, CLI flags, dual transport description |
-| **Architecture §6** | Added Event Ledger panel, transport selector, nav link |
-| **New sections** | Transport Abstraction diagram, Dual Manager diagram, Event Ledger Schema |
-| **Key Features** | +2 bullets: Event Ledger, Dual MCP Transport |
-| **Quick Start** | Added SSE transport instructions section, ledger boot log line |
-| **Live Simulation** | Added step 7: check event ledger for tool call records |
-| **API Reference** | +2 endpoints (`/api/mcp/events`, `/api/mcp/events/<id>`), updated descriptions |
-| **Roadmap** | v0.5.0 ✅, added v0.5.1 (Tool Chaining) and v0.5.2 (OAuth) |
