@@ -344,16 +344,21 @@ class ChainExecutor:
 
             try:
                 self._execute_step(step, idx)
+            
             except Exception as e:
                 tool_name = step.get('tool', f'step_{idx}')
-                print(f"❌ [CHAIN {self.chain_id}] Step {idx} ({tool_name}) failed: {e}")
                 self.executed.append({"step": idx, "tool": tool_name, "status": "failed", "error": str(e)})
-                ledger_log_start(
+                event_id = ledger_log_start(
                     req_id=None,
-                    method="tools/call", tool_name=tool_name,
-                    arguments=step.get("args", {}), # params changed to arguments
-                    trigger="chain", chain_id=self.chain_id, chain_step=idx
+                    method="tools/call",
+                    tool_name=tool_name,
+                    arguments=step.get("args", {}),
+                    trigger="chain",
+                    chain_id=self.chain_id,
+                    chain_step=idx
                 )
+                if event_id:
+                    ledger_log_end(event_id, status="error", result={"error": str(e)})
                 continue
 
         step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
