@@ -103,6 +103,19 @@
     </div>
 
     <div class="p-6 space-y-3">
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm mb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm">🔐</span>
+          <div>
+            <span id="authRoleBadge" class="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border text-slate-400 bg-slate-100 border-slate-200">...</span>
+            <p id="authLabelText" class="text-[10px] text-slate-400 mt-0.5">Checking...</p>
+          </div>
+        </div>
+        <button id="authLogoutBtn" class="hidden text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition" onclick="handleLogout()">
+          Logout
+        </button>
+      </div>
+
       <div id="mcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 cursor-pointer hover:bg-slate-100 transition" title="Click to view MCP tools">
         <div id="mcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div class="flex-1">
@@ -248,10 +261,198 @@
     </div>
   </div>
 
+  <div id="authLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="authLoginContent" class="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
+      <div class="flex items-center space-x-3 mb-2">
+        <span class="text-3xl">🦞</span>
+        <h3 class="text-2xl font-extrabold text-dark tracking-tight">Butter<span class="text-butter-500">Claw</span></h3>
+      </div>
+      <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+        Enter your API key to authenticate. Keys are generated via the server CLI or the admin API.
+      </p>
+      <div class="space-y-4">
+        <div>
+          <label for="authKeyInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">API Key</label>
+          <input id="authKeyInput" type="password" placeholder="bc_..."
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm">
+        </div>
+        <p id="authLoginError" class="text-xs text-red-500 font-bold hidden"></p>
+        <button id="authLoginBtn"
+          class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
+          <span>🔐</span><span>Authenticate</span>
+        </button>
+      </div>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.0 — The Exoskeleton</p>
+    </div>
+  </div>
+
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
     const API_BASE = 'http://127.0.0.1:5000';
+
+    // =============================================
+    // [v0.6.0] AUTH SESSION MANAGEMENT 🔐
+    // =============================================
+    const AUTH_TOKEN_KEY = 'butterclaw_session';
+    let _currentRole = null;
+
+    function getSessionToken() {
+      return localStorage.getItem(AUTH_TOKEN_KEY);
+    }
+    function setSessionToken(token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+    function clearSession() {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      _currentRole = null;
+    }
+
+    // Wraps fetch() with Authorization header + auto-logout on 401/403
+    async function authFetch(url, options) {
+      if (!options) options = {};
+      const token = getSessionToken();
+      if (token) {
+        if (!options.headers) options.headers = {};
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      const res = await fetch(url, options);
+      if (res.status === 401 || res.status === 403) {
+        clearSession();
+        showLoginModal();
+        throw new Error('auth_required');
+      }
+      return res;
+    }
+
+    // SSE with session token as query param
+    function connectAuthSSE(url) {
+      const token = getSessionToken();
+      const authUrl = token ? url + (url.indexOf('?') !== -1 ? '&' : '?') + 'token=' + encodeURIComponent(token) : url;
+      return new EventSource(authUrl);
+    }
+
+    // Login modal show/hide
+    function showLoginModal() {
+      const modal = document.getElementById('authLoginModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      setTimeout(function() {
+        modal.classList.remove('opacity-0');
+        var content = document.getElementById('authLoginContent');
+        if (content) content.classList.remove('scale-95');
+      }, 10);
+    }
+    function hideLoginModal() {
+      const modal = document.getElementById('authLoginModal');
+      if (!modal) return;
+      modal.classList.add('opacity-0');
+      var content = document.getElementById('authLoginContent');
+      if (content) content.classList.add('scale-95');
+      setTimeout(function() { modal.classList.add('hidden'); }, 300);
+    }
+
+    // Login handler
+    async function handleLogin() {
+      const input = document.getElementById('authKeyInput');
+      const errorEl = document.getElementById('authLoginError');
+      const loginBtn = document.getElementById('authLoginBtn');
+      const key = input.value.trim();
+      if (!key) {
+        errorEl.textContent = 'Please enter your API key.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      loginBtn.innerHTML = '<span>⏳</span><span>Authenticating...</span>';
+      loginBtn.disabled = true;
+      errorEl.classList.add('hidden');
+      try {
+        const res = await fetch(API_BASE + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: key })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSessionToken(data.token || data.session_token);
+          _currentRole = data.role;
+          updateAuthUI(data.role, data.label);
+          hideLoginModal();
+          input.value = '';
+          location.reload();
+        } else {
+          const data = await res.json().catch(function() { return {}; });
+          errorEl.textContent = data.error || 'Invalid API key.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        if (e.message !== 'auth_required') {
+          errorEl.textContent = 'Server unreachable. Is ButterClaw running?';
+          errorEl.classList.remove('hidden');
+        }
+      }
+      loginBtn.innerHTML = '<span>🔐</span><span>Authenticate</span>';
+      loginBtn.disabled = false;
+    }
+
+    // Logout handler
+    async function handleLogout() {
+      try { await fetch(API_BASE + '/api/auth/logout', { method: 'POST' }); } catch (e) {}
+      clearSession();
+      showLoginModal();
+    }
+
+    // Update sidebar auth UI
+    function updateAuthUI(role, label) {
+      const roleEl = document.getElementById('authRoleBadge');
+      const labelEl = document.getElementById('authLabelText');
+      const logoutBtn = document.getElementById('authLogoutBtn');
+      if (roleEl) {
+        const colors = {
+          admin: 'text-red-600 bg-red-100 border-red-200',
+          operator: 'text-amber-600 bg-amber-100 border-amber-200',
+          viewer: 'text-emerald-600 bg-emerald-100 border-emerald-200'
+        };
+        roleEl.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' + (colors[role] || colors.viewer);
+        roleEl.textContent = role;
+      }
+      if (labelEl) labelEl.textContent = label || 'Authenticated';
+      if (logoutBtn) logoutBtn.classList.remove('hidden');
+    }
+
+    // Session check on page load — show login if no valid session
+    async function checkSession() {
+      const token = getSessionToken();
+      if (!token) { showLoginModal(); return false; }
+      try {
+        const res = await fetch(API_BASE + '/api/auth/whoami', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          _currentRole = data.role;
+          updateAuthUI(data.role, data.label);
+          return true;
+        } else {
+          clearSession();
+          showLoginModal();
+          return false;
+        }
+      } catch (e) {
+        // Server offline — allow cached session
+        return true;
+      }
+    }
+
+    // Wire up login button + Enter key
+    setTimeout(function() {
+      var loginBtn = document.getElementById('authLoginBtn');
+      var keyInput = document.getElementById('authKeyInput');
+      if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+      if (keyInput) keyInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') handleLogin();
+      });
+    }, 0);
 
     // =============================================
     // MOBILE SIDEBAR LOGIC
@@ -321,20 +522,26 @@
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/settings`);
+        const res = await authFetch(`${API_BASE}/api/settings`);
         if (res.ok) {
           const data = await res.json();
           if (data.level) { slider.value = data.level; updateParanoiaUI(data.level); }
         }
-      } catch (e) { console.warn('⚠️ Could not sync paranoia level. Defaulting to 3.'); }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.warn('⚠️ Could not sync paranoia level. Defaulting to 3.');
+      }
     })();
 
     slider.addEventListener('input', async (e) => {
       const val = e.target.value;
       updateParanoiaUI(val);
       try {
-        await fetch(`${API_BASE}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: val }) });
-      } catch (err) { console.warn('⚠️ Sentinel offline.'); }
+        await authFetch(`${API_BASE}/api/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: val }) });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.warn('⚠️ Sentinel offline.');
+      }
     });
 
     // =============================================
@@ -368,8 +575,11 @@
         toggleBtn.className = 'mt-8 bg-emerald-500 text-white font-bold py-3 px-8 rounded-full hover:bg-emerald-600 shadow-lg hover:shadow-emerald-500/50 transition duration-300 transform hover:-translate-y-1';
       }
       try {
-        await fetch(`${API_BASE}/api/shield`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: shieldUp }) });
-      } catch (err) { console.warn('⚠️ Backend offline.'); }
+        await authFetch(`${API_BASE}/api/shield`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: shieldUp }) });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.warn('⚠️ Backend offline.');
+      }
     });
 
     // =============================================
@@ -388,10 +598,9 @@
     const orKeyInput    = document.getElementById('orKeyInput');
     const orSaveBtn     = document.getElementById('orSaveBtn');
 
-    // [v0.5.2] OAuth Connection Helpers
     window.startOAuth = async (providerName) => {
         try {
-            const res = await fetch(API_BASE + '/api/vault/oauth/start/' + providerName);
+            const res = await authFetch(API_BASE + '/api/vault/oauth/start/' + providerName);
             const data = await res.json();
             
             if (!res.ok) {
@@ -399,10 +608,8 @@
                 return;
             }
             
-            // Open popup for the OAuth flow
             const popup = window.open(data.auth_url, 'butterclaw_oauth', 'width=600,height=700,scrollbars=yes');
             
-            // Listen for the callback message
             window.addEventListener('message', function handler(event) {
                 if (event.data && event.data.type === 'oauth_result') {
                     window.removeEventListener('message', handler);
@@ -410,6 +617,7 @@
                 }
             });
         } catch (e) {
+            if (e.message === 'auth_required') return;
             alert('Failed to start OAuth flow: ' + e.message);
         }
     };
@@ -418,7 +626,7 @@
         if (!confirm(`Disconnect ${providerName}? This will revoke the token.`)) return;
         
         try {
-            const res = await fetch(API_BASE + '/api/vault/oauth/revoke/' + providerName, {method: 'POST'});
+            const res = await authFetch(API_BASE + '/api/vault/oauth/revoke/' + providerName, {method: 'POST'});
             if (res.ok) {
                 fetchVaultStatus();
             } else {
@@ -426,6 +634,7 @@
                 alert('Revocation failed: ' + (data.error || 'Unknown error'));
             }
         } catch (e) {
+            if (e.message === 'auth_required') return;
             alert('Failed to revoke: ' + e.message);
         }
     };
@@ -434,7 +643,6 @@
         const card = document.createElement('div');
         card.className = 'bg-white border border-slate-200 rounded-2xl p-4 transition shadow-sm';
         
-        // Header
         const header = document.createElement('div');
         header.className = 'flex items-center justify-between mb-3';
         
@@ -465,7 +673,6 @@
         header.appendChild(statusBadge);
         card.appendChild(header);
         
-        // Actions
         const actions = document.createElement('div');
         actions.className = 'flex items-center space-x-2';
         
@@ -500,9 +707,8 @@
     };
 
     const fetchVaultStatus = async () => {
-      // 1. Fetch Static API Keys
       try {
-        const res = await fetch(`${API_BASE}/api/vault/status`);
+        const res = await authFetch(`${API_BASE}/api/vault/status`);
         if (res.ok) {
           const status = await res.json();
           if (status.OpenRouter) {
@@ -517,11 +723,13 @@
             orBadgeText.textContent = 'Unprotected'; orInputGroup.classList.remove('hidden'); orKeyInput.value = '';
           }
         }
-      } catch (e) { orStatusText.textContent = 'Offline'; }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        orStatusText.textContent = 'Offline';
+      }
 
-      // 2. Fetch OAuth Providers (v0.5.2)
       try {
-        const oauthRes = await fetch(`${API_BASE}/api/vault/oauth/status`);
+        const oauthRes = await authFetch(`${API_BASE}/api/vault/oauth/status`);
         if (oauthRes.ok) {
           const oauthData = await oauthRes.json();
           const oauthContainer = document.getElementById('oauthProviders');
@@ -532,7 +740,10 @@
             });
           }
         }
-      } catch (e) { console.warn('OAuth status fetch failed:', e); }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.warn('OAuth status fetch failed:', e);
+      }
     };
 
     orSaveBtn.addEventListener('click', async () => {
@@ -540,9 +751,12 @@
       if (!key) return;
       orSaveBtn.textContent = 'Sealing...';
       try {
-        await fetch(`${API_BASE}/api/vault/key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'OpenRouter', api_key: key }) });
+        await authFetch(`${API_BASE}/api/vault/key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'OpenRouter', api_key: key }) });
         await fetchVaultStatus();
-      } catch (e) { console.error('Failed to seal key', e); }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.error('Failed to seal key', e);
+      }
       finally { orSaveBtn.textContent = 'Seal'; }
     });
 
@@ -567,14 +781,15 @@
       panicBtn.appendChild(spinIcon); panicBtn.appendChild(spinText);
       panicBtn.classList.replace('bg-red-500', 'bg-amber-500'); panicBtn.classList.replace('hover:bg-red-600', 'hover:bg-amber-600');
       try {
-        await fetch(`${API_BASE}/api/rotate-keys`, { method: 'POST' });
+        await authFetch(`${API_BASE}/api/rotate-keys`, { method: 'POST' });
         panicBtn.textContent = '';
         const okIcon = document.createElement('span'); okIcon.textContent = '✅';
         const okText = document.createElement('span'); okText.textContent = 'Keys Buttered';
         panicBtn.appendChild(okIcon); panicBtn.appendChild(okText);
         panicBtn.classList.replace('bg-amber-500', 'bg-emerald-500'); panicBtn.classList.replace('hover:bg-amber-600', 'hover:bg-emerald-600');
         await fetchVaultStatus(); fetchLiveLogs();
-      } catch (error) {
+      } catch (e) {
+        if (e.message === 'auth_required') return;
         panicBtn.textContent = '';
         const errIcon = document.createElement('span'); errIcon.textContent = '❌';
         const errText = document.createElement('span'); errText.textContent = 'Vault Offline';
@@ -610,7 +825,6 @@
             const action = document.createElement('p'); action.className = `text-xs text-${color}-600 mt-2 font-mono bg-${color}-100/50 inline-block px-2 py-1 rounded`; action.textContent = `Action: ${log.action || 'None'}`;
       contentDiv.appendChild(title); contentDiv.appendChild(desc); contentDiv.appendChild(action);
 
-      // [v0.5.1] Chain visualization — if action contains "Chain [", add ledger link
       if (log.action && log.action.indexOf('Chain [') !== -1) {
         const chainRow = document.createElement('div');
         chainRow.className = 'flex items-center space-x-2 mt-2';
@@ -636,7 +850,8 @@
 
     const fetchLiveLogs = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/logs`); const logs = await response.json();
+        const response = await authFetch(`${API_BASE}/api/logs`); 
+        const logs = await response.json();
         if (logs.length === 0) { emptyLogs.classList.remove('hidden'); oopsieContainer.innerHTML = ''; return; }
         emptyLogs.classList.add('hidden');
         const signature = logs.map(l => l.time + l.title).join('|');
@@ -644,7 +859,10 @@
         previousLogSignature = signature;
         oopsieContainer.innerHTML = '';
         logs.forEach((log, index) => { oopsieContainer.appendChild(createLogCard(log, index)); });
-      } catch (error) { console.error('Brain disconnected.'); }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        console.error('Brain disconnected.');
+      }
     };
 
     // =============================================
@@ -654,7 +872,7 @@
     const SSE_MAX_DELAY = 30000;
 
     const connectSSE = () => {
-      const logStream = new EventSource(`${API_BASE}/api/stream`);
+      const logStream = connectAuthSSE(`${API_BASE}/api/stream`);
       logStream.onmessage = (event) => { sseRetryDelay = 1000; fetchLiveLogs(); fetchVaultStatus(); };
       logStream.onerror = () => {
         logStream.close();
@@ -662,8 +880,13 @@
       };
     };
 
-    connectSSE();
-    fetchLiveLogs();
+    // [v0.6.0] Check session before loading data
+    checkSession().then(function(valid) {
+      if (valid) {
+        connectSSE();
+        fetchLiveLogs();
+      }
+    });
 
     // =============================================
     // 6. SIMULATE ATTACK BUTTON
@@ -682,13 +905,14 @@
       const stewText = document.createElement('span'); stewText.textContent = 'Stewing...';
       simulateAttackBtn.appendChild(stewIcon); simulateAttackBtn.appendChild(stewText);
       try {
-        await fetch(`${API_BASE}/api/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(randomPayload) });
+        await authFetch(`${API_BASE}/api/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(randomPayload) });
         simulateAttackBtn.textContent = '';
         const okIcon = document.createElement('span'); okIcon.textContent = '👾';
         const okText = document.createElement('span'); okText.textContent = 'Simulate Attack';
         simulateAttackBtn.appendChild(okIcon); simulateAttackBtn.appendChild(okText);
         fetchLiveLogs();
-      } catch (error) {
+      } catch (e) {
+        if (e.message === 'auth_required') return;
         simulateAttackBtn.textContent = '';
         const errIcon = document.createElement('span'); errIcon.textContent = '❌';
         const errText = document.createElement('span'); errText.textContent = 'Brain Offline';
@@ -766,13 +990,16 @@
 
     const checkMCPStatus = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/mcp/status`);
+        const res = await authFetch(`${API_BASE}/api/mcp/status`);
         if (!res.ok) { setMCPState('offline', 0); return; }
         const data = await res.json();
         if (data.alive && data.handshake_ok) { setMCPState('armed', data.tools_count || 0); }
         else if (data.alive) { setMCPState('degraded', 0); }
         else { setMCPState('offline', 0); }
-      } catch (e) { setMCPState('offline', 0); }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        setMCPState('offline', 0);
+      }
     };
 
     mcpBadge.addEventListener('click', () => { window.location.href = 'routing.html#mcpSection'; });
