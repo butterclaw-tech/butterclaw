@@ -1,8 +1,8 @@
-# 🦞 ButterClaw v0.5.1: The Nervous System with Memory (Tool Chaining)
+# 🦞 ButterClaw v0.5.2: ButterVault OAuth (Credential Lifecycle Management)
 
-Version 0.5.1 — April 15, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.5.2 — April 16, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
-Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys into cryptographic garbage if a breach is detected. **Evaluation before Execution.**
+Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys — and now your OAuth tokens — into cryptographic garbage if a breach is detected. **Evaluation before Execution.**
 
 Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
 
@@ -10,66 +10,41 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 ---
 
-## 🚀 What's New in v0.5.1?
+## 🚀 What's New in v0.5.2?
 
-**Tool Chaining (Multi-Step Execution)** — The Brain is no longer restricted to a static, hardcoded response playbook. It can now dynamically compose custom response strategies:
+**ButterVault OAuth** — The ButterVault has evolved from a static key locker into a full credential lifecycle manager:
 
-### 🔗 Autonomous Tool Chaining
-The `ChainExecutor` engine allows the Brain to compose and execute sequential, multi-step MCP tool chains in response to a `CRITICAL` verdict. For example, the Brain can now decide to execute `scan_port` first, log the result, and *then* decide whether to fire a kinetic kill command. 
+### 🔑 OAuth 2.0 Authorization Code Flow
 
-### 🛡️ Safe Condition Evaluator
-Chains support conditional logic between steps (e.g., skip step 3 if step 1 returned "CLOSED"). To maintain the Sovereign Seal, this avoids arbitrary code execution entirely. Conditions use a closed, case-insensitive whitelist of string operators (`contains`, `not_contains`, `equals`, `not_equals`, `starts_with`).
+ButterClaw now supports the complete OAuth 2.0 dance for providers that offer it. Google Cloud (Gemini API) is the first live provider. The flow is entirely server-side — client secrets never touch the frontend. A CSRF state token (`secrets.token_urlsafe(32)`) with a 10-minute TTL prevents cross-site request forgery.
 
-### ⏱️ Strict Safety Rails
-Infinite reasoning loops are physically impossible. The execution engine enforces a hard limit of **10 maximum steps** and a cumulative **60-second total timeout** across the entire chain.
+### 🔐 Encrypted OAuth Token Storage
 
-*Note: This release builds directly on top of the recent **v0.5.0 / v0.5.0.1** features:*
+OAuth payloads (access token, refresh token, expiry timestamp, token type, scope) are serialized to JSON and encrypted using the same Fernet + OS keyring pipeline trusted for static API keys. A separate `oauth_tokens` SQLite table provides clean schema separation while sharing the same encryption infrastructure.
+
+### 🔄 Automatic Token Refresh
+
+`refresh_token_if_needed()` transparently checks token expiry with a 60-second safety buffer before any tool uses an OAuth-backed API. If the token is stale, it silently requests a new access token using the stored refresh token, re-encrypts it, and updates the Vault. The Sentinel never goes blind because a token expired during an attack.
+
+### ☢️ Gibson Destroys Everything
+
+`butter_keys()` now atomically destroys **both** the `vault` table (static API keys) AND the `oauth_tokens` table (OAuth payloads). The Sovereign Seal holds — OAuth tokens are mathematically annihilated alongside static keys with a single panic button press.
+
+### 🛡️ Client Credential Architecture
+
+OAuth `client_id` and `client_secret` are stored in the ButterVault itself via the existing `/api/vault/key` endpoint using provider-namespaced keys (e.g., `google_client_id`, `google_client_secret`). If the Vault is Buttered, the OAuth flow cannot even start — correct behavior. No environment variables, no config files, no plaintext.
+
+*This release also includes the **v0.5.1 Tool Chaining** features:*
+
+* **⛓️ ChainExecutor:** Brain composes multi-step MCP tool sequences with conditional execution.
+* **🛡️ Safe Condition Evaluator:** Whitelist-based string operators, zero `eval()` risk.
+* **⏱️ Safety Rails:** Max 10 steps, 60s total timeout, closed condition whitelist.
+
+*And builds on top of **v0.5.0 / v0.5.0.1** foundations:*
+
 * **📋 Event Ledger:** Persistent SQLite audit log for all MCP tool invocations.
 * **📡 SSE Transport:** Dual-mode MCP supporting both `stdio` and remote `SSE` transports.
-* **🧠 Temporal Memory & The Auditor:** Behavioral drift tracking via sliding-window ledger queries and a `0.0` temperature stateless self-reflection loop to catch false positives.
-
-**The Nervous System** — two major pillars, a memory upgrade to the core engine, plus infrastructure groundwork:
-
-### 📋 Event Ledger (Persistent Audit Log)
-
-Every MCP tool invocation is now recorded in a persistent, append-only SQLite table (`mcp_events`). Before dispatch, a `pending` row is written. After response, timeout, or error, the row is updated with the outcome, elapsed time, and result (truncated to 4KB). The ledger records the trigger source (`auto`, `manual`, `critical`, `handshake`, `ping`) and reserves `chain_id` / `chain_step` fields for v0.5.1 tool chaining.
-
-**New API endpoints:**
-- `GET /api/mcp/events` — Query with `?limit=`, `?tool=`, `?status=`, `?since=` filters
-- `GET /api/mcp/events/<id>` — Full event detail with result payload
-
-**New UI panel:** The routing page now has an "Event Ledger" section with filterable event rows, collapsible result previews, color-coded status dots, elapsed time display, and auto-refresh.
-
-### 📡 SSE Transport (Dual-Mode MCP)
-
-The MCP server now supports two transports behind a common abstraction layer:
-
-- **stdio** (default) — Local child process, stdin/stdout JSON-RPC. Zero config, same as v0.4.x.
-- **SSE** (new) — HTTP-based Server-Sent Events. `GET /sse` opens a stream, `POST /message` receives requests. Optional bearer token auth. Enables remote MCP clients on separate machines.
-
-**New file:** `mcp_transport.py` provides `StdioTransport` and `SSETransport` classes implementing `BaseTransport` (read/write/start/stop). Zero new pip dependencies — uses stdlib `http.server`.
-
-**New CLI flags for `butterclaw_mcp.py`:**
-```bash
-python butterclaw_mcp.py --transport sse --port 5001              # local SSE
-python butterclaw_mcp.py --transport sse --bind 0.0.0.0 --token x  # remote SSE
-```
-
-**New class in `server.py`:** `MCPSSEClient` connects to a remote MCP SSE server using `requests`. Same interface as `MCPProcessManager` — all call sites work identically regardless of transport.
-
-**New UI controls:** Transport selector (stdio/SSE toggle) in the routing page MCP panel, with SSE URL and token config fields.
-
-### 🧠 Temporal Memory & Stateless Self-Reflection
-
-ButterClaw's cognitive architecture has been completely overhauled to eliminate "LLM amnesia" and prevent "Red Alert exhaustion":
-
-- **The Memory Injection Patch:** The reasoning engine now queries the `mcp_events` ledger before evaluating a new log. By reading a sliding window of its own recent kinetic actions, the AI tracks *behavioral drift* over time rather than treating every event in a vacuum.
-- **The Auditor (Stateless Self-Reflection):** A single-model, split-timeline audit loop. When a `CRITICAL` verdict fires, a non-blocking daemon thread waits 30 seconds for the kinetic actions to settle, then hits the exact same Gemma 4 model with a cold `temperature: 0.0` prompt. It reviews the sanitized event ledger (immune to the original prompt injection) to check its own math. If it detects a hallucination, it pushes a "🧐 Likely False Positive" amber warning to the UI, allowing human review without giving the AI the dangerous authority to autonomously lower its own shields.
-- **Plug-and-Play Portability:** The complex JSON schemas and dual-persona system prompts (The Instinct vs. The Auditor) are managed dynamically within `server.py`. This ensures the repository remains 100% plug-and-play for anyone running a vanilla `gemma4:e4b` model out of the box.
-
-### 🔐 OAuth Provider Registry (Infrastructure)
-
-**New file:** `oauth_config.py` — Skeleton registry mapping providers to OAuth endpoints. Google Cloud and GitHub are configured and ready. Anthropic and OpenRouter remain API-key-only until they ship OAuth. The ButterVault OAuth token storage (`store_oauth_token` / `refresh_token_if_needed`) is scoped for v0.5.2.
+* **🧠 Temporal Memory & The Auditor:** Behavioral drift tracking via sliding-window ledger queries and a `0.0` temperature stateless self-reflection loop.
 
 See the full [CHANGELOG.md](CHANGELOG.md) for the complete feature list.
 
@@ -86,64 +61,81 @@ The system is a fully decoupled, reactive architecture running 100% locally.
    The localized reasoning engine utilizing a dual-persona, single-model architecture. It operates first as **The Instinct** (`temperature: 0.3`), evaluating raw OS telemetry against its recent temporal memory to catch obfuscated threats. It then acts as **The Auditor** (`temperature: 0.0`), performing background, stateless self-reflection on the sanitized ledger to flag false positive cascades. It is strictly constrained to output valid JSON payloads containing a `verdict`, `confidence` score, `primary_gate`, and `reasoning`.
 
 3. **The API (`server.py`):**
-   A Flask middleware routing server, MCP process manager, and event ledger host. It parses the JSON from the Brain and acts as the central nervous system, evaluating the 85% threshold to decide whether to log a `BENIGN` event or trigger a `CRITICAL` execution. Manages the MCP lifecycle via two interchangeable managers — `MCPProcessManager` (stdio) and `MCPSSEClient` (remote SSE) — both behind a common `BaseMCPManager` interface. Every MCP tool call is logged to the event ledger before dispatch and updated on completion. Exposes six `/api/mcp/*` observability endpoints.
+   A Flask middleware routing server, MCP process manager, OAuth coordinator, and event ledger host. It parses the JSON from the Brain and acts as the central nervous system, evaluating the 85% threshold to decide whether to log a `BENIGN` event or trigger a `CRITICAL` execution. Manages the MCP lifecycle via two interchangeable managers — `MCPProcessManager` (stdio) and `MCPSSEClient` (remote SSE) — both behind a common `BaseMCPManager` interface. Hosts the full OAuth 2.0 authorization code flow with CSRF-protected state management. Every MCP tool call is logged to the event ledger before dispatch and updated on completion. Exposes six `/api/mcp/*` observability endpoints and four `/api/vault/oauth/*` credential lifecycle endpoints.
 
 4. **The Vault (`buttervault.py`):**
-   OS-level symmetric encryption layer. Secures external provider keys using `cryptography.fernet` and `keyring`.
+   OS-level symmetric encryption layer. Secures external provider keys using `cryptography.fernet` and `keyring`. In v0.5.2, the Vault handles both static API key strings and structured OAuth token payloads (access token, refresh token, expiry, scope). Automatic token refresh prevents credential expiry during active operations. The Gibson Kill Switch destroys both key types atomically.
 
 5. **The Claws (`butterclaw_mcp.py`):**
-   The MCP Execution Layer — a JSON-RPC 2.0 server speaking Model Context Protocol (`protocolVersion: 2024-11-05`). In v0.5.0, the main loop uses a transport abstraction (`mcp_transport.py`) instead of raw stdin/stdout. Supports stdio (default, local child process) and SSE (network-accessible HTTP server). Exposes 5 tools via `tools/list` with full `inputSchema` definitions. Incoming arguments are validated against `inputSchema` before dispatch. CLI flags select transport mode, bind address, port, and auth token.
+   The MCP Execution Layer — a JSON-RPC 2.0 server speaking Model Context Protocol (`protocolVersion: 2024-11-05`). Uses a transport abstraction (`mcp_transport.py`) supporting stdio (default, local child process) and SSE (network-accessible HTTP server). Exposes 5 tools via `tools/list` with full `inputSchema` definitions. Incoming arguments are validated against `inputSchema` before dispatch. CLI flags select transport mode, bind address, port, and auth token.
 
 6. **The UI Suite (`index.html` & `routing.html`):**
-   An XSS-safe, Server-Sent Events driven dashboard. The routing page now features a transport mode selector (stdio/SSE), an Event Ledger panel with filterable audit rows, and the existing MCP panel with process status, ping, restart, and tool inspection. The sidebar on both pages includes an Event Ledger nav link.
+   An XSS-safe, Server-Sent Events driven dashboard. The routing page features a transport mode selector (stdio/SSE), an Event Ledger panel with filterable audit rows, and the MCP panel with process status, ping, restart, and tool inspection. The Vault modal now includes OAuth provider cards with Connect/Disconnect buttons and token status indicators. The sidebar on both pages includes an Event Ledger nav link.
 
 ### Transport Abstraction
 
 ```
 ButterClawMCPServer.route(request) → response
-        ↑                    ↓
-   transport.read()    transport.write()
-        ↑                    ↓
-   ┌────┴────┐         ┌────┴────┐
-   │  stdio  │         │   SSE   │
-   │ (local) │         │(network)│
-   └─────────┘         └─────────┘
+          ↑                    ↓
+  transport.read()     transport.write()
+          ↑                    ↓
+     ┌────┴────┐          ┌────┴────┐
+     │  stdio  │          │   SSE   │
+     │ (local) │          │(network)│
+     └─────────┘          └─────────┘
 ```
 
 ### Dual Manager Architecture
 
 ```
 server.py
-    │
-    ├── mcp_manager = create_mcp_manager()
-    │       │
-    │       ├── MCPProcessManager (stdio)
-    │       │       ├── stdin/stdout I/O threads
-    │       │       └── ledger hooks in send()
-    │       │
-    │       └── MCPSSEClient (sse)
-    │               ├── POST /message + SSE stream reader
-    │               └── ledger hooks in send()
-    │
-    └── Both implement BaseMCPManager interface
+│
+├── mcp_manager = create_mcp_manager()
+│   │
+│   ├── MCPProcessManager (stdio)
+│   │   ├── stdin/stdout I/O threads
+│   │   └── ledger hooks in send()
+│   │
+│   └── MCPSSEClient (sse)
+│       ├── POST /message + SSE stream reader
+│       └── ledger hooks in send()
+│
+└── Both implement BaseMCPManager interface
+```
+
+### OAuth Token Lifecycle
+
+```
+User clicks "Connect"
+  → Frontend calls /api/vault/oauth/start/google
+  → Server reads client_id from Vault
+  → Server generates CSRF state (10min TTL)
+  → Server returns authorization URL
+  → Frontend opens popup to Google
+  → User authorizes
+  → Google redirects to /api/vault/oauth/callback
+  → Server validates CSRF state (single-use)
+  → Server exchanges code for tokens
+  → Server seals tokens in ButterVault (Fernet + keyring)
+  → Popup closes, signals parent via postMessage
 ```
 
 ### Event Ledger Schema
 
 ```sql
 CREATE TABLE mcp_events (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp  TEXT NOT NULL,          -- ISO 8601 UTC
-    req_id     INTEGER,                -- JSON-RPC id
-    method     TEXT NOT NULL,          -- e.g. "tools/call"
-    tool_name  TEXT,                   -- e.g. "execute_gibson_kill"
-    arguments  TEXT,                   -- JSON string of input args
-    status     TEXT NOT NULL,          -- pending | success | error | timeout
-    result     TEXT,                   -- JSON string (truncated to 4KB)
-    elapsed_ms REAL,                   -- round-trip time
-    trigger    TEXT DEFAULT 'auto',    -- auto | manual | critical | handshake | ping
-    chain_id   TEXT,                   -- groups steps in a chain (v0.5.1)
-    chain_step INTEGER                 -- step number within chain (v0.5.1)
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT NOT NULL,         -- ISO 8601 UTC
+    req_id      INTEGER,               -- JSON-RPC id
+    method      TEXT NOT NULL,         -- e.g. "tools/call"
+    tool_name   TEXT,                  -- e.g. "execute_gibson_kill"
+    arguments   TEXT,                  -- JSON string of input args
+    status      TEXT NOT NULL,         -- pending | success | error | timeout
+    result      TEXT,                  -- JSON string (truncated to 4KB)
+    elapsed_ms  REAL,                  -- round-trip time
+    trigger     TEXT DEFAULT 'auto',   -- auto | manual | critical | handshake | ping
+    chain_id    TEXT,                  -- groups steps in a chain (v0.5.1)
+    chain_step  INTEGER               -- step number within chain (v0.5.1)
 );
 ```
 
@@ -151,9 +143,10 @@ CREATE TABLE mcp_events (
 
 ## ✨ Key Features
 
+- **ButterVault OAuth:** Full OAuth 2.0 authorization code flow with encrypted token storage, automatic refresh, CSRF protection, and atomic destruction on panic.
+- **The ButterVault:** 100% protection against supply-chain credential harvesters — including the LiteLLM/TeamPCP poisoned package attack (March 2026) and the npm/Axios compromise (March 31, 2026).
 - **Autonomous Tool Chaining:** The Brain can dynamically compose custom multi-step defense sequences utilizing dynamically discovered MCP tools.
 - **Safe Condition Evaluator:** Conditional chain execution utilizing a strict whitelist of safe, case-insensitive string comparisons. Zero `eval()` risk.
-- **The ButterVault:** 100% protection against supply-chain credential harvesters — including the LiteLLM/TeamPCP poisoned package attack (March 2026) and the npm/Axios compromise (March 31, 2026).
 - **Event Ledger:** Persistent, append-only audit trail of every MCP tool invocation with timestamps, arguments, results, elapsed time, and trigger source. Queryable via API and inspectable in the dashboard.
 - **Temporal Memory (Behavioral Drift Tracking):** The AI reads a sliding window of recent tool executions to understand the context of the room, curing traditional "LLM amnesia."
 - **Stateless Self-Auditing:** A background daemon leverages a cold-logic `temperature: 0.0` prompt to review sanitized ledger data, safely catching its own hallucinations without exposing the audit loop to raw, poisoned logs.
@@ -221,9 +214,8 @@ python server.py
 On boot, the server will automatically spawn `butterclaw_mcp.py` as a child process (stdio transport), run the MCP handshake, discover all available tools, and initialize the event ledger. Watch for:
 
 ```
-📡 [MCP] Initiating v0.5.0 Handshake Sequence...
-✅ [MCP] Handshake complete. 5 tools armed.
-   Transport: stdio
+📡 [MCP] Initiating v0.5.2 Handshake Sequence...
+✅ [MCP] Handshake complete. 5 tools armed. Transport: stdio
 📋 [LEDGER] Event ledger initialized. 0 historical events.
 ```
 
@@ -236,6 +228,17 @@ python watcher.py
 **Browser: Launch the Dashboard**
 
 Open `index.html` (or use VS Code Live Server). The sidebar will show a connection badge, MCP status badge, and Event Ledger link. Click the MCP badge to navigate to the routing page for full tool inspection, transport configuration, and the event ledger.
+
+### Setting Up OAuth (Google Cloud)
+
+1. Create a Google Cloud OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Set the authorized redirect URI to `http://127.0.0.1:5000/api/vault/oauth/callback`
+3. In the ButterClaw dashboard, open the **ButterVault** panel
+4. Store your credentials:
+   - Provider: `google_client_id` → Value: your client ID
+   - Provider: `google_client_secret` → Value: your client secret
+5. Click **🔑 Connect via OAuth** on the Google Cloud card
+6. Authorize in the popup → tokens are encrypted and sealed automatically
 
 ### Running with SSE Transport (Remote Mode)
 
@@ -287,10 +290,14 @@ To see the **Evaluation before Execution** pipeline in action:
 | Endpoint | Method | Description |
 |---|---|---|
 | `/api/analyze` | POST | Submit log for JSON analysis. Triggers MCP execution and Vault destruction on CRITICAL. |
-| `/api/vault/key` | POST | Encrypt and store an API key into the local SQLite Vault. |
+| `/api/vault/key` | POST | Encrypt and store an API key (or OAuth client credential) into the local SQLite Vault. |
 | `/api/vault/status` | GET | Returns boolean status of all sealed keys without exposing plaintext. |
 | `/api/rotate-keys` | POST | The Panic Button. Instantly overwrites all Vault ciphertext with garbage. |
-| `/api/health` | GET | Lightweight health probe. Returns `{"status": "ok", "version": "0.5.0"}` |
+| `/api/vault/oauth/start/<provider>` | GET | Generate CSRF-protected OAuth authorization URL. Reads client credentials from Vault. |
+| `/api/vault/oauth/callback` | GET | Handle OAuth provider redirect. Validates CSRF state, exchanges code for tokens, seals in Vault. |
+| `/api/vault/oauth/status` | GET | Connection status of all OAuth-capable providers (connected, expired, has refresh token). |
+| `/api/vault/oauth/revoke/<provider>` | POST | Revoke token at provider, remove from Vault. Best-effort remote + unconditional local deletion. |
+| `/api/health` | GET | Lightweight health probe. Returns `{"status": "ok", "version": "0.5.2"}` |
 | `/api/settings` | GET/POST | Central config sync for UI sliders, routing modes, logic gates, and MCP transport. |
 | `/api/stream` | GET | SSE endpoint. Pushes kinetic action updates to the dashboard. |
 | `/api/mcp/status` | GET | MCP health: `alive`, `handshake_ok`, `pid`, `tools_count`, `transport_mode`, `event_count`. |
@@ -304,34 +311,28 @@ To see the **Evaluation before Execution** pipeline in action:
 
 ## 🗺️ Roadmap
 
-**v0.4.0 — The Claws Awaken (Full MCP)✅**
-
+**v0.4.0 — The Claws Awaken (Full MCP) ✅**
 Full stdio/JSON-RPC MCP transport compliance. Threaded process manager with response correlation, stderr drain, and auto-restart. Dynamic tool discovery via `tools/list`. MCP observability endpoints and live UI panel. Expanded to 5 tools.
 
 **v0.4.1 — QA Sterilization Patch ✅**
-
 15-finding audit of v0.4.0. Fixed CSP attribute corruption, auto-restart handshake gap, thread safety, audit log integrity, MCP argument validation, pre-initialization guard, dynamic protocol version, and auto-refresh on state transition.
 
-**v0.5.0 — The Nervous System (Event Ledger + SSE Transport)✅**
-
+**v0.5.0 — The Nervous System (Event Ledger + SSE Transport) ✅**
 Event Ledger for persistent MCP audit trails. Dual-transport MCP (stdio + SSE) with transport abstraction layer. MCPSSEClient for remote MCP connections. Event Ledger UI panel with filtering and collapsible results. OAuth provider registry skeleton.
 
 **v0.5.0.1 — The Nervous System with Memory ✅**
 Temporal context injection and background Auditor daemon.
 
 **v0.5.1 — Tool Chaining ✅**
+ChainExecutor for multi-step MCP tool sequences. Safe condition evaluator with whitelist operators. Chain visualization in oopsie cards and event ledger. Safety rails: max 10 steps, 60s total timeout.
 
-- Let the Brain compose multi-tool sequences (e.g., `scan_port` → `log_event` → conditional `execute_gibson_kill`)
-- Chain schema with conditional execution and stored intermediate results
-- Chain visualization in oopsie log cards and event ledger
-- Safety rails: max 10 steps, 60s total timeout, closed condition whitelist
+**v0.5.2 — ButterVault OAuth ✅**
+Full OAuth 2.0 authorization code flow with Google Cloud as first provider. Encrypted token storage using Fernet + keyring. Automatic token refresh with 60s safety buffer. CSRF-protected state management. Gibson destroys OAuth tokens alongside API keys. Four new API endpoints. Vault modal OAuth connect/disconnect UI.
 
-**v0.5.2 — ButterVault OAuth**
-
-- ButterVault OAuth token storage (`store_oauth_token` / `refresh_token_if_needed`)
-- `/api/vault/oauth/start` and `/api/vault/oauth/callback` endpoints
-- Vault modal OAuth connect flow for Google Cloud (first real OAuth provider)
-- Token encryption at rest using same Fernet + keyring architecture
+**v0.6.0 — Next Chapter**
+- Multi-agent coordination and policy engine
+- Production hardening (TLS, API authentication, deployment packaging)
+- Additional OAuth providers as they ship public OAuth support
 
 ### License
 
