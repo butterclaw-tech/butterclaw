@@ -1115,7 +1115,7 @@ def run_self_audit(original_threat):
     }
 
     try:
-        response = http_requests.post(ollama_url, json=payload, timeout=120)
+        response = http_requests.post(ollama_url, json=payload, timeout=300)
         raw_content = response.json().get("message", {}).get("content", "{}")
         parsed = json.loads(raw_content)
         
