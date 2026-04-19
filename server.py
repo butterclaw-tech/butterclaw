@@ -1,45 +1,18 @@
 """
-ButterClaw v0.6.0 — The Exoskeleton (API Gateway & Auth)
+ButterClaw v0.6.1 — The Exoskeleton (Policy Engine)
 =====================================================================
 Changelog:
-  [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
-  [v0.3.1] Stability: LLM confidence hallucination fix + clamping.
-  [v0.3.1] Stability: Hot-path imports moved to top level.
-  [v0.4.0] MCP Transport: Full rewrite of MCP process manager.
-  [v0.4.1] QA Sterilization Patch:
-           - S1: Auto-restart in send() now chains handshake()
-           - S2: Thread-safe request counter via itertools.count()
-           - S3: TOCTOU fix in status() — snapshot process reference
-           - S4: CRITICAL path checks MCP send() return values
-           - S5: CONFIDENCE_THRESHOLD extracted to module-level constant
-  [v0.5.0] The Nervous System:
-           - Event Ledger: persistent append-only audit log (mcp_events table)
-           - MCPSSEClient: connects to remote MCP servers via SSE transport
-           - MCP transport selector: stdio (default) or sse (remote)
-           - /api/mcp/events endpoint for ledger queries
-           - /api/mcp/events/<id> endpoint for single event detail
-           - send() hooks: every MCP tool call is logged before + after
-           - Settings extended with mcp_transport, mcp_sse_url, mcp_sse_token
-           - Status extended with transport_mode, event_count
-  [v0.5.1] Tool Chaining:
-           - ChainExecutor class for multi-step MCP tool sequences
-           - Condition evaluator: whitelist of safe string comparisons
-           - Brain prompt extended with chain schema + available tools
-           - CRITICAL path routes to ChainExecutor when chain is present
-           - Chain-aware ledger logging (chain_id, chain_step now populated)
-           - Safety: max 10 steps, 60s total timeout, no eval()
-  [v0.5.2] ButterVault OAuth:
-           - OAuth 2.0 authorization code flow (Google Cloud first)
-           - /api/vault/oauth/start, /callback, /status, /revoke endpoints
-           - CSRF state validation with 10-minute TTL
-           - Token refresh handled transparently by buttervault
-           - Gibson destroys OAuth tokens alongside API keys
-  [v0.6.0] API Gateway & Auth:
-           - Role-based access control via auth.py (admin > operator > viewer)
-           - HMAC-SHA256 API key integration and session management
-           - @require_auth decorators applied to all sensitive endpoints
-           - Per-API-key rate limiting based on role tiers
-           - Split settings endpoint into separate GET (operator) and POST (admin)
+  [v0.4.1] QA Sterilization Patch (S1-S5)
+  [v0.5.0] The Nervous System (Ledger, SSE Transport)
+  [v0.5.1] Tool Chaining (ChainExecutor, safe eval)
+  [v0.5.2] ButterVault OAuth (Credential Lifecycle)
+  [v0.6.0] API Gateway & Auth (RBAC, API Keys, Sessions)
+  [v0.6.1] Policy Engine:
+           - Deterministic DRIFT framework integration.
+           - Pre-brain filter (fast-track/block/escalate).
+           - Post-brain validator (confidence gates).
+           - Pre-tool gate (chain execution surgical blocks).
+           - CRUD API endpoints for policy management.
 """
 
 from flask import Flask, request, jsonify, Response
@@ -65,16 +38,20 @@ import oauth_config
 import auth
 from auth import require_auth, register_auth_routes, bootstrap_admin_key, is_rate_limited_for_key
 
+# [v0.6.1] Policy Engine Import
+try:
+    import policy_engine
+    POLICY_ENGINE_ENABLED = True
+except ImportError:
+    POLICY_ENGINE_ENABLED = False
+    print("⚠️ [WARN] policy_engine.py not found. Deterministic guardrails disabled.")
+
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.0"
-
-# [v0.5.1] Module-level dry run flag — disables actual MCP calls in ChainExecutor
+VERSION = "0.6.1"
 DRY_RUN = False
-
-# [v0.4.1 S5] Module-level constant — referenced in both analyze_threat() and boot banner
 CONFIDENCE_THRESHOLD = 85
 
 app = Flask(__name__)
@@ -88,8 +65,6 @@ ALLOWED_ORIGINS = [
 ]
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
-
-# Register authentication endpoints
 register_auth_routes(app)
 
 # =============================================
@@ -104,10 +79,9 @@ model_name = "butterclaw-optimized:latest"
 routing_mode = "local"
 remote_endpoint = ""
 
-# [v0.5.0] MCP transport configuration
-mcp_transport_mode = "stdio"    # "stdio" or "sse"
-mcp_sse_url = ""                # e.g. "http://remote-host:5001"
-mcp_sse_token = ""              # bearer token for SSE auth
+mcp_transport_mode = "stdio"
+mcp_sse_url = ""
+mcp_sse_token = ""
 
 gate_states = {
     "sig_scan": True,
@@ -123,25 +97,6 @@ VALID_GATE_KEYS = frozenset(gate_states.keys())
 VALID_MCP_TRANSPORTS = ("stdio", "sse")
 
 # =============================================
-# SIMPLE RATE LIMITER (Deprecated in v0.6.0 - using auth.py)
-# =============================================
-# Retained for legacy internal checks if needed, but endpoint uses is_rate_limited_for_key
-RATE_LIMIT_MAX = 10
-RATE_LIMIT_WINDOW = 60
-_rate_log = deque()
-_rate_lock = threading.Lock()
-
-def is_rate_limited():
-    now = time.time()
-    with _rate_lock:
-        while _rate_log and _rate_log[0] < now - RATE_LIMIT_WINDOW:
-            _rate_log.popleft()
-        if len(_rate_log) >= RATE_LIMIT_MAX:
-            return True
-        _rate_log.append(now)
-        return False
-
-# =============================================
 # ABSOLUTE DB PATH + THREAD-SAFE SQLITE
 # =============================================
 
@@ -155,7 +110,6 @@ def get_db_connection():
 
 def init_db():
     conn = get_db_connection()
-    # Original oopsie logs table
     conn.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +121,6 @@ def init_db():
             color TEXT
         )
     ''')
-    # [v0.5.0] MCP Event Ledger — persistent append-only audit log
     conn.execute('''
         CREATE TABLE IF NOT EXISTS mcp_events (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,35 +140,35 @@ def init_db():
     conn.commit()
     conn.close()
 
+    # [v0.6.1] Initialize Policy Engine DB if present
+    if POLICY_ENGINE_ENABLED:
+        policy_engine.init_policy_db()
+
 init_db()
 
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.WARNING)
 
-
 # =============================================
 # OAUTH STATE MANAGEMENT (v0.5.2)
 # =============================================
 
-_oauth_states = {}  # state_token → {provider, created_at, redirect_uri}
+_oauth_states = {}
 _oauth_states_lock = threading.Lock()
-OAUTH_STATE_TTL = 600  # 10 minutes — state tokens expire after this
+OAUTH_STATE_TTL = 600
 
 def _cleanup_expired_oauth_states():
-    """Remove expired CSRF state tokens."""
     now = time.time()
     with _oauth_states_lock:
         expired = [k for k, v in _oauth_states.items() if now - v["created_at"] > OAUTH_STATE_TTL]
         for k in expired:
             del _oauth_states[k]
 
-
 # =============================================
 # MCP EVENT LEDGER (v0.5.0)
 # =============================================
 
 def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="auto", chain_id=None, chain_step=None):
-    """Write a pending event to the ledger before MCP dispatch."""
     try:
         conn = get_db_connection()
         conn.execute('''
@@ -223,13 +176,9 @@ def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="au
             VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         ''', (
             datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            req_id,
-            method,
-            tool_name,
+            req_id, method, tool_name,
             json.dumps(arguments) if arguments else None,
-            trigger,
-            chain_id,
-            chain_step
+            trigger, chain_id, chain_step
         ))
         event_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.commit()
@@ -240,77 +189,52 @@ def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="au
         return None
 
 def ledger_log_end(event_id, status, result=None, elapsed_ms=None):
-    """Update a pending event with its outcome."""
-    if event_id is None:
-        return
+    if event_id is None: return
     try:
         result_str = None
         if result is not None:
-            if isinstance(result, dict):
-                result_str = json.dumps(result)
-            else:
-                result_str = str(result)
-            # Truncate very long results to prevent DB bloat
+            result_str = json.dumps(result) if isinstance(result, dict) else str(result)
             if result_str and len(result_str) > 4096:
                 result_str = result_str[:4093] + "..."
 
         conn = get_db_connection()
-        conn.execute('''
-            UPDATE mcp_events SET status = ?, result = ?, elapsed_ms = ? WHERE id = ?
-        ''', (status, result_str, elapsed_ms, event_id))
+        conn.execute('UPDATE mcp_events SET status = ?, result = ?, elapsed_ms = ? WHERE id = ?', 
+                     (status, result_str, elapsed_ms, event_id))
         conn.commit()
         conn.close()
     except sqlite3.Error as e:
         print(f"⚠️ [LEDGER] Failed to log end: {e}")
 
 def ledger_query(limit=50, tool=None, status=None, since=None):
-    """Query the event ledger with optional filters."""
     query = "SELECT * FROM mcp_events WHERE 1=1"
     params = []
-
-    if tool:
-        query += " AND tool_name = ?"
-        params.append(tool)
-    if status:
-        query += " AND status = ?"
-        params.append(status)
-    if since:
-        query += " AND timestamp >= ?"
-        params.append(since)
-
+    if tool: query += " AND tool_name = ?"; params.append(tool)
+    if status: query += " AND status = ?"; params.append(status)
+    if since: query += " AND timestamp >= ?"; params.append(since)
     query += " ORDER BY id DESC LIMIT ?"
     params.append(min(limit, 200))
-
     try:
         conn = get_db_connection()
         rows = conn.execute(query, params).fetchall()
         conn.close()
         return [dict(row) for row in rows]
-    except sqlite3.Error as e:
-        print(f"⚠️ [LEDGER] Query failed: {e}")
-        return []
+    except sqlite3.Error: return []
 
 def ledger_get_event(event_id):
-    """Fetch a single event by ID."""
     try:
         conn = get_db_connection()
         row = conn.execute('SELECT * FROM mcp_events WHERE id = ?', (event_id,)).fetchone()
         conn.close()
         return dict(row) if row else None
-    except sqlite3.Error as e:
-        print(f"⚠️ [LEDGER] Fetch failed: {e}")
-        return None
+    except sqlite3.Error: return None
 
 def ledger_count():
-    """Return total event count for status endpoint."""
     try:
         conn = get_db_connection()
         count = conn.execute('SELECT COUNT(*) FROM mcp_events').fetchone()[0]
         conn.close()
         return count
-    except sqlite3.Error:
-        return 0
-
+    except sqlite3.Error: return 0
 
 # =============================================
 # CHAIN EXECUTOR (v0.5.1)
@@ -326,11 +250,10 @@ VALID_CONDITION_OPERATORS = {
 
 class ChainExecutor:
     MAX_STEPS = 10
-    TIMEOUT = 60  # seconds
+    TIMEOUT = 60
 
     def __init__(self, mcp_manager, chain_steps, dry_run=False):
-        if not isinstance(chain_steps, list):
-            raise ValueError("chain_steps must be a list")
+        if not isinstance(chain_steps, list): raise ValueError("chain_steps must be a list")
         self.mcp_manager = mcp_manager
         self.chain_steps = chain_steps[:self.MAX_STEPS]
         self.dry_run = dry_run
@@ -341,65 +264,64 @@ class ChainExecutor:
         self.timeout = self.TIMEOUT
 
     def execute(self):
-        print(f"\n🔗 [CHAIN {self.chain_id}] Starting {len(self.chain_steps)}-step chain"
-              f"{' [DRY RUN]' if self.dry_run else ''}")
-
+        print(f"\n🔗 [CHAIN {self.chain_id}] Starting {len(self.chain_steps)}-step chain{' [DRY RUN]' if self.dry_run else ''}")
         for idx, step in enumerate(self.chain_steps):
             elapsed = time.time() - self.start_time
             if elapsed > self.timeout:
                 print(f"⏱️ [CHAIN {self.chain_id}] Timeout after {elapsed:.1f}s at step {idx}")
                 break
-
             try:
                 self._execute_step(step, idx)
-            
             except Exception as e:
                 tool_name = step.get('tool', f'step_{idx}')
                 self.executed.append({"step": idx, "tool": tool_name, "status": "failed", "error": str(e)})
-                event_id = ledger_log_start(
-                    req_id=None,
-                    method="tools/call",
-                    tool_name=tool_name,
-                    arguments=step.get("args", {}),
-                    trigger="chain",
-                    chain_id=self.chain_id,
-                    chain_step=idx
-                )
-                if event_id:
-                    ledger_log_end(event_id, status="error", result={"error": str(e)})
+                event_id = ledger_log_start(req_id=None, method="tools/call", tool_name=tool_name, arguments=step.get("args", {}), trigger="chain", chain_id=self.chain_id, chain_step=idx)
+                if event_id: ledger_log_end(event_id, status="error", result={"error": str(e)})
                 continue
 
         step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
         action_summary = f"Chain [{self.chain_id}]: {len(self.executed)}/{len(self.chain_steps)} steps — {', '.join(step_names)}"
-
         print(f"🔗 [CHAIN {self.chain_id}] Complete. {action_summary}")
-
-        return {
-            "chain_id": self.chain_id,
-            "steps_executed": len(self.executed),
-            "steps_total": len(self.chain_steps),
-            "results": self.results,
-            "action_summary": action_summary
-        }
+        return {"chain_id": self.chain_id, "steps_executed": len(self.executed), "steps_total": len(self.chain_steps), "results": self.results, "action_summary": action_summary}
 
     def _execute_step(self, step, step_index):
         tool_name = step.get('tool')
-        if not tool_name:
-            raise ValueError(f"Step {step_index} missing required 'tool' key")
+        if not tool_name: raise ValueError(f"Step {step_index} missing required 'tool' key")
 
         condition = step.get('condition')
         if condition:
             if not self._evaluate_condition(condition):
                 print(f"⏭️ [CHAIN {self.chain_id}] Step {step_index} ({tool_name}) skipped — condition not met")
                 self.executed.append({"step": step_index, "tool": tool_name, "status": "skipped"})
-                event_id = ledger_log_start(
-                    req_id=None,
-                    method="tools/call", tool_name=tool_name,
-                    arguments=step.get("args", {}),
-                    trigger="chain", chain_id=self.chain_id, chain_step=step_index
-                )
-                if event_id:
-                    ledger_log_end(event_id, status="skipped", result={"reason": "condition_not_met"})
+                event_id = ledger_log_start(req_id=None, method="tools/call", tool_name=tool_name, arguments=step.get("args", {}), trigger="chain", chain_id=self.chain_id, chain_step=step_index)
+                if event_id: ledger_log_end(event_id, status="skipped", result={"reason": "condition_not_met"})
+                return
+
+        # ==============================================
+        # [v0.6.1] PRE-TOOL POLICY GATE
+        # ==============================================
+        if POLICY_ENGINE_ENABLED:
+            pre_tool_ctx = {
+                "raw_data": str(step.get("args", {})),
+                "threat_type": "chain_tool_call",
+                "tool_name": tool_name,
+                "tool_args": step.get("args", {}),
+                "chain_id": self.chain_id,
+                "chain_step": step_index,
+                "verdict": "CRITICAL", 
+                "confidence": 1.0,
+            }
+            gate_result = policy_engine.evaluate_policies("pre_tool", pre_tool_ctx)
+            
+            if gate_result["action"] == "skip_tool":
+                print(f"🚫 [POLICY] Pre-Tool gate blocked {tool_name}: {gate_result['reason']}")
+                self.executed.append({"step": step_index, "tool": tool_name, "status": "policy_blocked"})
+                event_id = ledger_log_start(req_id=None, method="tools/call", tool_name=tool_name, arguments=step.get("args", {}), trigger="chain", chain_id=self.chain_id, chain_step=step_index)
+                if event_id: ledger_log_end(event_id, status="policy_blocked", result={"reason": gate_result["reason"], "policy_id": gate_result["policy_id"]})
+                return
+            elif gate_result["action"] == "block":
+                print(f"🚫 [POLICY] Pre-Tool gate HARD BLOCKED {tool_name}: {gate_result['reason']}")
+                self.executed.append({"step": step_index, "tool": tool_name, "status": "policy_blocked"})
                 return
 
         args = step.get('args', {})
@@ -409,73 +331,44 @@ class ChainExecutor:
             print(f"🧪 [CHAIN {self.chain_id}] [DRY RUN] Step {step_index}: {tool_name}({args})")
             result = {"dry_run": True, "tool": tool_name, "args": args}
         else:
-            result = self.mcp_manager.send("tools/call", {
-                "name": tool_name,
-                "arguments": args
-            }, trigger="chain", chain_id=self.chain_id, chain_step=step_index)
+            result = self.mcp_manager.send("tools/call", {"name": tool_name, "arguments": args}, trigger="chain", chain_id=self.chain_id, chain_step=step_index)
 
         self.results[store_as] = result
         self.executed.append({"step": step_index, "tool": tool_name, "status": "executed"})
         print(f"✅ [CHAIN {self.chain_id}] Step {step_index}: {tool_name} → stored as '{store_as}'")
 
     def _evaluate_condition(self, condition):
-        if not isinstance(condition, dict):
-            return False
-
+        if not isinstance(condition, dict): return False
         source = condition.get('source')
         operator = condition.get('operator')
         expected = condition.get('expected')
-
-        if source not in self.results:
-            print(f"⚠️ [CHAIN {self.chain_id}] Condition source '{source}' not in results — skipping")
-            return False
-
-        if operator not in VALID_CONDITION_OPERATORS:
-            print(f"⚠️ [CHAIN {self.chain_id}] Unknown operator '{operator}' — skipping")
-            return False
-
-        source_value = str(self.results[source])
-        return VALID_CONDITION_OPERATORS[operator](source_value, expected)
-
-    def summary(self):
-        step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
-        return f"Chain [{self.chain_id}]: {len(self.executed)}/{len(self.chain_steps)} steps — {', '.join(step_names)}"
-
+        if source not in self.results: return False
+        if operator not in VALID_CONDITION_OPERATORS: return False
+        return VALID_CONDITION_OPERATORS[operator](str(self.results[source]), expected)
 
 # =============================================
 # MCP MANAGER INTERFACE
 # =============================================
 
 class BaseMCPManager:
-    def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
-        raise NotImplementedError
-    def notify(self, method, params=None):
-        raise NotImplementedError
-    def handshake(self):
-        raise NotImplementedError
-    def status(self):
-        raise NotImplementedError
-    def start(self):
-        raise NotImplementedError
-    def stop(self):
-        raise NotImplementedError
-    def restart(self):
-        raise NotImplementedError
+    def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None): raise NotImplementedError
+    def notify(self, method, params=None): raise NotImplementedError
+    def handshake(self): raise NotImplementedError
+    def status(self): raise NotImplementedError
+    def start(self): raise NotImplementedError
+    def stop(self): raise NotImplementedError
+    def restart(self): raise NotImplementedError
     @property
-    def is_alive(self):
-        raise NotImplementedError
+    def is_alive(self): raise NotImplementedError
     @property
-    def transport_name(self):
-        raise NotImplementedError
+    def transport_name(self): raise NotImplementedError
 
 # =============================================
 # MCP PROCESS MANAGER — stdio transport
 # =============================================
 
 class MCPProcessManager(BaseMCPManager):
-
     MCP_PROTOCOL_VERSION = "2024-11-05"
-
     def __init__(self, script_path):
         self.script_path = script_path
         self.process = None
@@ -483,101 +376,60 @@ class MCPProcessManager(BaseMCPManager):
         self._pending = {}
         self._req_counter = itertools.count(1)
         self._running = False
-        self._stdout_thread = None
-        self._stderr_thread = None
         self.discovered_tools = []
         self.server_info = {}
         self.handshake_ok = False
         self.protocol_version = self.MCP_PROTOCOL_VERSION
-
     @property
-    def transport_name(self):
-        return "stdio"
-
+    def transport_name(self): return "stdio"
     @property
-    def is_alive(self):
-        return self.process is not None and self.process.poll() is None
-
+    def is_alive(self): return self.process is not None and self.process.poll() is None
     def start(self):
-        if self.is_alive:
-            return True
+        if self.is_alive: return True
         print("🚀 [MCP] Spawning ButterClaw Execution Layer (stdio)...")
         try:
-            self.process = subprocess.Popen(
-                [sys.executable, self.script_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
+            self.process = subprocess.Popen([sys.executable, self.script_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         except Exception as e:
             print(f"❌ [MCP] Failed to spawn: {e}")
             return False
-
         self._running = True
-        self._stdout_thread = threading.Thread(target=self._read_stdout, daemon=True)
-        self._stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
-        self._stdout_thread.start()
-        self._stderr_thread.start()
-        print(f"✅ [MCP] Claws active at PID: {self.process.pid}")
+        threading.Thread(target=self._read_stdout, daemon=True).start()
+        threading.Thread(target=self._read_stderr, daemon=True).start()
         return True
-
     def stop(self):
         self._running = False
         if self.process and self.process.poll() is None:
-            print(f"🛑 [MCP] Stopping PID {self.process.pid}...")
-            try:
-                self.process.stdin.close()
-            except Exception:
-                pass
+            try: self.process.stdin.close()
+            except: pass
             try:
                 self.process.terminate()
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-            print("🛑 [MCP] Process stopped.")
         for req_id, entry in list(self._pending.items()):
             entry["result"] = {"error": "MCP process stopped"}
             entry["event"].set()
         self._pending.clear()
         self.process = None
         self.handshake_ok = False
-
     def restart(self):
         self.stop()
         time.sleep(0.3)
-        if self.start():
-            return self.handshake()
+        if self.start(): return self.handshake()
         return False
-
     def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
         if not self.is_alive:
-            if not self.start():
-                return {"error": "MCP process failed to start"}
-            if not self.handshake():
-                print("⚠️ [MCP] Auto-restart handshake failed. Attempting send anyway (best-effort).")
-
+            if not self.start(): return {"error": "MCP process failed to start"}
+            if not self.handshake(): print("⚠️ [MCP] Auto-restart handshake failed.")
         req_id = next(self._req_counter)
-
-        tool_name = None
-        arguments = None
-        if method == "tools/call" and params:
-            tool_name = params.get("name")
-            arguments = params.get("arguments")
-
-        event_id = ledger_log_start(
-            req_id=req_id, method=method, tool_name=tool_name,
-            arguments=arguments, trigger=trigger,
-            chain_id=chain_id, chain_step=chain_step
-        )
+        tool_name = params.get("name") if method == "tools/call" and params else None
+        arguments = params.get("arguments") if method == "tools/call" and params else None
+        event_id = ledger_log_start(req_id=req_id, method=method, tool_name=tool_name, arguments=arguments, trigger=trigger, chain_id=chain_id, chain_step=chain_step)
         t0 = time.time()
-
         payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": req_id}
         event = threading.Event()
         self._pending[req_id] = {"event": event, "result": None}
-
         try:
             with self._write_lock:
                 self.process.stdin.write(json.dumps(payload) + "\n")
@@ -587,30 +439,23 @@ class MCPProcessManager(BaseMCPManager):
             result = {"error": f"Pipe error: {e}"}
             ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
             return result
-
         if event.wait(timeout=timeout):
             entry = self._pending.pop(req_id, {})
             result = entry.get("result") or {"error": "Empty response"}
-            status = "error" if "error" in result else "success"
-            ledger_log_end(event_id, status, result, round((time.time() - t0) * 1000, 1))
+            ledger_log_end(event_id, "error" if "error" in result else "success", result, round((time.time() - t0) * 1000, 1))
             return result
         else:
             self._pending.pop(req_id, None)
             result = {"error": f"Timeout ({timeout}s) on {method}"}
             ledger_log_end(event_id, "timeout", result, round((time.time() - t0) * 1000, 1))
             return result
-
     def notify(self, method, params=None):
-        if not self.is_alive:
-            return
-        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+        if not self.is_alive: return
         try:
             with self._write_lock:
-                self.process.stdin.write(json.dumps(payload) + "\n")
+                self.process.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method, "params": params or {}}) + "\n")
                 self.process.stdin.flush()
-        except Exception:
-            pass
-
+        except: pass
     def _read_stdout(self):
         while self._running and self.is_alive:
             try:
@@ -620,214 +465,114 @@ class MCPProcessManager(BaseMCPManager):
                 if not line: continue
                 response = json.loads(line)
                 req_id = response.get("id")
-                preview = line[:150] + ("..." if len(line) > 150 else "")
-                print(f"📥 [MCP ACK] id={req_id} → {preview}")
                 if req_id is not None and req_id in self._pending:
                     self._pending[req_id]["result"] = response
                     self._pending[req_id]["event"].set()
-            except Exception:
-                if self._running: print(f"❌ [MCP] stdout reader error")
-                break
-
+            except: break
     def _read_stderr(self):
         while self._running and self.is_alive:
             try:
                 line = self.process.stderr.readline()
                 if not line: break
                 print(f"🔧 [MCP LOG] {line.rstrip()}")
-            except Exception:
-                break
-
+            except: break
     def handshake(self):
-        init_resp = self.send("initialize", {
-            "protocolVersion": self.MCP_PROTOCOL_VERSION,
-            "clientInfo": {"name": "butterclaw-server", "version": VERSION},
-            "capabilities": {}
-        }, timeout=10, trigger="handshake")
-
+        init_resp = self.send("initialize", {"protocolVersion": self.MCP_PROTOCOL_VERSION, "clientInfo": {"name": "butterclaw-server", "version": VERSION}, "capabilities": {}}, timeout=10, trigger="handshake")
         if "error" in init_resp:
-            self.handshake_ok = False
-            return False
-
-        result = init_resp.get("result", {})
-        self.server_info = result.get("serverInfo", {})
-        self.protocol_version = result.get("protocolVersion", self.MCP_PROTOCOL_VERSION)
-
+            self.handshake_ok = False; return False
+        self.server_info = init_resp.get("result", {}).get("serverInfo", {})
         self.notify("notifications/initialized")
         tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
-        if "error" not in tools_resp and "result" in tools_resp:
-            self.discovered_tools = tools_resp["result"].get("tools", [])
-        else:
-            self.discovered_tools = []
-
+        self.discovered_tools = tools_resp.get("result", {}).get("tools", []) if "error" not in tools_resp else []
         self.handshake_ok = True
         return True
-
     def status(self):
         proc = self.process
-        return {
-            "alive": proc is not None and proc.poll() is None,
-            "pid": proc.pid if proc else None,
-            "handshake_ok": self.handshake_ok,
-            "server_info": self.server_info,
-            "tools_count": len(self.discovered_tools),
-            "pending_requests": len(self._pending),
-            "protocol_version": self.protocol_version,
-            "transport_mode": "stdio",
-            "event_count": ledger_count()
-        }
+        return {"alive": proc is not None and proc.poll() is None, "pid": proc.pid if proc else None, "handshake_ok": self.handshake_ok, "server_info": self.server_info, "tools_count": len(self.discovered_tools), "pending_requests": len(self._pending), "protocol_version": self.protocol_version, "transport_mode": "stdio", "event_count": ledger_count()}
 
 # =============================================
 # MCP SSE CLIENT — remote SSE transport
 # =============================================
 
 class MCPSSEClient(BaseMCPManager):
-
     MCP_PROTOCOL_VERSION = "2024-11-05"
-
     def __init__(self, base_url, token=None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self._pending = {}
         self._req_counter = itertools.count(1)
         self._running = False
-        self._sse_thread = None
         self._connected = False
         self.discovered_tools = []
         self.server_info = {}
         self.handshake_ok = False
         self.protocol_version = self.MCP_PROTOCOL_VERSION
         self._message_url = None
-
     @property
-    def transport_name(self):
-        return f"sse ({self.base_url})"
-
+    def transport_name(self): return f"sse ({self.base_url})"
     @property
-    def is_alive(self):
-        return self._running and self._connected
-
+    def is_alive(self): return self._running and self._connected
     def _auth_headers(self):
-        headers = {"Content-Type": "application/json"}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-        return headers
-
+        return {"Content-Type": "application/json", **({"Authorization": f"Bearer {self.token}"} if self.token else {})}
     def start(self):
-        if self._running:
-            return True
-        print(f"🚀 [MCP] Connecting to remote MCP server at {self.base_url} (SSE)...")
-
+        if self._running: return True
         try:
-            health_resp = http_requests.get(f"{self.base_url}/health", headers=self._auth_headers(), timeout=5)
-            if health_resp.status_code != 200:
-                return False
-        except Exception:
-            return False
-
+            if http_requests.get(f"{self.base_url}/health", headers=self._auth_headers(), timeout=5).status_code != 200: return False
+        except: return False
         self._running = True
         self._message_url = f"{self.base_url}/message"
-        self._sse_thread = threading.Thread(target=self._read_sse_stream, daemon=True)
-        self._sse_thread.start()
-
+        threading.Thread(target=self._read_sse_stream, daemon=True).start()
         for _ in range(20):
             if self._connected: break
             time.sleep(0.1)
-
         return True
-
     def stop(self):
-        self._running = False
-        self._connected = False
+        self._running = False; self._connected = False
         for req_id, entry in list(self._pending.items()):
-            entry["result"] = {"error": "MCP SSE client stopped"}
-            entry["event"].set()
+            entry["result"] = {"error": "MCP SSE client stopped"}; entry["event"].set()
         self._pending.clear()
         self.handshake_ok = False
-
     def restart(self):
-        self.stop()
-        time.sleep(0.3)
-        if self.start():
-            return self.handshake()
-        return False
-
+        self.stop(); time.sleep(0.3)
+        return self.handshake() if self.start() else False
     def _read_sse_stream(self):
-        headers = self._auth_headers()
-        headers["Accept"] = "text/event-stream"
-        headers["Cache-Control"] = "no-cache"
-
+        headers = {**self._auth_headers(), "Accept": "text/event-stream", "Cache-Control": "no-cache"}
         while self._running:
             try:
                 resp = http_requests.get(f"{self.base_url}/sse", headers=headers, stream=True, timeout=None)
-                if resp.status_code != 200:
-                    time.sleep(5)
-                    continue
-
+                if resp.status_code != 200: time.sleep(5); continue
                 self._connected = True
-                event_type = None
-                data_buffer = ""
-
+                event_type = None; data_buffer = ""
                 for line in resp.iter_lines(decode_unicode=True):
                     if not self._running: break
-                    if line is None or line == "":
+                    if not line:
                         if data_buffer and event_type:
-                            self._handle_sse_event(event_type, data_buffer.strip())
-                        event_type = None
-                        data_buffer = ""
-                        continue
+                            if event_type == "endpoint": self._message_url = data_buffer.strip()
+                            elif event_type == "message":
+                                try:
+                                    response = json.loads(data_buffer)
+                                    if "id" in response and response["id"] in self._pending:
+                                        self._pending[response["id"]]["result"] = response; self._pending[response["id"]]["event"].set()
+                                except: pass
+                        event_type = None; data_buffer = ""; continue
                     if line.startswith(":"): continue
                     if line.startswith("event: "): event_type = line[7:].strip()
                     elif line.startswith("data: "): data_buffer += line[6:]
-                    elif line.startswith("data:"): data_buffer += line[5:]
-
-            except Exception:
-                if self._running:
-                    self._connected = False
-                    time.sleep(5)
-
-    def _handle_sse_event(self, event_type, data):
-        if event_type == "endpoint":
-            self._message_url = data.strip()
-            return
-
-        if event_type == "message":
-            try:
-                response = json.loads(data)
-                req_id = response.get("id")
-                if req_id is not None and req_id in self._pending:
-                    self._pending[req_id]["result"] = response
-                    self._pending[req_id]["event"].set()
-            except Exception:
-                pass
-
+            except:
+                if self._running: self._connected = False; time.sleep(5)
     def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
         if not self._running:
-            if not self.start():
-                return {"error": "MCP SSE client failed to connect"}
-
+            if not self.start(): return {"error": "MCP SSE client failed to connect"}
         req_id = next(self._req_counter)
-        post_url = self._message_url or f"{self.base_url}/message"
-
-        tool_name = None
-        arguments = None
-        if method == "tools/call" and params:
-            tool_name = params.get("name")
-            arguments = params.get("arguments")
-
-        event_id = ledger_log_start(
-            req_id=req_id, method=method, tool_name=tool_name,
-            arguments=arguments, trigger=trigger,
-            chain_id=chain_id, chain_step=chain_step
-        )
+        tool_name = params.get("name") if method == "tools/call" and params else None
+        arguments = params.get("arguments") if method == "tools/call" and params else None
+        event_id = ledger_log_start(req_id=req_id, method=method, tool_name=tool_name, arguments=arguments, trigger=trigger, chain_id=chain_id, chain_step=chain_step)
         t0 = time.time()
-
         payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": req_id}
         event = threading.Event()
         self._pending[req_id] = {"event": event, "result": None}
-
         try:
-            resp = http_requests.post(post_url, json=payload, headers=self._auth_headers(), timeout=5)
+            resp = http_requests.post(self._message_url or f"{self.base_url}/message", json=payload, headers=self._auth_headers(), timeout=5)
             if resp.status_code not in (200, 202):
                 self._pending.pop(req_id, None)
                 result = {"error": f"POST failed: HTTP {resp.status_code}"}
@@ -838,87 +583,39 @@ class MCPSSEClient(BaseMCPManager):
             result = {"error": f"POST failed: {e}"}
             ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
             return result
-
         if event.wait(timeout=timeout):
             entry = self._pending.pop(req_id, {})
             result = entry.get("result") or {"error": "Empty response"}
-            status = "error" if "error" in result else "success"
-            ledger_log_end(event_id, status, result, round((time.time() - t0) * 1000, 1))
+            ledger_log_end(event_id, "error" if "error" in result else "success", result, round((time.time() - t0) * 1000, 1))
             return result
         else:
             self._pending.pop(req_id, None)
             result = {"error": f"Timeout ({timeout}s) on {method}"}
             ledger_log_end(event_id, "timeout", result, round((time.time() - t0) * 1000, 1))
             return result
-
     def notify(self, method, params=None):
         if not self._running: return
-        post_url = self._message_url or f"{self.base_url}/message"
-        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}}
-        try:
-            http_requests.post(post_url, json=payload, headers=self._auth_headers(), timeout=5)
-        except Exception:
-            pass
-
+        try: http_requests.post(self._message_url or f"{self.base_url}/message", json={"jsonrpc": "2.0", "method": method, "params": params or {}}, headers=self._auth_headers(), timeout=5)
+        except: pass
     def handshake(self):
-        init_resp = self.send("initialize", {
-            "protocolVersion": self.MCP_PROTOCOL_VERSION,
-            "clientInfo": {"name": "butterclaw-server", "version": VERSION},
-            "capabilities": {}
-        }, timeout=10, trigger="handshake")
-
-        if "error" in init_resp:
-            self.handshake_ok = False
-            return False
-
-        result = init_resp.get("result", {})
-        self.server_info = result.get("serverInfo", {})
-        self.protocol_version = result.get("protocolVersion", self.MCP_PROTOCOL_VERSION)
-
+        init_resp = self.send("initialize", {"protocolVersion": self.MCP_PROTOCOL_VERSION, "clientInfo": {"name": "butterclaw-server", "version": VERSION}, "capabilities": {}}, timeout=10, trigger="handshake")
+        if "error" in init_resp: self.handshake_ok = False; return False
+        self.server_info = init_resp.get("result", {}).get("serverInfo", {})
         self.notify("notifications/initialized")
-
         tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
-        if "error" not in tools_resp and "result" in tools_resp:
-            self.discovered_tools = tools_resp["result"].get("tools", [])
-        else:
-            self.discovered_tools = []
-
-        self.handshake_ok = True
-        return True
-
+        self.discovered_tools = tools_resp.get("result", {}).get("tools", []) if "error" not in tools_resp else []
+        self.handshake_ok = True; return True
     def status(self):
-        return {
-            "alive": self._connected,
-            "pid": None,
-            "handshake_ok": self.handshake_ok,
-            "server_info": self.server_info,
-            "tools_count": len(self.discovered_tools),
-            "pending_requests": len(self._pending),
-            "protocol_version": self.protocol_version,
-            "transport_mode": "sse",
-            "remote_url": self.base_url,
-            "event_count": ledger_count()
-        }
-
-
-# =============================================
-# MCP MANAGER FACTORY
-# =============================================
+        return {"alive": self._connected, "pid": None, "handshake_ok": self.handshake_ok, "server_info": self.server_info, "tools_count": len(self.discovered_tools), "pending_requests": len(self._pending), "protocol_version": self.protocol_version, "transport_mode": "sse", "remote_url": self.base_url, "event_count": ledger_count()}
 
 def create_mcp_manager():
-    with _state_lock:
-        mode = mcp_transport_mode
-        url = mcp_sse_url
-        token = mcp_sse_token
-
+    with _state_lock: mode = mcp_transport_mode; url = mcp_sse_url; token = mcp_sse_token
     if mode == "sse" and url:
         print(f"📡 [MCP] Using SSE transport → {url}")
         return MCPSSEClient(base_url=url, token=token)
     else:
         print("📡 [MCP] Using stdio transport (local child process)")
-        return MCPProcessManager(
-            script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py")
-        )
+        return MCPProcessManager(script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py"))
 
 mcp_manager = create_mcp_manager()
 
@@ -927,37 +624,26 @@ mcp_manager = create_mcp_manager()
 # =============================================
 
 def _resolve_ollama_url():
-    with _state_lock:
-        mode = routing_mode
-        endpoint = remote_endpoint
-    if mode == "remote" and endpoint:
-        base = endpoint.rstrip("/")
-        return f"{base}{OLLAMA_CHAT_PATH}"
+    with _state_lock: mode = routing_mode; endpoint = remote_endpoint
+    if mode == "remote" and endpoint: return f"{endpoint.rstrip('/')}{OLLAMA_CHAT_PATH}"
     return f"{OLLAMA_LOCAL_BASE}{OLLAMA_CHAT_PATH}"
 
 def _validate_endpoint_url(url_string):
-    if not url_string:
-        return True
+    if not url_string: return True
     try:
         parsed = urlparse(url_string)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-    except Exception:
-        return False
-
+    except: return False
 
 # =============================================
 # THE GUARDIAN BRAIN
 # =============================================
 
 def ask_guardian_agent(threat_type, raw_data):
-    with _state_lock:
-        level = current_level
-        active_model = model_name
-        gates = dict(gate_states)
+    with _state_lock: level = current_level; active_model = model_name; gates = dict(gate_states)
 
     mcp_history = ledger_query(limit=5, status="success")
     timeline_context = ""
-    
     if mcp_history:
         timeline_context = "RECENT SENTINEL ACTIONS (Sliding Window):\n"
         for event in reversed(mcp_history):
@@ -966,111 +652,52 @@ def ask_guardian_agent(threat_type, raw_data):
         timeline_context += "\n"
 
     mode_instructions = "Mode: RELAXED. Be lenient unless it's a clear RCE."
-    if level == "2":
-        mode_instructions = "Mode: CAUTIOUS. Flag anomalies and token leaks."
-    if level == "3":
-        mode_instructions = "Mode: PARANOID. Zero Trust. Flag ANY external origin breathing on local ports."
+    if level == "2": mode_instructions = "Mode: CAUTIOUS. Flag anomalies and token leaks."
+    if level == "3": mode_instructions = "Mode: PARANOID. Zero Trust. Flag ANY external origin breathing on local ports."
 
     active_gates = [k for k, v in gates.items() if v]
     inactive_gates = [k for k, v in gates.items() if not v]
-
     gate_context = ""
     if inactive_gates:
-        gate_labels = {
-            "sig_scan": "Signature Scan",
-            "origin_ctx": "Origin Context",
-            "intent": "Intent Classification",
-            "kill_sw": "Kill Switch"
-        }
-        active_labels = [gate_labels.get(g, g) for g in active_gates]
-        inactive_labels = [gate_labels.get(g, g) for g in inactive_gates]
-        gate_context = (
-            f" Active analysis gates: {', '.join(active_labels) if active_labels else 'NONE'}."
-            f" Disabled gates (skip these): {', '.join(inactive_labels)}."
-        )
-        if not gates.get("kill_sw"):
-            gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
+        gate_labels = {"sig_scan": "Signature Scan", "origin_ctx": "Origin Context", "intent": "Intent Classification", "kill_sw": "Kill Switch"}
+        gate_context = f" Active analysis gates: {', '.join([gate_labels.get(g, g) for g in active_gates]) if active_gates else 'NONE'}. Disabled gates (skip these): {', '.join([gate_labels.get(g, g) for g in inactive_gates])}."
+        if not gates.get("kill_sw"): gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
     
-    tools_list = []
-    for tool in mcp_manager.discovered_tools:
-        tool_name = tool.get('name', 'unknown_tool')
-        desc = tool.get('description', 'No description')
-        tools_list.append(f"  - {tool_name}: {desc}")
-
+    tools_list = [f"  - {t.get('name', 'unknown_tool')}: {t.get('description', 'No description')}" for t in mcp_manager.discovered_tools]
     tools_context = "\n".join(tools_list) if tools_list else "  No MCP tools discovered yet."
 
     json_schema = (
-        'You must respond ONLY with a valid JSON object. Do not include markdown formatting. '
-        'Strict Schema: {'
-        '"verdict": "CRITICAL" | "WARNING" | "BENIGN", '
-        '"confidence": float 0.0-1.0, '
-        '"primary_gate": "Signature" | "Origin" | "Intent" | "None", '
-        '"reasoning": "2-sentence explanation."} '
+        'You must respond ONLY with a valid JSON object. Do not include markdown formatting. Strict Schema: {'
+        '"verdict": "CRITICAL" | "WARNING" | "BENIGN", "confidence": float 0.0-1.0, "primary_gate": "Signature" | "Origin" | "Intent" | "None", "reasoning": "2-sentence explanation."} '
         'For CRITICAL verdicts, you MAY include an optional "chain" array to compose a multi-step tool sequence: '
-        '"chain": [{"tool": "tool_name", "args": {"key": "value"}, "store_as": "result_label", '
-        '"condition": {"source": "previous_result_label", '
-        '"operator": "contains|not_contains|equals|not_equals|starts_with", '
-        '"expected": "value"}}] '
-        f'Available MCP tools:\n{tools_context}\n'
-        'Chain rules: max 10 steps, conditions reference previous store_as labels, '
-        'first step cannot have a condition. If unsure, omit chain — hardcoded fallback will execute.'
+        '"chain": [{"tool": "tool_name", "args": {"key": "value"}, "store_as": "result_label", "condition": {"source": "previous_result_label", "operator": "contains|not_contains|equals|not_equals|starts_with", "expected": "value"}}] '
+        f'Available MCP tools:\n{tools_context}\nChain rules: max 10 steps, conditions reference previous store_as labels, first step cannot have a condition. If unsure, omit chain — hardcoded fallback will execute.'
     )
 
     ollama_url = _resolve_ollama_url()
-
     payload = {
-        "model": active_model,
-        "format": "json",
+        "model": active_model, "format": "json", "stream": False, "options": {"temperature": 0.3},
         "messages": [
-            {
-                "role": "system",
-                "content": f"You are ButterClaw, an expert Blue Team cybersecurity Guardian AI. {mode_instructions}{gate_context} {json_schema}"
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"{timeline_context}"
-                    f"Analyze this NEW local AI agent event:\n"
-                    f"Threat Type: {threat_type}\n"
-                    f"Raw Data/Log: {raw_data}\n\n"
-                    f"Determine if this is a CSWH attempt, an Indirect Prompt Injection, or benign noise based on the current event and recent history."
-                )
-            }
-        ],
-        "stream": False,
-        "options": {
-            "temperature": 0.3
-        }
+            {"role": "system", "content": f"You are ButterClaw, an expert Blue Team cybersecurity Guardian AI. {mode_instructions}{gate_context} {json_schema}"},
+            {"role": "user", "content": f"{timeline_context}Analyze this NEW local AI agent event:\nThreat Type: {threat_type}\nRaw Data/Log: {raw_data}\n\nDetermine if this is a CSWH attempt, an Indirect Prompt Injection, or benign noise based on the current event and recent history."}
+        ]
     }
 
     try:
         response = http_requests.post(ollama_url, json=payload, timeout=120)
         raw_content = response.json().get("message", {}).get("content", "{}")
-
         try:
             parsed = json.loads(raw_content)
             raw_conf = float(parsed.get("confidence", 0.0))
-            if raw_conf > 1.0:
-                raw_conf = raw_conf / 100.0
-            clamped_conf = max(0.0, min(1.0, raw_conf))
-
             return {
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
-                "confidence": clamped_conf,
+                "confidence": max(0.0, min(1.0, raw_conf / 100.0 if raw_conf > 1.0 else raw_conf)),
                 "primary_gate": str(parsed.get("primary_gate", "None")),
                 "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning.")),
                 "chain": parsed.get("chain")
             }
-        except json.JSONDecodeError:
-            return {
-                "verdict": "ERROR",
-                "confidence": 0.0,
-                "reasoning": f"JSON parse failed on output: {raw_content[:200]}"
-            }
-
-    except Exception as e:
-        return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"Brain failure: {str(e)}"}
-
+        except json.JSONDecodeError: return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"JSON parse failed on output: {raw_content[:200]}"}
+    except Exception as e: return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"Brain failure: {str(e)}"}
 
 # =============================================
 # THE AUDITOR (Step A)
@@ -1078,92 +705,51 @@ def ask_guardian_agent(threat_type, raw_data):
 
 def run_self_audit(original_threat):
     time.sleep(30)
-    
     mcp_history = ledger_query(limit=5, status="success")
     timeline_context = "RECENT SENTINEL ACTIONS:\n"
     if mcp_history:
         for event in reversed(mcp_history):
             if event['method'] == 'tools/call':
-                result_str = str(event.get('result', ''))[:100]
-                timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {result_str}...\n"
-    else:
-        timeline_context += " - No recent actions.\n"
+                timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {str(event.get('result', ''))[:100]}...\n"
+    else: timeline_context += " - No recent actions.\n"
 
     ollama_url = _resolve_ollama_url()
-    with _state_lock:
-        active_model = model_name
+    with _state_lock: active_model = model_name
 
     payload = {
-        "model": active_model,
-        "format": "json",
+        "model": active_model, "format": "json", "stream": False, "options": {"temperature": 0.0},
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are the ButterClaw Auditor. Review the RECENT ACTIONS. "
-                    "Your job is to determine if the system overreacted to a False Positive. "
-                    "Respond in JSON: {\"audit_verdict\": \"AGREEMENT\"|\"FALSE_POSITIVE\", \"reasoning\": \"...\"}"
-                )
-            },
-            {
-                "role": "user",
-                "content": f"{timeline_context}\nOriginal Trigger: {original_threat}\nDid we overreact?"
-            }
-        ],
-        "stream": False,
-        "options": {"temperature": 0.0}
+            {"role": "system", "content": "You are the ButterClaw Auditor. Review the RECENT ACTIONS. Your job is to determine if the system overreacted to a False Positive. Respond in JSON: {\"audit_verdict\": \"AGREEMENT\"|\"FALSE_POSITIVE\", \"reasoning\": \"...\"}"},
+            {"role": "user", "content": f"{timeline_context}\nOriginal Trigger: {original_threat}\nDid we overreact?"}
+        ]
     }
 
     try:
         response = http_requests.post(ollama_url, json=payload, timeout=300)
-        raw_content = response.json().get("message", {}).get("content", "{}")
-        parsed = json.loads(raw_content)
-        
-        audit_verdict = parsed.get("audit_verdict", "UNKNOWN")
-        reasoning = parsed.get("reasoning", "No reasoning provided.")
-
-        if audit_verdict == "FALSE_POSITIVE":
-            print(f"🧐 [AUDITOR] False Positive Detected: {reasoning}")
-            
+        parsed = json.loads(response.json().get("message", {}).get("content", "{}"))
+        if parsed.get("audit_verdict", "UNKNOWN") == "FALSE_POSITIVE":
+            print(f"🧐 [AUDITOR] False Positive Detected: {parsed.get('reasoning', 'No reasoning provided.')}")
             conn = get_db_connection()
-            conn.execute('''
-                INSERT INTO logs (title, desc, action, time, icon, color)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                f"Self-Audit: {original_threat}",
-                f"[Likely False Positive] Auditor Review: {reasoning}",
-                "Audit Flagged",
-                datetime.datetime.now().strftime("%H:%M:%S"),
-                "🧐",
-                "amber"
-            ))
+            conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', (f"Self-Audit: {original_threat}", f"[Likely False Positive] Auditor Review: {parsed.get('reasoning', 'No reasoning provided.')}", "Audit Flagged", datetime.datetime.now().strftime("%H:%M:%S"), "🧐", "amber"))
             conn.commit()
             conn.close()
-            
             with _state_lock:
-                global total_logs_processed
-                total_logs_processed += 1
-        else:
-            print(f"👍 [AUDITOR] Actions verified. Agreement with primary Instinct.")
-
-    except Exception as e:
-        print(f"❌ [AUDITOR] Self-audit API failure: {e}")
-
+                global total_logs_processed; total_logs_processed += 1
+        else: print(f"👍 [AUDITOR] Actions verified. Agreement with primary Instinct.")
+    except Exception as e: print(f"❌ [AUDITOR] Self-audit API failure: {e}")
 
 # =============================================
 # API ROUTES
 # =============================================
 
 @app.route('/api/health', methods=['GET'])
-def health():
-    return jsonify({"status": "ok", "version": VERSION}), 200
+def health(): return jsonify({"status": "ok", "version": VERSION}), 200
 
 @app.route('/api/vault/key', methods=['POST'])
 @require_auth(min_role="admin")
 def save_vault_key():
     data = request.json
-    if not data or "provider" not in data or "api_key" not in data:
-        return jsonify({"error": "Missing provider or api_key"}), 400
+    if not data or "provider" not in data or "api_key" not in data: return jsonify({"error": "Missing provider or api_key"}), 400
     buttervault.store_key(data["provider"], data["api_key"])
     return jsonify({"status": "success"}), 200
 
@@ -1173,8 +759,7 @@ def check_vault_status():
     providers = buttervault.list_providers()
     status = {provider: buttervault.get_key(provider) is not None for provider in providers}
     for default in ["OpenRouter", "Anthropic"]:
-        if default not in status:
-            status[default] = False
+        if default not in status: status[default] = False
     return jsonify(status), 200
 
 @app.route('/api/analyze', methods=['POST'])
@@ -1186,27 +771,93 @@ def analyze_threat():
         return jsonify({"error": f"Rate limit exceeded. Max {limit} requests per minute for {ctx['role']} role."}), 429
 
     data = request.json
-    if data is None:
-        return jsonify({"error": "Request body must be valid JSON with Content-Type: application/json"}), 400
+    if data is None: return jsonify({"error": "Request body must be valid JSON with Content-Type: application/json"}), 400
 
     threat_type = data.get("threat_type")
     raw_data = data.get("raw_data")
 
-    if not threat_type or not raw_data:
-        return jsonify({"error": "Missing required fields: 'threat_type' and 'raw_data'"}), 400
+    if not threat_type or not raw_data: return jsonify({"error": "Missing required fields: 'threat_type' and 'raw_data'"}), 400
 
     print("\n" + "=" * 60)
     print(f"📥 [HTTP POST RECEIVED] From Browser Dashboard")
     print(f"   Payload: {threat_type}")
 
-    ollama_url = _resolve_ollama_url()
-    print(f"📡 [HTTP POST DISPATCHED] Routing to {ollama_url}...")
-    start_time = time.time()
+    # ==============================================
+    # [v0.6.1] PRE-BRAIN POLICY FILTER
+    # ==============================================
+    if POLICY_ENGINE_ENABLED:
+        pre_brain_ctx = {
+            "raw_data": raw_data,
+            "threat_type": threat_type,
+            "source_ip": request.remote_addr,
+        }
+        pre_brain_result = policy_engine.evaluate_policies("pre_brain", pre_brain_ctx)
 
-    analysis = ask_guardian_agent(threat_type, raw_data)
+        if pre_brain_result["action"] == "override_critical":
+            print(f"🛡️ [POLICY] Pre-Brain override → CRITICAL: {pre_brain_result['reason']}")
+            analysis = {
+                "verdict": "CRITICAL",
+                "confidence": 1.0,
+                "primary_gate": "Policy",
+                "reasoning": f"[Policy Override] {pre_brain_result['reason']}",
+                "chain": None
+            }
+        elif pre_brain_result["action"] == "override_benign":
+            print(f"✅ [POLICY] Pre-Brain fast-track → BENIGN: {pre_brain_result['reason']}")
+            analysis = {
+                "verdict": "BENIGN",
+                "confidence": 1.0,
+                "primary_gate": "Policy",
+                "reasoning": f"[Policy Fast-Track] {pre_brain_result['reason']}",
+                "chain": None
+            }
+        elif pre_brain_result["action"] == "block":
+            print(f"🚫 [POLICY] Pre-Brain block: {pre_brain_result['reason']}")
+            return jsonify({
+                "status": "blocked",
+                "reason": pre_brain_result["reason"],
+                "policy_id": pre_brain_result["policy_id"]
+            }), 403
+        else:
+            analysis = ask_guardian_agent(threat_type, raw_data)
+    else:
+        analysis = ask_guardian_agent(threat_type, raw_data)
 
-    end_time = time.time()
-    stew_time = round(end_time - start_time, 2)
+    # ==============================================
+    # [v0.6.1] POST-BRAIN POLICY VALIDATOR
+    # ==============================================
+    if POLICY_ENGINE_ENABLED:
+        post_brain_ctx = {
+            "raw_data": raw_data,
+            "threat_type": threat_type,
+            "source_ip": request.remote_addr,
+            "verdict": analysis.get("verdict", "UNKNOWN"),
+            "confidence": analysis.get("confidence", 0.0),
+            "primary_gate": analysis.get("primary_gate", "None"),
+            "reasoning": analysis.get("reasoning", ""),
+            "chain": analysis.get("chain"),
+        }
+        post_brain_result = policy_engine.evaluate_policies("post_brain", post_brain_ctx)
+
+        if post_brain_result["action"] == "override_critical":
+            print(f"🛡️ [POLICY] Post-Brain escalation → CRITICAL: {post_brain_result['reason']}")
+            analysis["verdict"] = "CRITICAL"
+            analysis["confidence"] = 1.0
+            analysis["reasoning"] += f" [Policy Escalated: {post_brain_result['reason']}]"
+            analysis["primary_gate"] = "Policy"
+
+        elif post_brain_result["action"] == "override_benign":
+            print(f"✅ [POLICY] Post-Brain downgrade → BENIGN: {post_brain_result['reason']}")
+            analysis["verdict"] = "BENIGN"
+            analysis["reasoning"] += f" [Policy Downgraded: {post_brain_result['reason']}]"
+
+        elif post_brain_result["action"] == "require_confidence":
+            min_conf = post_brain_result.get("action_params", {}).get("min_confidence", 90)
+            conf_pct = int(analysis["confidence"] * 100)
+            if conf_pct < min_conf and analysis["verdict"] == "CRITICAL":
+                print(f"🛡️ [POLICY] Confidence gate: {conf_pct}% < {min_conf}% required → WARNING")
+                analysis["verdict"] = "WARNING"
+                analysis["reasoning"] += f" [Policy: Confidence {conf_pct}% below {min_conf}% policy minimum]"
 
     verdict_upper = analysis["verdict"]
     confidence_pct = int(analysis["confidence"] * 100)
@@ -1219,87 +870,60 @@ def analyze_threat():
         reasoning += f" [Downgraded from CRITICAL: Confidence below {CONFIDENCE_THRESHOLD}% safety threshold]."
 
     verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {reasoning}"
-
-    print(f"🧠 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%) in {stew_time} seconds.")
+    print(f"🧠 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%)")
     print("=" * 60)
 
-    with _state_lock:
-        kill_sw_armed = gate_states.get("kill_sw", True)
+    with _state_lock: kill_sw_armed = gate_states.get("kill_sw", True)
 
     if verdict_upper == "CRITICAL":
-        color = "red"
-        icon = "🚨"
+        color = "red"; icon = "🚨"
         if kill_sw_armed:
             chain_steps = analysis.get('chain') if isinstance(analysis, dict) else None
-
             if chain_steps and isinstance(chain_steps, list) and len(chain_steps) > 0:
                 print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
                 executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
-                chain_result = executor.execute()
-
+                action = executor.execute()['action_summary']
                 buttervault.butter_keys()
-
-                action = chain_result['action_summary']
                 print(f"🔗 CHAIN EXECUTED: {action}")
             else:
                 mcp_failures = []
-
-                gibson_resp = mcp_manager.send("tools/call", {
-                    "name": "execute_gibson_kill",
-                    "arguments": {"target_process": "openclaw"}
-                }, trigger="critical")
-                if "error" in gibson_resp:
-                    mcp_failures.append("gibson_kill")
-                    print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
-
+                # [v0.6.1] Pre-tool gate for hardcoded gibson_kill
+                gibson_blocked = False
+                if POLICY_ENGINE_ENABLED:
+                    gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "execute_gibson_kill", "tool_args": {"target_process": "openclaw"}, "verdict": "CRITICAL", "confidence": 1.0})
+                    if gate["action"] in ("skip_tool", "block"):
+                        gibson_blocked = True; print(f"🚫 [POLICY] gibson_kill blocked by policy: {gate['reason']}")
+                if not gibson_blocked:
+                    gibson_resp = mcp_manager.send("tools/call", {"name": "execute_gibson_kill", "arguments": {"target_process": "openclaw"}}, trigger="critical")
+                    if "error" in gibson_resp: mcp_failures.append("gibson_kill"); print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
                 buttervault.butter_keys()
+                
+                # [v0.6.1] Pre-tool gate for hardcoded rotate_keys
+                rotate_blocked = False
+                if POLICY_ENGINE_ENABLED:
+                    gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "OpenRouter"}, "verdict": "CRITICAL", "confidence": 1.0})
+                    if gate["action"] in ("skip_tool", "block"):
+                        rotate_blocked = True; print(f"🚫 [POLICY] rotate_keys blocked by policy: {gate['reason']}")
+                if not rotate_blocked:
+                    rotate_resp = mcp_manager.send("tools/call", {"name": "rotate_keys", "arguments": {"provider": "OpenRouter"}}, trigger="critical")
+                    if "error" in rotate_resp: mcp_failures.append("rotate_keys"); print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
 
-                rotate_resp = mcp_manager.send("tools/call", {
-                    "name": "rotate_keys",
-                    "arguments": {"provider": "OpenRouter"}
-                }, trigger="critical")
-                if "error" in rotate_resp:
-                    mcp_failures.append("rotate_keys")
-                    print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
-
-                if mcp_failures:
-                    action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}"
-                else:
-                    action = "SIGKILL | Keys Buttered"
-        else:
-            action = "ALERT | Kill Switch Disarmed"
-
+                action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Keys Buttered"
+        else: action = "ALERT | Kill Switch Disarmed"
         threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()
-
-    elif verdict_upper == "WARNING":
-        color = "amber"
-        icon = "⚠️"
-        action = "Monitored"
-    elif verdict_upper == "ERROR":
-        color = "red"
-        icon = "❌"
-        action = "System Offline"
-    else:
-        color = "emerald"
-        icon = "✅"
-        action = "Monitored"
+    elif verdict_upper == "WARNING": color = "amber"; icon = "⚠️"; action = "Monitored"
+    elif verdict_upper == "ERROR": color = "red"; icon = "❌"; action = "System Offline"
+    else: color = "emerald"; icon = "✅"; action = "Monitored"
 
     try:
         conn = get_db_connection()
-        conn.execute('''
-            INSERT INTO logs (title, desc, action, time, icon, color)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (threat_type, verdict_text, action,
-              datetime.datetime.now().strftime("%H:%M:%S"), icon, color))
+        conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', (threat_type, verdict_text, action, datetime.datetime.now().strftime("%H:%M:%S"), icon, color))
         conn.commit()
         conn.close()
-    except sqlite3.Error as e:
-        print(f"❌ [DB ERROR] Failed to write log: {e}")
-        return jsonify({"error": f"Database write failed: {e}"}), 500
+    except sqlite3.Error as e: print(f"❌ [DB ERROR] Failed to write log: {e}"); return jsonify({"error": f"Database write failed: {e}"}), 500
 
     with _state_lock:
-        global total_logs_processed
-        total_logs_processed += 1
+        global total_logs_processed; total_logs_processed += 1
 
     return jsonify({"status": "success", "verdict": verdict_text}), 200
 
@@ -1311,44 +935,35 @@ def get_logs():
         rows = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 10').fetchall()
         conn.close()
         return jsonify([dict(row) for row in rows])
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Database read failed: {e}"}), 500
+    except sqlite3.Error as e: return jsonify({"error": f"Database read failed: {e}"}), 500
 
 @app.route('/api/rotate-keys', methods=['POST'])
 @require_auth(min_role="admin")
 def manual_key_rotation():
     buttervault.butter_keys()
+    
+    rotate_blocked = False
+    if POLICY_ENGINE_ENABLED:
+        gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "Manual_Global"}, "verdict": "CRITICAL", "confidence": 1.0})
+        if gate["action"] in ("skip_tool", "block"):
+            rotate_blocked = True; print(f"🚫 [POLICY] manual rotate_keys blocked by policy: {gate['reason']}")
 
-    rotate_resp = mcp_manager.send("tools/call", {
-        "name": "rotate_keys",
-        "arguments": {"provider": "Manual_Global"}
-    }, trigger="manual")
     mcp_note = ""
-    if "error" in rotate_resp:
-        mcp_note = f" (MCP rotate_keys failed: {rotate_resp['error']})"
-        print(f"⚠️ [MCP] Manual rotate_keys failed: {rotate_resp['error']}")
+    if not rotate_blocked:
+        rotate_resp = mcp_manager.send("tools/call", {"name": "rotate_keys", "arguments": {"provider": "Manual_Global"}}, trigger="manual")
+        if "error" in rotate_resp:
+            mcp_note = f" (MCP rotate_keys failed: {rotate_resp['error']})"
+            print(f"⚠️ [MCP] Manual rotate_keys failed: {rotate_resp['error']}")
 
     try:
         conn = get_db_connection()
-        conn.execute('''
-            INSERT INTO logs (title, desc, action, time, icon, color)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            "Manual Key Rotation",
-            f"Administrator manually triggered API key rotation. Ciphertext destroyed.{mcp_note}",
-            "Keys Buttered",
-            datetime.datetime.now().strftime("%H:%M:%S"),
-            "🗝️",
-            "blue"
-        ))
+        conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', ("Manual Key Rotation", f"Administrator manually triggered API key rotation. Ciphertext destroyed.{mcp_note}", "Keys Buttered", datetime.datetime.now().strftime("%H:%M:%S"), "🗝️", "blue"))
         conn.commit()
         conn.close()
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Database write failed: {e}"}), 500
+    except sqlite3.Error as e: return jsonify({"error": f"Database write failed: {e}"}), 500
 
     with _state_lock:
-        global total_logs_processed
-        total_logs_processed += 1
+        global total_logs_processed; total_logs_processed += 1
 
     return jsonify({"status": "success"}), 200
 
@@ -1359,212 +974,85 @@ def manual_key_rotation():
 def _oauth_result_page(success, message):
     color = "#10b981" if success else "#ef4444"
     icon = "✅" if success else "❌"
-    return Response(f"""<!DOCTYPE html>
-<html>
-<head><title>ButterClaw OAuth</title></head>
-<body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;">
-<div style="text-align:center;padding:2rem;">
-    <div style="font-size:3rem;">{icon}</div>
-    <h2 style="color:{color};margin:1rem 0;">{message}</h2>
-    <p style="color:#64748b;font-size:0.875rem;">This window will close automatically.</p>
-</div>
-<script>
-    if (window.opener) {{
-        window.opener.postMessage({{type: 'oauth_result', success: {str(success).lower()}, message: '{message}'}}, '*');
-    }}
-    setTimeout(function() {{ window.close(); }}, 2000);
-</script>
-</body>
-</html>""", mimetype="text/html")
+    return Response(f"""<!DOCTYPE html><html><head><title>ButterClaw OAuth</title></head><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;"><div style="text-align:center;padding:2rem;"><div style="font-size:3rem;">{icon}</div><h2 style="color:{color};margin:1rem 0;">{message}</h2><p style="color:#64748b;font-size:0.875rem;">This window will close automatically.</p></div><script>if (window.opener) {{ window.opener.postMessage({{type: 'oauth_result', success: {str(success).lower()}, message: '{message}'}}, '*'); }} setTimeout(function() {{ window.close(); }}, 2000);</script></body></html>""", mimetype="text/html")
 
 @app.route('/api/vault/oauth/start/<provider_name>', methods=['GET'])
 @require_auth(min_role="operator")
 def oauth_start(provider_name):
     provider = oauth_config.get_provider(provider_name)
-    if not provider:
-        return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
-    
-    if not provider["oauth_supported"]:
-        return jsonify({"error": f"{provider['display_name']} does not support OAuth. Use manual API key entry."}), 400
-    
+    if not provider: return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
+    if not provider["oauth_supported"]: return jsonify({"error": f"{provider['display_name']} does not support OAuth. Use manual API key entry."}), 400
     client_id = buttervault.get_key(f"{provider_name}_client_id")
-    if not client_id:
-        return jsonify({
-            "error": f"No client_id found in ButterVault for '{provider_name}'. "
-                     f"Please store it first via the Vault panel with provider name '{provider_name}_client_id'."
-        }), 400
+    if not client_id: return jsonify({"error": f"No client_id found in ButterVault for '{provider_name}'."}), 400
     
     state = secrets.token_urlsafe(32)
     redirect_uri = f"http://127.0.0.1:5000/api/vault/oauth/callback"
-    
     _cleanup_expired_oauth_states()
-    with _oauth_states_lock:
-        _oauth_states[state] = {
-            "provider": provider_name,
-            "created_at": time.time(),
-            "redirect_uri": redirect_uri
-        }
+    with _oauth_states_lock: _oauth_states[state] = {"provider": provider_name, "created_at": time.time(), "redirect_uri": redirect_uri}
     
-    params = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": "code",
-        "scope": " ".join(provider["scopes"]),
-        "state": state,
-        "access_type": "offline",
-        "prompt": "consent"
-    }
-    
+    params = {"client_id": client_id, "redirect_uri": redirect_uri, "response_type": "code", "scope": " ".join(provider["scopes"]), "state": state, "access_type": "offline", "prompt": "consent"}
     query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
     auth_url = f"{provider['authorize_url']}?{query}"
-    
     print(f"🔑 [OAUTH] Starting {provider['display_name']} flow. State: {state[:8]}...")
-    
-    return jsonify({
-        "auth_url": auth_url,
-        "state": state,
-        "provider": provider_name
-    }), 200
+    return jsonify({"auth_url": auth_url, "state": state, "provider": provider_name}), 200
 
 @app.route('/api/vault/oauth/callback', methods=['GET'])
 def oauth_callback():
-    code = request.args.get("code")
-    state = request.args.get("state")
-    error = request.args.get("error")
+    code = request.args.get("code"); state = request.args.get("state"); error = request.args.get("error")
+    if error: print(f"❌ [OAUTH] Provider returned error: {error}"); return _oauth_result_page(success=False, message=f"Authorization denied: {error}")
+    if not code or not state: return _oauth_result_page(success=False, message="Missing code or state parameter.")
     
-    if error:
-        print(f"❌ [OAUTH] Provider returned error: {error}")
-        return _oauth_result_page(success=False, message=f"Authorization denied: {error}")
+    with _oauth_states_lock: state_data = _oauth_states.pop(state, None)
+    if not state_data: return _oauth_result_page(success=False, message="Invalid or expired state. Please try again.")
+    if time.time() - state_data["created_at"] > OAUTH_STATE_TTL: return _oauth_result_page(success=False, message="Authorization timed out. Please try again.")
     
-    if not code or not state:
-        return _oauth_result_page(success=False, message="Missing code or state parameter.")
-    
-    with _oauth_states_lock:
-        state_data = _oauth_states.pop(state, None)
-    
-    if not state_data:
-        print(f"⚠️ [OAUTH] Invalid or expired state token: {state[:8]}...")
-        return _oauth_result_page(success=False, message="Invalid or expired state. Please try again.")
-    
-    if time.time() - state_data["created_at"] > OAUTH_STATE_TTL:
-        print(f"⚠️ [OAUTH] State token expired: {state[:8]}...")
-        return _oauth_result_page(success=False, message="Authorization timed out. Please try again.")
-    
-    provider_name = state_data["provider"]
-    redirect_uri = state_data["redirect_uri"]
+    provider_name = state_data["provider"]; redirect_uri = state_data["redirect_uri"]
     provider = oauth_config.get_provider(provider_name)
-    
-    if not provider:
-        return _oauth_result_page(success=False, message=f"Unknown provider: {provider_name}")
+    if not provider: return _oauth_result_page(success=False, message=f"Unknown provider: {provider_name}")
     
     client_id = buttervault.get_key(f"{provider_name}_client_id")
     client_secret = buttervault.get_key(f"{provider_name}_client_secret")
-    
-    if not client_id or not client_secret:
-        return _oauth_result_page(success=False, message="Client credentials not found in ButterVault.")
+    if not client_id or not client_secret: return _oauth_result_page(success=False, message="Client credentials not found in ButterVault.")
     
     print(f"🔑 [OAUTH] Exchanging code for tokens ({provider['display_name']})...")
-    
     try:
-        token_resp = http_requests.post(provider["token_url"], data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "client_id": client_id,
-            "client_secret": client_secret,
-        }, timeout=15)
-        
-        if token_resp.status_code != 200:
-            error_detail = token_resp.text[:200]
-            print(f"❌ [OAUTH] Token exchange failed: HTTP {token_resp.status_code} — {error_detail}")
-            return _oauth_result_page(success=False, message=f"Token exchange failed: HTTP {token_resp.status_code}")
-        
+        token_resp = http_requests.post(provider["token_url"], data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri, "client_id": client_id, "client_secret": client_secret}, timeout=15)
+        if token_resp.status_code != 200: return _oauth_result_page(success=False, message=f"Token exchange failed: HTTP {token_resp.status_code}")
         tokens = token_resp.json()
-        
-    except Exception as e:
-        print(f"❌ [OAUTH] Token exchange request failed: {e}")
-        return _oauth_result_page(success=False, message=f"Token exchange failed: {e}")
+    except Exception as e: return _oauth_result_page(success=False, message=f"Token exchange failed: {e}")
     
-    token_dict = {
-        "access_token": tokens["access_token"],
-        "refresh_token": tokens.get("refresh_token"),
-        "expires_at": time.time() + tokens.get("expires_in", 3600),
-        "token_type": tokens.get("token_type", "Bearer"),
-        "scope": tokens.get("scope", " ".join(provider["scopes"])),
-    }
-    
+    token_dict = {"access_token": tokens["access_token"], "refresh_token": tokens.get("refresh_token"), "expires_at": time.time() + tokens.get("expires_in", 3600), "token_type": tokens.get("token_type", "Bearer"), "scope": tokens.get("scope", " ".join(provider["scopes"]))}
     buttervault.store_oauth_token(provider_name, token_dict)
-    
-    print(f"✅ [OAUTH] {provider['display_name']} tokens sealed in ButterVault. "
-          f"Expires in {tokens.get('expires_in', '?')}s. "
-          f"Refresh token: {'present' if token_dict['refresh_token'] else 'ABSENT'}.")
     
     try:
         conn = get_db_connection()
-        conn.execute('''
-            INSERT INTO logs (title, desc, action, time, icon, color)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            f"OAuth Connected: {provider['display_name']}",
-            f"Successfully authenticated with {provider['display_name']} via OAuth 2.0. Tokens encrypted and sealed.",
-            "OAuth Sealed",
-            datetime.datetime.now().strftime("%H:%M:%S"),
-            "🔑",
-            "emerald"
-        ))
+        conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', (f"OAuth Connected: {provider['display_name']}", f"Successfully authenticated with {provider['display_name']} via OAuth 2.0. Tokens encrypted and sealed.", "OAuth Sealed", datetime.datetime.now().strftime("%H:%M:%S"), "🔑", "emerald"))
         conn.commit()
         conn.close()
-    except sqlite3.Error:
-        pass
-    
+    except sqlite3.Error: pass
     return _oauth_result_page(success=True, message=f"{provider['display_name']} connected successfully!")
 
 @app.route('/api/vault/oauth/status', methods=['GET'])
 @require_auth(min_role="viewer")
 def oauth_status():
-    statuses = {}
-    connected_providers = buttervault.list_oauth_providers()
-    
+    statuses = {}; connected_providers = buttervault.list_oauth_providers()
     for name in oauth_config.list_oauth_capable():
         provider = oauth_config.get_provider(name)
         token = buttervault.get_oauth_token(name) if name in connected_providers else None
-        
-        statuses[name] = {
-            "display_name": provider["display_name"],
-            "connected": token is not None,
-            "has_refresh_token": bool(token.get("refresh_token")) if token else False,
-            "expires_at": token.get("expires_at") if token else None,
-            "expired": token is not None and time.time() > token.get("expires_at", 0),
-            "has_client_credentials": (
-                buttervault.get_key(f"{name}_client_id") is not None
-                and buttervault.get_key(f"{name}_client_secret") is not None
-            )
-        }
-    
+        statuses[name] = {"display_name": provider["display_name"], "connected": token is not None, "has_refresh_token": bool(token.get("refresh_token")) if token else False, "expires_at": token.get("expires_at") if token else None, "expired": token is not None and time.time() > token.get("expires_at", 0), "has_client_credentials": (buttervault.get_key(f"{name}_client_id") is not None and buttervault.get_key(f"{name}_client_secret") is not None)}
     return jsonify(statuses), 200
 
 @app.route('/api/vault/oauth/revoke/<provider_name>', methods=['POST'])
 @require_auth(min_role="admin")
 def oauth_revoke(provider_name):
     provider = oauth_config.get_provider(provider_name)
-    if not provider:
-        return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
-    
+    if not provider: return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
     token_dict = buttervault.get_oauth_token(provider_name)
-    if not token_dict:
-        return jsonify({"error": f"No OAuth token found for {provider_name}"}), 404
-    
-    revoke_url = provider.get("revoke_url")
-    if revoke_url:
-        try:
-            http_requests.post(revoke_url, data={"token": token_dict["access_token"]}, timeout=10)
-            print(f"🔑 [OAUTH] Revoked token at {provider['display_name']}")
-        except Exception as e:
-            print(f"⚠️ [OAUTH] Remote revocation failed (proceeding with local removal): {e}")
-    
+    if not token_dict: return jsonify({"error": f"No OAuth token found for {provider_name}"}), 404
+    if provider.get("revoke_url"):
+        try: http_requests.post(provider["revoke_url"], data={"token": token_dict["access_token"]}, timeout=10)
+        except Exception as e: print(f"⚠️ [OAUTH] Remote revocation failed: {e}")
     buttervault.delete_oauth_token(provider_name)
-    print(f"🗑️ [OAUTH] {provider['display_name']} disconnected and removed from Vault.")
-    
     return jsonify({"status": "revoked", "provider": provider_name}), 200
 
 # --- THE CONTROL PANEL ---
@@ -1572,155 +1060,88 @@ def oauth_revoke(provider_name):
 @app.route('/api/settings', methods=['GET'])
 @require_auth(min_role="operator")
 def settings_get():
-    global current_level, routing_mode, model_name, remote_endpoint, gate_states
-    global mcp_transport_mode, mcp_sse_url, mcp_sse_token
-    with _state_lock:
-        return jsonify({
-            "level": current_level,
-            "shield_enabled": shield_enabled,
-            "routing_mode": routing_mode,
-            "model": model_name,
-            "endpoint": remote_endpoint,
-            "gates": dict(gate_states),
-            "mcp_transport": mcp_transport_mode,
-            "mcp_sse_url": mcp_sse_url,
-            "mcp_sse_token_set": bool(mcp_sse_token)
-        })
+    with _state_lock: return jsonify({"level": current_level, "shield_enabled": shield_enabled, "routing_mode": routing_mode, "model": model_name, "endpoint": remote_endpoint, "gates": dict(gate_states), "mcp_transport": mcp_transport_mode, "mcp_sse_url": mcp_sse_url, "mcp_sse_token_set": bool(mcp_sse_token)})
 
 @app.route('/api/settings', methods=['POST'])
 @require_auth(min_role="admin")
 def settings_post():
-    global current_level, routing_mode, model_name, remote_endpoint, gate_states
-    global mcp_transport_mode, mcp_sse_url, mcp_sse_token
-
+    global current_level, routing_mode, model_name, remote_endpoint, gate_states, mcp_transport_mode, mcp_sse_url, mcp_sse_token
     data = request.json
-    if data is None:
-        return jsonify({"error": "Request body must be valid JSON"}), 400
-
+    if data is None: return jsonify({"error": "Request body must be valid JSON"}), 400
     errors = []
 
     if "level" in data:
         new_level = str(data["level"])
-        if new_level not in ("1", "2", "3"):
-            errors.append("level must be 1, 2, or 3")
+        if new_level not in ("1", "2", "3"): errors.append("level must be 1, 2, or 3")
         else:
-            with _state_lock:
-                current_level = new_level
+            with _state_lock: current_level = new_level
             print(f"📡 [SENTINEL UPDATE] Paranoia Level shifted to: {new_level}")
 
     if "routing_mode" in data:
         new_mode = str(data["routing_mode"]).lower().strip()
-        if new_mode not in VALID_ROUTING_MODES:
-            errors.append(f"routing_mode must be one of: {', '.join(VALID_ROUTING_MODES)}")
+        if new_mode not in VALID_ROUTING_MODES: errors.append(f"routing_mode must be one of: {', '.join(VALID_ROUTING_MODES)}")
         else:
-            with _state_lock:
-                routing_mode = new_mode
+            with _state_lock: routing_mode = new_mode
             print(f"🛠️ [ROUTING] Mode set to: {new_mode}")
 
     if "model" in data:
         new_model = str(data["model"]).strip()
-        if not new_model:
-            errors.append("model must be a non-empty string")
+        if not new_model: errors.append("model must be a non-empty string")
         else:
-            with _state_lock:
-                model_name = new_model
+            with _state_lock: model_name = new_model
             print(f"🧠 [MODEL] Active model set to: {new_model}")
 
     if "endpoint" in data:
         new_endpoint = str(data["endpoint"]).strip()
-        if not _validate_endpoint_url(new_endpoint):
-            errors.append("endpoint must be a valid http:// or https:// URL")
+        if not _validate_endpoint_url(new_endpoint): errors.append("endpoint must be a valid http:// or https:// URL")
         else:
-            with _state_lock:
-                remote_endpoint = new_endpoint
-            label = new_endpoint if new_endpoint else "(cleared)"
-            print(f"🌐 [ENDPOINT] Remote endpoint set to: {label}")
+            with _state_lock: remote_endpoint = new_endpoint
 
     if "gates" in data:
         new_gates = data["gates"]
-        if not isinstance(new_gates, dict):
-            errors.append("gates must be an object mapping gate IDs to booleans")
+        if not isinstance(new_gates, dict): errors.append("gates must be an object mapping gate IDs to booleans")
         else:
             unknown_keys = set(new_gates.keys()) - VALID_GATE_KEYS
-            if unknown_keys:
-                errors.append(f"Unknown gate keys: {', '.join(sorted(unknown_keys))}. ")
+            if unknown_keys: errors.append(f"Unknown gate keys: {', '.join(sorted(unknown_keys))}. ")
             else:
-                coerced = {}
-                for k, v in new_gates.items():
-                    coerced[k] = bool(v)
-                with _state_lock:
-                    gate_states.update(coerced)
-                active = [k for k, v in gate_states.items() if v]
-                print(f"🔒 [GATES] Updated. Active: {', '.join(active) if active else 'NONE'}")
+                with _state_lock: gate_states.update({k: bool(v) for k, v in new_gates.items()})
 
     if "mcp_transport" in data:
         new_transport = str(data["mcp_transport"]).lower().strip()
-        if new_transport not in VALID_MCP_TRANSPORTS:
-            errors.append(f"mcp_transport must be one of: {', '.join(VALID_MCP_TRANSPORTS)}")
+        if new_transport not in VALID_MCP_TRANSPORTS: errors.append(f"mcp_transport must be one of: {', '.join(VALID_MCP_TRANSPORTS)}")
         else:
-            with _state_lock:
-                mcp_transport_mode = new_transport
-            print(f"📡 [MCP] Transport mode set to: {new_transport}")
+            with _state_lock: mcp_transport_mode = new_transport
 
     if "mcp_sse_url" in data:
         new_url = str(data["mcp_sse_url"]).strip()
-        if new_url and not _validate_endpoint_url(new_url):
-            errors.append("mcp_sse_url must be a valid http:// or https:// URL")
+        if new_url and not _validate_endpoint_url(new_url): errors.append("mcp_sse_url must be a valid http:// or https:// URL")
         else:
-            with _state_lock:
-                mcp_sse_url = new_url
-            label = new_url if new_url else "(cleared)"
-            print(f"📡 [MCP] SSE URL set to: {label}")
+            with _state_lock: mcp_sse_url = new_url
 
     if "mcp_sse_token" in data:
-        with _state_lock:
-            mcp_sse_token = str(data["mcp_sse_token"]).strip()
-        print("📡 [MCP] SSE token updated.")
+        with _state_lock: mcp_sse_token = str(data["mcp_sse_token"]).strip()
 
-    if errors:
-        return jsonify({"status": "partial", "errors": errors}), 400
-
+    if errors: return jsonify({"status": "partial", "errors": errors}), 400
     return jsonify({"status": "ok"})
 
 @app.route('/api/shield', methods=['POST'])
 @require_auth(min_role="admin")
 def shield():
     global shield_enabled
-
     data = request.json
-    if data is None or "enabled" not in data:
-        return jsonify({"error": "Request body must include 'enabled' (boolean)"}), 400
-
+    if data is None or "enabled" not in data: return jsonify({"error": "Request body must include 'enabled' (boolean)"}), 400
     new_state = bool(data["enabled"])
-
-    with _state_lock:
-        shield_enabled = new_state
-
+    with _state_lock: shield_enabled = new_state
     state_label = "UP" if shield_enabled else "DOWN"
     print(f"🛡️ [SHIELD] Shield is now {state_label}")
-
     try:
         conn = get_db_connection()
-        conn.execute('''
-            INSERT INTO logs (title, desc, action, time, icon, color)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (
-            f"Shield {state_label}",
-            f"Administrator {'enabled' if shield_enabled else 'disabled'} the ButterClaw shield.",
-            "Shield Toggled",
-            datetime.datetime.now().strftime("%H:%M:%S"),
-            "🛡️" if shield_enabled else "🦞",
-            "emerald" if shield_enabled else "amber"
-        ))
+        conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', (f"Shield {state_label}", f"Administrator {'enabled' if shield_enabled else 'disabled'} the ButterClaw shield.", "Shield Toggled", datetime.datetime.now().strftime("%H:%M:%S"), "🛡️" if shield_enabled else "🦞", "emerald" if shield_enabled else "amber"))
         conn.commit()
         conn.close()
-    except sqlite3.Error as e:
-        print(f"❌ [DB ERROR] Failed to log shield change: {e}")
-
+    except sqlite3.Error as e: print(f"❌ [DB ERROR] Failed to log shield change: {e}")
     with _state_lock:
-        global total_logs_processed
-        total_logs_processed += 1
-
+        global total_logs_processed; total_logs_processed += 1
     return jsonify({"status": "ok", "shield_enabled": shield_enabled})
 
 # =============================================
@@ -1738,33 +1159,24 @@ def mcp_ping():
     start = time.time()
     resp = mcp_manager.send("ping", {}, timeout=5, trigger="ping")
     elapsed_ms = round((time.time() - start) * 1000, 1)
-    if "error" in resp:
-        return jsonify({"pong": False, "error": resp["error"], "ms": elapsed_ms}), 503
+    if "error" in resp: return jsonify({"pong": False, "error": resp["error"], "ms": elapsed_ms}), 503
     return jsonify({"pong": True, "ms": elapsed_ms}), 200
 
 @app.route('/api/mcp/tools', methods=['GET'])
 @require_auth(min_role="viewer")
 def mcp_tools():
-    return jsonify({
-        "tools": mcp_manager.discovered_tools,
-        "count": len(mcp_manager.discovered_tools)
-    }), 200
+    return jsonify({"tools": mcp_manager.discovered_tools, "count": len(mcp_manager.discovered_tools)}), 200
 
 @app.route('/api/mcp/restart', methods=['POST'])
 @require_auth(min_role="admin")
 def mcp_restart():
     global mcp_manager
-    with _state_lock:
-        current_transport = mcp_transport_mode
-
+    with _state_lock: current_transport = mcp_transport_mode
     if current_transport != mcp_manager.transport_name.split(" ")[0]:
-        mcp_manager.stop()
-        mcp_manager = create_mcp_manager()
-
+        mcp_manager.stop(); mcp_manager = create_mcp_manager()
     success = mcp_manager.restart()
     status = mcp_manager.status()
-    code = 200 if success else 503
-    return jsonify({"restarted": success, **status}), code
+    return jsonify({"restarted": success, **status}), 200 if success else 503
 
 # =============================================
 # MCP EVENT LEDGER ENDPOINTS (v0.5.0)
@@ -1774,24 +1186,109 @@ def mcp_restart():
 @require_auth(min_role="viewer")
 def mcp_events():
     limit = request.args.get('limit', 50, type=int)
-    tool = request.args.get('tool', None)
-    status_filter = request.args.get('status', None)
-    since = request.args.get('since', None)
-
-    events = ledger_query(limit=limit, tool=tool, status=status_filter, since=since)
-    return jsonify({
-        "events": events,
-        "count": len(events),
-        "total": ledger_count()
-    }), 200
+    events = ledger_query(limit=limit, tool=request.args.get('tool', None), status=request.args.get('status', None), since=request.args.get('since', None))
+    return jsonify({"events": events, "count": len(events), "total": ledger_count()}), 200
 
 @app.route('/api/mcp/events/<int:event_id>', methods=['GET'])
 @require_auth(min_role="viewer")
 def mcp_event_detail(event_id):
     event = ledger_get_event(event_id)
-    if event is None:
-        return jsonify({"error": f"Event {event_id} not found"}), 404
+    if event is None: return jsonify({"error": f"Event {event_id} not found"}), 404
     return jsonify(event), 200
+
+# =============================================
+# API ROUTES: POLICY ENGINE (v0.6.1)
+# =============================================
+
+@app.route('/api/policies', methods=['GET'])
+@require_auth(min_role="viewer")
+def list_policies_endpoint():
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    enabled = request.args.get("enabled")
+    policies = policy_engine.list_policies(scope=request.args.get("scope"), enabled_only=(enabled == "true" if enabled else False))
+    return jsonify(policies), 200
+
+@app.route('/api/policies', methods=['POST'])
+@require_auth(min_role="admin")
+def create_policy_endpoint():
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    data = request.json
+    if not data: return jsonify({"error": "Request body required"}), 400
+    missing = [f for f in ["name", "scope", "condition", "action"] if f not in data]
+    if missing: return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+    try:
+        result = policy_engine.create_policy(
+            name=data["name"], scope=data["scope"], condition=data["condition"], action=data["action"],
+            action_params=data.get("action_params"), description=data.get("description"), priority=data.get("priority", 50), created_by=request.auth_context.get("key_id")
+        )
+        return jsonify(result), 201
+    except ValueError as e: return jsonify({"error": str(e)}), 400
+
+@app.route('/api/policies/<policy_id>', methods=['GET'])
+@require_auth(min_role="viewer")
+def get_policy_endpoint(policy_id):
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    policy = policy_engine.get_policy(policy_id)
+    if not policy: return jsonify({"error": "Policy not found"}), 404
+    return jsonify(policy), 200
+
+@app.route('/api/policies/<policy_id>', methods=['PUT'])
+@require_auth(min_role="admin")
+def update_policy_endpoint(policy_id):
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    data = request.json
+    if not data: return jsonify({"error": "Request body required"}), 400
+    try:
+        result = policy_engine.update_policy(policy_id, **data)
+        if not result: return jsonify({"error": "Policy not found"}), 404
+        return jsonify(result), 200
+    except ValueError as e: return jsonify({"error": str(e)}), 400
+
+@app.route('/api/policies/<policy_id>', methods=['DELETE'])
+@require_auth(min_role="admin")
+def delete_policy_endpoint(policy_id):
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    if not policy_engine.delete_policy(policy_id): return jsonify({"error": "Policy not found"}), 404
+    return jsonify({"status": "deleted", "id": policy_id}), 200
+
+@app.route('/api/policies/<policy_id>/toggle', methods=['POST'])
+@require_auth(min_role="admin")
+def toggle_policy_endpoint(policy_id):
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    data = request.json or {}
+    enabled = data.get("enabled", True)
+    if not policy_engine.toggle_policy(policy_id, enabled): return jsonify({"error": "Policy not found"}), 404
+    return jsonify({"status": "toggled", "id": policy_id, "enabled": enabled}), 200
+
+@app.route('/api/policies/test', methods=['POST'])
+@require_auth(min_role="operator")
+def test_policy_endpoint():
+    if not POLICY_ENGINE_ENABLED: return jsonify({"error": "Policy engine disabled"}), 503
+    data = request.json
+    if not data or "payload" not in data: return jsonify({"error": "Missing 'payload' field"}), 400
+    return jsonify(policy_engine.test_payload(payload=data["payload"], threat_type=data.get("threat_type", "test"))), 200
+
+@app.route('/api/policies/events', methods=['GET'])
+@require_auth(min_role="viewer")
+def policy_events_endpoint():
+    if not POLICY_ENGINE_ENABLED: 
+        return jsonify({"error": "Policy engine disabled"}), 503
+        
+    limit = request.args.get("limit", 50, type=int)
+    policy_id = request.args.get("policy_id")
+    scope = request.args.get("scope")
+    since = request.args.get("since")
+    
+    events = policy_engine.get_policy_events(
+        limit=limit, policy_id=policy_id, scope=scope, since=since
+    )
+    total_count = policy_engine.get_policy_event_count()
+    
+    return jsonify({
+        "events": events,
+        "count": len(events),
+        "total": total_count
+    }), 200
 
 # =============================================
 # SSE STREAM
@@ -1802,16 +1299,11 @@ def mcp_event_detail(event_id):
 def stream():
     def event_stream():
         global total_logs_processed
-        with _state_lock:
-            last_processed = total_logs_processed
+        with _state_lock: last_processed = total_logs_processed
         while True:
-            with _state_lock:
-                current = total_logs_processed
-            if current > last_processed:
-                yield f"data: update_ready\n\n"
-                last_processed = current
+            with _state_lock: current = total_logs_processed
+            if current > last_processed: yield f"data: update_ready\n\n"; last_processed = current
             time.sleep(0.5)
-
     response = Response(event_stream(), mimetype="text/event-stream")
     response.headers.add('Cache-Control', 'no-cache')
     response.headers.add('Connection', 'keep-alive')
@@ -1827,25 +1319,19 @@ if __name__ == '__main__':
     print(f"   Paranoia Level: {current_level}")
     print(f"   Routing Mode: {routing_mode}")
     print(f"   Active Model: {model_name}")
-    if routing_mode == "remote" and remote_endpoint:
-        print(f"   Remote Endpoint: {remote_endpoint}")
-    else:
-        print(f"   Ollama Endpoint: {OLLAMA_LOCAL_BASE}")
+    if routing_mode == "remote" and remote_endpoint: print(f"   Remote Endpoint: {remote_endpoint}")
+    else: print(f"   Ollama Endpoint: {OLLAMA_LOCAL_BASE}")
     active_gates = [k for k, v in gate_states.items() if v]
     print(f"   Active Gates: {', '.join(active_gates) if active_gates else 'NONE'}")
     print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%")
-    print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
-    print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
+    print(f"   Policy Engine: {'ENABLED' if POLICY_ENGINE_ENABLED else 'DISABLED'}")
     print(f"   MCP Transport: {mcp_transport_mode}")
-    if mcp_transport_mode == "sse" and mcp_sse_url:
-        print(f"   MCP SSE URL: {mcp_sse_url}")
-        print(f"   MCP SSE Auth: {'token set' if mcp_sse_token else 'none'}")
 
     print("\n🔐 [AUTH] Checking API key bootstrap...")
     bootstrap_admin_key()
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.6.0 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.6.1 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
@@ -1853,10 +1339,8 @@ if __name__ == '__main__':
             tool_count = len(mcp_manager.discovered_tools)
             print(f"✅ [MCP] Handshake complete. {tool_count} tools armed.")
             print(f"   Transport: {mcp_manager.transport_name}")
-        else:
-            print("⚠️ [MCP] Handshake failed. MCP endpoints will report degraded status.")
-    else:
-        print("❌ [MCP] Failed to spawn execution layer. The Sentinel is unarmed.")
+        else: print("⚠️ [MCP] Handshake failed. MCP endpoints will report degraded status.")
+    else: print("❌ [MCP] Failed to spawn execution layer. The Sentinel is unarmed.")
 
     print(f"📋 [LEDGER] Event ledger initialized. {ledger_count()} historical events.")
     print("=" * 60 + "\n")
