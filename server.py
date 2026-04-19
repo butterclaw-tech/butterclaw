@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.1 — The Nervous System with Memory (Tool Chaining)
+ButterClaw v0.5.2 — ButterVault OAuth & Multi-Step Chaining
 =====================================================================
 Changelog:
   [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
@@ -22,18 +22,18 @@ Changelog:
            - Settings extended with mcp_transport, mcp_sse_url, mcp_sse_token
            - Status extended with transport_mode, event_count
   [v0.5.1] Tool Chaining:
-           - ChainExecutor: Brain can compose multi-step MCP tool sequences
-           - Condition evaluator with safe operator whitelist (no eval)
-           - Chain-aware CRITICAL path with hardcoded fallback
-           - 10-step max, 60s timeout safety rails
-
-           previous [v0.5.1] Tool Chaining Comments:  <- need to clean these up/combine notes for [v0.5.1]
            - ChainExecutor class for multi-step MCP tool sequences
            - Condition evaluator: whitelist of safe string comparisons
            - Brain prompt extended with chain schema + available tools
            - CRITICAL path routes to ChainExecutor when chain is present
            - Chain-aware ledger logging (chain_id, chain_step now populated)
            - Safety: max 10 steps, 60s total timeout, no eval()
+  [v0.5.2] ButterVault OAuth:
+           - OAuth 2.0 authorization code flow (Google Cloud first)
+           - /api/vault/oauth/start, /callback, /status, /revoke endpoints
+           - CSRF state validation with 10-minute TTL
+           - Token refresh handled transparently by buttervault
+           - Gibson destroys OAuth tokens alongside API keys
 """
 
 from flask import Flask, request, jsonify, Response
@@ -47,19 +47,21 @@ import threading
 import os
 import itertools
 import uuid
+import secrets
 from collections import deque
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 import json
 import subprocess
 import sys
-
+# requests.utils.quote <- replaced with urllib standard, maybe use later
 import buttervault
+import oauth_config
 
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 
 # [v0.5.1] Module-level dry run flag — disables actual MCP calls in ChainExecutor
 DRY_RUN = False
@@ -181,6 +183,23 @@ log.setLevel(logging.WARNING)
 
 
 # =============================================
+# OAUTH STATE MANAGEMENT (v0.5.2)
+# =============================================
+
+_oauth_states = {}  # state_token → {provider, created_at, redirect_uri}
+_oauth_states_lock = threading.Lock()
+OAUTH_STATE_TTL = 600  # 10 minutes — state tokens expire after this
+
+def _cleanup_expired_oauth_states():
+    """Remove expired CSRF state tokens."""
+    now = time.time()
+    with _oauth_states_lock:
+        expired = [k for k, v in _oauth_states.items() if now - v["created_at"] > OAUTH_STATE_TTL]
+        for k in expired:
+            del _oauth_states[k]
+
+
+# =============================================
 # MCP EVENT LEDGER (v0.5.0)
 # =============================================
 
@@ -209,7 +228,6 @@ def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="au
         print(f"⚠️ [LEDGER] Failed to log start: {e}")
         return None
 
-
 def ledger_log_end(event_id, status, result=None, elapsed_ms=None):
     """Update a pending event with its outcome."""
     if event_id is None:
@@ -233,7 +251,6 @@ def ledger_log_end(event_id, status, result=None, elapsed_ms=None):
         conn.close()
     except sqlite3.Error as e:
         print(f"⚠️ [LEDGER] Failed to log end: {e}")
-
 
 def ledger_query(limit=50, tool=None, status=None, since=None):
     """Query the event ledger with optional filters."""
@@ -262,7 +279,6 @@ def ledger_query(limit=50, tool=None, status=None, since=None):
         print(f"⚠️ [LEDGER] Query failed: {e}")
         return []
 
-
 def ledger_get_event(event_id):
     """Fetch a single event by ID."""
     try:
@@ -273,7 +289,6 @@ def ledger_get_event(event_id):
     except sqlite3.Error as e:
         print(f"⚠️ [LEDGER] Fetch failed: {e}")
         return None
-
 
 def ledger_count():
     """Return total event count for status endpoint."""
@@ -291,17 +306,6 @@ def ledger_count():
 # Brain-composed multi-step MCP tool sequences
 # =============================================
 
-# If a tool returns "Port status: OPEN" but the 
-# Brain's condition looks for expected: "open", 
-# the condition will fail and skip the step.
-#VALID_CONDITION_OPERATORS = {
-#    "contains":     lambda val, exp: str(exp) in str(val),
-#    "not_contains": lambda val, exp: str(exp) not in str(val),
-#    "equals":       lambda val, exp: str(val) == str(exp),
-#    "not_equals":   lambda val, exp: str(val) != str(exp),
-#    "starts_with":  lambda val, exp: str(val).startswith(str(exp)),
-#}
-
 VALID_CONDITION_OPERATORS = {
     "contains":     lambda val, exp: str(exp).lower() in str(val).lower(),
     "not_contains": lambda val, exp: str(exp).lower() not in str(val).lower(),
@@ -309,7 +313,6 @@ VALID_CONDITION_OPERATORS = {
     "not_equals":   lambda val, exp: str(val).strip().lower() != str(exp).strip().lower(),
     "starts_with":  lambda val, exp: str(val).strip().lower().startswith(str(exp).strip().lower()),
 }
-
 
 class ChainExecutor:
     """Executes a Brain-composed sequence of MCP tool calls with
@@ -390,7 +393,7 @@ class ChainExecutor:
                 event_id = ledger_log_start(
                     req_id=None,
                     method="tools/call", tool_name=tool_name,
-                    arguments=step.get("args", {}), # changed from params to arguments
+                    arguments=step.get("args", {}),
                     trigger="chain", chain_id=self.chain_id, chain_step=step_index
                 )
                 if event_id:
@@ -414,8 +417,7 @@ class ChainExecutor:
         print(f"✅ [CHAIN {self.chain_id}] Step {step_index}: {tool_name} → stored as '{store_as}'")
 
     def _evaluate_condition(self, condition):
-        """Evaluate a step condition using the safe operator whitelist.
-        Returns True if condition is met, False otherwise."""
+        """Evaluate a step condition using the safe operator whitelist."""
         if not isinstance(condition, dict):
             return False
 
@@ -442,42 +444,29 @@ class ChainExecutor:
 
 # =============================================
 # MCP MANAGER INTERFACE (v0.5.0)
-# Both MCPProcessManager and MCPSSEClient implement this
 # =============================================
 
 class BaseMCPManager:
-    """Common interface for MCP managers. Both stdio and SSE clients
-    implement send(), notify(), handshake(), status(), start(), stop(), restart()."""
-
     def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
         raise NotImplementedError
-
     def notify(self, method, params=None):
         raise NotImplementedError
-
     def handshake(self):
         raise NotImplementedError
-
     def status(self):
         raise NotImplementedError
-
     def start(self):
         raise NotImplementedError
-
     def stop(self):
         raise NotImplementedError
-
     def restart(self):
         raise NotImplementedError
-
     @property
     def is_alive(self):
         raise NotImplementedError
-
     @property
     def transport_name(self):
         raise NotImplementedError
-
 
 # =============================================
 # MCP PROCESS MANAGER — stdio transport (v0.5.0)
@@ -492,7 +481,7 @@ class MCPProcessManager(BaseMCPManager):
         self.process = None
         self._write_lock = threading.Lock()
         self._pending = {}
-        self._req_counter = itertools.count(1)  # [S2] thread-safe
+        self._req_counter = itertools.count(1)
         self._running = False
         self._stdout_thread = None
         self._stderr_thread = None
@@ -522,20 +511,13 @@ class MCPProcessManager(BaseMCPManager):
                 text=True,
                 bufsize=1
             )
-        except FileNotFoundError:
-            print(f"❌ [MCP] Script not found: {self.script_path}")
-            return False
         except Exception as e:
             print(f"❌ [MCP] Failed to spawn: {e}")
             return False
 
         self._running = True
-        self._stdout_thread = threading.Thread(
-            target=self._read_stdout, name="mcp-stdout", daemon=True
-        )
-        self._stderr_thread = threading.Thread(
-            target=self._read_stderr, name="mcp-stderr", daemon=True
-        )
+        self._stdout_thread = threading.Thread(target=self._read_stdout, daemon=True)
+        self._stderr_thread = threading.Thread(target=self._read_stderr, daemon=True)
         self._stdout_thread.start()
         self._stderr_thread.start()
         print(f"✅ [MCP] Claws active at PID: {self.process.pid}")
@@ -571,23 +553,20 @@ class MCPProcessManager(BaseMCPManager):
         return False
 
     def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
-        # [S1] Auto-restart now chains start() + handshake()
         if not self.is_alive:
             if not self.start():
                 return {"error": "MCP process failed to start"}
             if not self.handshake():
                 print("⚠️ [MCP] Auto-restart handshake failed. Attempting send anyway (best-effort).")
 
-        req_id = next(self._req_counter)  # [S2] thread-safe
+        req_id = next(self._req_counter)
 
-        # [v0.5.0] Extract tool info for ledger
         tool_name = None
         arguments = None
         if method == "tools/call" and params:
             tool_name = params.get("name")
             arguments = params.get("arguments")
 
-        # [v0.5.0] Event Ledger — log before dispatch
         event_id = ledger_log_start(
             req_id=req_id, method=method, tool_name=tool_name,
             arguments=arguments, trigger=trigger,
@@ -595,13 +574,7 @@ class MCPProcessManager(BaseMCPManager):
         )
         t0 = time.time()
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {},
-            "id": req_id
-        }
-
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": req_id}
         event = threading.Event()
         self._pending[req_id] = {"event": event, "result": None}
 
@@ -609,7 +582,7 @@ class MCPProcessManager(BaseMCPManager):
             with self._write_lock:
                 self.process.stdin.write(json.dumps(payload) + "\n")
                 self.process.stdin.flush()
-        except (BrokenPipeError, OSError, AttributeError) as e:
+        except Exception as e:
             self._pending.pop(req_id, None)
             result = {"error": f"Pipe error: {e}"}
             ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
@@ -630,27 +603,21 @@ class MCPProcessManager(BaseMCPManager):
     def notify(self, method, params=None):
         if not self.is_alive:
             return
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {}
-        }
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}}
         try:
             with self._write_lock:
                 self.process.stdin.write(json.dumps(payload) + "\n")
                 self.process.stdin.flush()
-        except (BrokenPipeError, OSError):
+        except Exception:
             pass
 
     def _read_stdout(self):
         while self._running and self.is_alive:
             try:
                 line = self.process.stdout.readline()
-                if not line:
-                    break
+                if not line: break
                 line = line.strip()
-                if not line:
-                    continue
+                if not line: continue
                 response = json.loads(line)
                 req_id = response.get("id")
                 preview = line[:150] + ("..." if len(line) > 150 else "")
@@ -658,26 +625,18 @@ class MCPProcessManager(BaseMCPManager):
                 if req_id is not None and req_id in self._pending:
                     self._pending[req_id]["result"] = response
                     self._pending[req_id]["event"].set()
-                elif req_id is not None:
-                    print(f"⚠️ [MCP] Orphaned response (id={req_id}), no pending request.")
-            except json.JSONDecodeError as e:
-                print(f"⚠️ [MCP] Malformed JSON on stdout: {e}")
-            except Exception as e:
-                if self._running:
-                    print(f"❌ [MCP] stdout reader error: {e}")
+            except Exception:
+                if self._running: print(f"❌ [MCP] stdout reader error")
                 break
-        print("📡 [MCP] stdout reader exited.")
 
     def _read_stderr(self):
         while self._running and self.is_alive:
             try:
                 line = self.process.stderr.readline()
-                if not line:
-                    break
+                if not line: break
                 print(f"🔧 [MCP LOG] {line.rstrip()}")
             except Exception:
                 break
-        print("📡 [MCP] stderr reader exited.")
 
     def handshake(self):
         init_resp = self.send("initialize", {
@@ -687,10 +646,6 @@ class MCPProcessManager(BaseMCPManager):
         }, timeout=10, trigger="handshake")
 
         if "error" in init_resp:
-            err = init_resp["error"]
-            if isinstance(err, dict):
-                err = err.get("message", str(err))
-            print(f"❌ [MCP] Handshake failed at initialize: {err}")
             self.handshake_ok = False
             return False
 
@@ -698,27 +653,17 @@ class MCPProcessManager(BaseMCPManager):
         self.server_info = result.get("serverInfo", {})
         self.protocol_version = result.get("protocolVersion", self.MCP_PROTOCOL_VERSION)
 
-        srv_name = self.server_info.get("name", "?")
-        srv_ver = self.server_info.get("version", "?")
-        print(f"📡 [MCP] Connected: {srv_name} v{srv_ver} (protocol {self.protocol_version})")
-
         self.notify("notifications/initialized")
-
         tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
         if "error" not in tools_resp and "result" in tools_resp:
             self.discovered_tools = tools_resp["result"].get("tools", [])
-            print(f"🔫 [MCP] Discovered {len(self.discovered_tools)} tools:")
-            for tool in self.discovered_tools:
-                print(f"   - {tool['name']}: {tool.get('description', '(no desc)')}")
         else:
-            print("⚠️ [MCP] tools/list failed, continuing with 0 tools.")
             self.discovered_tools = []
 
         self.handshake_ok = True
         return True
 
     def status(self):
-        # [S3] Snapshot process reference to avoid TOCTOU race
         proc = self.process
         return {
             "alive": proc is not None and proc.poll() is None,
@@ -732,22 +677,11 @@ class MCPProcessManager(BaseMCPManager):
             "event_count": ledger_count()
         }
 
-
 # =============================================
 # MCP SSE CLIENT — remote SSE transport (v0.5.0)
-# Connects to a remote butterclaw_mcp.py running
-# with --transport sse. Uses requests (no new deps).
 # =============================================
 
 class MCPSSEClient(BaseMCPManager):
-    """
-    Connects to a remote MCP server running SSE transport.
-    POST /message → send JSON-RPC requests
-    GET  /sse     → receive JSON-RPC responses via SSE stream
-
-    Same interface as MCPProcessManager so server.py can
-    swap between them without changing any call sites.
-    """
 
     MCP_PROTOCOL_VERSION = "2024-11-05"
 
@@ -763,7 +697,7 @@ class MCPSSEClient(BaseMCPManager):
         self.server_info = {}
         self.handshake_ok = False
         self.protocol_version = self.MCP_PROTOCOL_VERSION
-        self._message_url = None  # set by SSE endpoint event
+        self._message_url = None
 
     @property
     def transport_name(self):
@@ -784,41 +718,23 @@ class MCPSSEClient(BaseMCPManager):
             return True
         print(f"🚀 [MCP] Connecting to remote MCP server at {self.base_url} (SSE)...")
 
-        # Verify the remote server is alive
         try:
-            health_resp = http_requests.get(
-                f"{self.base_url}/health",
-                headers=self._auth_headers(),
-                timeout=5
-            )
+            health_resp = http_requests.get(f"{self.base_url}/health", headers=self._auth_headers(), timeout=5)
             if health_resp.status_code != 200:
-                print(f"❌ [MCP] Remote health check failed: {health_resp.status_code}")
                 return False
-        except Exception as e:
-            print(f"❌ [MCP] Remote server unreachable: {e}")
+        except Exception:
             return False
 
         self._running = True
         self._message_url = f"{self.base_url}/message"
-
-        # Start SSE reader thread
-        self._sse_thread = threading.Thread(
-            target=self._read_sse_stream, name="mcp-sse-reader", daemon=True
-        )
+        self._sse_thread = threading.Thread(target=self._read_sse_stream, daemon=True)
         self._sse_thread.start()
 
-        # Wait briefly for SSE connection to establish
         for _ in range(20):
-            if self._connected:
-                break
+            if self._connected: break
             time.sleep(0.1)
 
-        if self._connected:
-            print(f"✅ [MCP] SSE stream connected to {self.base_url}")
-            return True
-        else:
-            print(f"⚠️ [MCP] SSE stream not yet connected, proceeding anyway...")
-            return True  # best-effort — POST may still work
+        return True
 
     def stop(self):
         self._running = False
@@ -828,7 +744,6 @@ class MCPSSEClient(BaseMCPManager):
             entry["event"].set()
         self._pending.clear()
         self.handshake_ok = False
-        print("🛑 [MCP] SSE client stopped.")
 
     def restart(self):
         self.stop()
@@ -838,23 +753,14 @@ class MCPSSEClient(BaseMCPManager):
         return False
 
     def _read_sse_stream(self):
-        """Background thread: reads the SSE stream for JSON-RPC responses."""
-        headers = {}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
+        headers = self._auth_headers()
         headers["Accept"] = "text/event-stream"
         headers["Cache-Control"] = "no-cache"
 
         while self._running:
             try:
-                resp = http_requests.get(
-                    f"{self.base_url}/sse",
-                    headers=headers,
-                    stream=True,
-                    timeout=None
-                )
+                resp = http_requests.get(f"{self.base_url}/sse", headers=headers, stream=True, timeout=None)
                 if resp.status_code != 200:
-                    print(f"⚠️ [MCP SSE] Stream returned {resp.status_code}, retrying in 5s...")
                     time.sleep(5)
                     continue
 
@@ -863,64 +769,37 @@ class MCPSSEClient(BaseMCPManager):
                 data_buffer = ""
 
                 for line in resp.iter_lines(decode_unicode=True):
-                    if not self._running:
-                        break
-
+                    if not self._running: break
                     if line is None or line == "":
-                        # Empty line = end of event
                         if data_buffer and event_type:
                             self._handle_sse_event(event_type, data_buffer.strip())
                         event_type = None
                         data_buffer = ""
                         continue
+                    if line.startswith(":"): continue
+                    if line.startswith("event: "): event_type = line[7:].strip()
+                    elif line.startswith("data: "): data_buffer += line[6:]
+                    elif line.startswith("data:"): data_buffer += line[5:]
 
-                    if line.startswith(":"):
-                        # Comment line (keepalive)
-                        continue
-
-                    if line.startswith("event: "):
-                        event_type = line[7:].strip()
-                    elif line.startswith("data: "):
-                        data_buffer += line[6:]
-                    elif line.startswith("data:"):
-                        data_buffer += line[5:]
-
-            except http_requests.exceptions.ConnectionError:
+            except Exception:
                 if self._running:
-                    print("⚠️ [MCP SSE] Connection lost, reconnecting in 5s...")
                     self._connected = False
                     time.sleep(5)
-            except Exception as e:
-                if self._running:
-                    print(f"❌ [MCP SSE] Stream error: {e}, reconnecting in 5s...")
-                    self._connected = False
-                    time.sleep(5)
-
-        self._connected = False
-        print("📡 [MCP] SSE reader exited.")
 
     def _handle_sse_event(self, event_type, data):
-        """Process a complete SSE event."""
         if event_type == "endpoint":
-            # Server tells us where to POST
             self._message_url = data.strip()
-            print(f"📡 [MCP SSE] Endpoint received: {self._message_url}")
             return
 
         if event_type == "message":
             try:
                 response = json.loads(data)
                 req_id = response.get("id")
-                preview = data[:150] + ("..." if len(data) > 150 else "")
-                print(f"📥 [MCP ACK] id={req_id} → {preview}")
-
                 if req_id is not None and req_id in self._pending:
                     self._pending[req_id]["result"] = response
                     self._pending[req_id]["event"].set()
-                elif req_id is not None:
-                    print(f"⚠️ [MCP] Orphaned SSE response (id={req_id})")
-            except json.JSONDecodeError as e:
-                print(f"⚠️ [MCP SSE] Malformed JSON in message event: {e}")
+            except Exception:
+                pass
 
     def send(self, method, params=None, timeout=10, trigger="auto", chain_id=None, chain_step=None):
         if not self._running:
@@ -930,14 +809,12 @@ class MCPSSEClient(BaseMCPManager):
         req_id = next(self._req_counter)
         post_url = self._message_url or f"{self.base_url}/message"
 
-        # [v0.5.0] Extract tool info for ledger
         tool_name = None
         arguments = None
         if method == "tools/call" and params:
             tool_name = params.get("name")
             arguments = params.get("arguments")
 
-        # [v0.5.0] Event Ledger — log before dispatch
         event_id = ledger_log_start(
             req_id=req_id, method=method, tool_name=tool_name,
             arguments=arguments, trigger=trigger,
@@ -945,25 +822,12 @@ class MCPSSEClient(BaseMCPManager):
         )
         t0 = time.time()
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {},
-            "id": req_id
-        }
-
-        # Register pending response
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": req_id}
         event = threading.Event()
         self._pending[req_id] = {"event": event, "result": None}
 
-        # POST the request
         try:
-            resp = http_requests.post(
-                post_url,
-                json=payload,
-                headers=self._auth_headers(),
-                timeout=5
-            )
+            resp = http_requests.post(post_url, json=payload, headers=self._auth_headers(), timeout=5)
             if resp.status_code not in (200, 202):
                 self._pending.pop(req_id, None)
                 result = {"error": f"POST failed: HTTP {resp.status_code}"}
@@ -975,7 +839,6 @@ class MCPSSEClient(BaseMCPManager):
             ledger_log_end(event_id, "error", result, round((time.time() - t0) * 1000, 1))
             return result
 
-        # Wait for correlated response on SSE stream
         if event.wait(timeout=timeout):
             entry = self._pending.pop(req_id, {})
             result = entry.get("result") or {"error": "Empty response"}
@@ -989,22 +852,11 @@ class MCPSSEClient(BaseMCPManager):
             return result
 
     def notify(self, method, params=None):
-        if not self._running:
-            return
+        if not self._running: return
         post_url = self._message_url or f"{self.base_url}/message"
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {}
-            # No "id" — this is a notification
-        }
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}}
         try:
-            http_requests.post(
-                post_url,
-                json=payload,
-                headers=self._auth_headers(),
-                timeout=5
-            )
+            http_requests.post(post_url, json=payload, headers=self._auth_headers(), timeout=5)
         except Exception:
             pass
 
@@ -1016,10 +868,6 @@ class MCPSSEClient(BaseMCPManager):
         }, timeout=10, trigger="handshake")
 
         if "error" in init_resp:
-            err = init_resp["error"]
-            if isinstance(err, dict):
-                err = err.get("message", str(err))
-            print(f"❌ [MCP] SSE handshake failed at initialize: {err}")
             self.handshake_ok = False
             return False
 
@@ -1027,20 +875,12 @@ class MCPSSEClient(BaseMCPManager):
         self.server_info = result.get("serverInfo", {})
         self.protocol_version = result.get("protocolVersion", self.MCP_PROTOCOL_VERSION)
 
-        srv_name = self.server_info.get("name", "?")
-        srv_ver = self.server_info.get("version", "?")
-        print(f"📡 [MCP] Connected via SSE: {srv_name} v{srv_ver} (protocol {self.protocol_version})")
-
         self.notify("notifications/initialized")
 
         tools_resp = self.send("tools/list", {}, timeout=5, trigger="handshake")
         if "error" not in tools_resp and "result" in tools_resp:
             self.discovered_tools = tools_resp["result"].get("tools", [])
-            print(f"🔫 [MCP] Discovered {len(self.discovered_tools)} tools:")
-            for tool in self.discovered_tools:
-                print(f"   - {tool['name']}: {tool.get('description', '(no desc)')}")
         else:
-            print("⚠️ [MCP] tools/list failed, continuing with 0 tools.")
             self.discovered_tools = []
 
         self.handshake_ok = True
@@ -1066,7 +906,6 @@ class MCPSSEClient(BaseMCPManager):
 # =============================================
 
 def create_mcp_manager():
-    """Create the appropriate MCP manager based on config."""
     with _state_lock:
         mode = mcp_transport_mode
         url = mcp_sse_url
@@ -1082,7 +921,6 @@ def create_mcp_manager():
         )
 
 mcp_manager = create_mcp_manager()
-
 
 # =============================================
 # DYNAMIC ENDPOINT RESOLUTION
@@ -1117,9 +955,6 @@ def ask_guardian_agent(threat_type, raw_data):
         active_model = model_name
         gates = dict(gate_states)
 
-    # --- [v0.5.0] THE MEMORY INJECTION PATCH ---
-    # Fetch the last 5 successful tool calls to provide temporal context
-    # This turns "Amnesia" into "Behavioral Tracking"
     mcp_history = ledger_query(limit=5, status="success")
     timeline_context = ""
     
@@ -1129,9 +964,6 @@ def ask_guardian_agent(threat_type, raw_data):
             if event['method'] == 'tools/call':
                 timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {event['status']}\n"
         timeline_context += "\n"
-    # -------------------------------------------
-
-    # ... (mode_instructions and gate_context logic remains the same)
 
     mode_instructions = "Mode: RELAXED. Be lenient unless it's a clear RCE."
     if level == "2":
@@ -1159,25 +991,11 @@ def ask_guardian_agent(threat_type, raw_data):
         if not gates.get("kill_sw"):
             gate_context += " Kill Switch is DISARMED — do NOT recommend process termination."
     
-    # [v0.5.1] Build available tools context for chain composition
     tools_list = []
     for tool in mcp_manager.discovered_tools:
         tool_name = tool.get('name', 'unknown_tool')
         desc = tool.get('description', 'No description')
         tools_list.append(f"  - {tool_name}: {desc}")
-
-    # [v0.5.1] Build available tools context for chain composition - causes bug - 
-    # During the MCP handshake, mcp_manager.discovered_tools is populated from 
-    # the MCP tools/list response. According to the MCP spec 
-    # (handshake method), discovered_tools is a list of dictionaries, not a dictionary.
-    # Calling .items() on a list will immediately throw an AttributeError: 'list' object 
-    # has no attribute 'items', completely crashing the Brain before it can even 
-    # send the prompt to Ollama.
-
-    #tools_list = []
-    #for tool_name, tool_info in mcp_manager.discovered_tools.items():
-    #    desc = tool_info.get('description', 'No description')
-    #    tools_list.append(f"  - {tool_name}: {desc}")
 
     tools_context = "\n".join(tools_list) if tools_list else "  No MCP tools discovered yet."
 
@@ -1241,7 +1059,7 @@ def ask_guardian_agent(threat_type, raw_data):
                 "confidence": clamped_conf,
                 "primary_gate": str(parsed.get("primary_gate", "None")),
                 "reasoning": str(parsed.get("reasoning", "Model failed to provide reasoning.")),
-                "chain": parsed.get("chain")  # v0.5.1 — pass through chain if present
+                "chain": parsed.get("chain")
             }
         except json.JSONDecodeError:
             return {
@@ -1253,33 +1071,28 @@ def ask_guardian_agent(threat_type, raw_data):
     except Exception as e:
         return {"verdict": "ERROR", "confidence": 0.0, "reasoning": f"Brain failure: {str(e)}"}
 
+
 # =============================================
 # THE AUDITOR (Step A)
 # =============================================
 
 def run_self_audit(original_threat):
-    """Stateless self-reflection to catch False Positives without lowering shields."""
-    # 1. Let the system breathe so kinetic actions hit the ledger
     time.sleep(30)
     
-    # 2. Fetch the recent ledger history
     mcp_history = ledger_query(limit=5, status="success")
     timeline_context = "RECENT SENTINEL ACTIONS:\n"
     if mcp_history:
         for event in reversed(mcp_history):
             if event['method'] == 'tools/call':
-                # Use .get() safely and truncate result to keep prompt clean
                 result_str = str(event.get('result', ''))[:100]
                 timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {result_str}...\n"
     else:
         timeline_context += " - No recent actions.\n"
 
-    # 3. Resolve globals safely for the thread
     ollama_url = _resolve_ollama_url()
     with _state_lock:
         active_model = model_name
 
-    # 4. The Stateless Override
     payload = {
         "model": active_model,
         "format": "json",
@@ -1298,19 +1111,17 @@ def run_self_audit(original_threat):
             }
         ],
         "stream": False,
-        "options": {"temperature": 0.0} # Absolute zero. Cold logic only.
+        "options": {"temperature": 0.0}
     }
 
-    # 5. Execute the API call (Notice the if/else is INSIDE the try block now)
     try:
-        response = http_requests.post(ollama_url, json=payload, timeout=120)
+        response = http_requests.post(ollama_url, json=payload, timeout=300)
         raw_content = response.json().get("message", {}).get("content", "{}")
         parsed = json.loads(raw_content)
         
         audit_verdict = parsed.get("audit_verdict", "UNKNOWN")
         reasoning = parsed.get("reasoning", "No reasoning provided.")
 
-        # Evaluate Verdict
         if audit_verdict == "FALSE_POSITIVE":
             print(f"🧐 [AUDITOR] False Positive Detected: {reasoning}")
             
@@ -1329,7 +1140,6 @@ def run_self_audit(original_threat):
             conn.commit()
             conn.close()
             
-            # Ping the SSE stream so the dashboard auto-refreshes
             with _state_lock:
                 global total_logs_processed
                 total_logs_processed += 1
@@ -1338,6 +1148,7 @@ def run_self_audit(original_threat):
 
     except Exception as e:
         print(f"❌ [AUDITOR] Self-audit API failure: {e}")
+
 
 # =============================================
 # API ROUTES
@@ -1397,7 +1208,6 @@ def analyze_threat():
     trigger_gate = analysis["primary_gate"]
     reasoning = analysis["reasoning"]
 
-    # [v0.4.1 S5] Uses module-level CONFIDENCE_THRESHOLD
     if verdict_upper == "CRITICAL" and confidence_pct < CONFIDENCE_THRESHOLD:
         print(f"🛡️ [SELF-DOS AVERTED] CRITICAL downgraded due to low confidence ({confidence_pct}% < {CONFIDENCE_THRESHOLD}%).")
         verdict_upper = "WARNING"
@@ -1415,23 +1225,18 @@ def analyze_threat():
         color = "red"
         icon = "🚨"
         if kill_sw_armed:
-            # [v0.5.1] Check for Brain-composed chain
             chain_steps = analysis.get('chain') if isinstance(analysis, dict) else None
 
             if chain_steps and isinstance(chain_steps, list) and len(chain_steps) > 0:
-                # v0.5.1 — Chain execution path
                 print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
                 executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
                 chain_result = executor.execute()
 
-                # ALWAYS butter keys on CRITICAL regardless of chain content
                 buttervault.butter_keys()
 
                 action = chain_result['action_summary']
                 print(f"🔗 CHAIN EXECUTED: {action}")
             else:
-                # Hardcoded fallback (pre-v0.5.1 behavior)
-                # [S4] Check MCP return values — report truth in action string
                 mcp_failures = []
 
                 gibson_resp = mcp_manager.send("tools/call", {
@@ -1442,7 +1247,6 @@ def analyze_threat():
                     mcp_failures.append("gibson_kill")
                     print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
 
-                # buttervault is a direct local call — always succeeds independently
                 buttervault.butter_keys()
 
                 rotate_resp = mcp_manager.send("tools/call", {
@@ -1460,14 +1264,7 @@ def analyze_threat():
         else:
             action = "ALERT | Kill Switch Disarmed"
 
-        # --- THE AUDIT TRIGGER (Step B) ---
-        # Fire and forget. Let the auditor wake up in 30 seconds.
-        threading.Thread(
-            target=run_self_audit, 
-            args=(threat_type,), 
-            daemon=True
-        ).start()
-        # ----------------------------------
+        threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()
 
     elif verdict_upper == "WARNING":
         color = "amber"
@@ -1501,7 +1298,6 @@ def analyze_threat():
 
     return jsonify({"status": "success", "verdict": verdict_text}), 200
 
-
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
     try:
@@ -1512,12 +1308,10 @@ def get_logs():
     except sqlite3.Error as e:
         return jsonify({"error": f"Database read failed: {e}"}), 500
 
-
 @app.route('/api/rotate-keys', methods=['POST'])
 def manual_key_rotation():
     buttervault.butter_keys()
 
-    # [S4] Check MCP return value for manual rotation too
     rotate_resp = mcp_manager.send("tools/call", {
         "name": "rotate_keys",
         "arguments": {"provider": "Manual_Global"}
@@ -1551,6 +1345,236 @@ def manual_key_rotation():
 
     return jsonify({"status": "success"}), 200
 
+# =============================================
+# API ROUTES: OAUTH (v0.5.2)
+# =============================================
+
+def _oauth_result_page(success, message):
+    """Returns a self-closing HTML page that signals the opener window."""
+    color = "#10b981" if success else "#ef4444"
+    icon = "✅" if success else "❌"
+    return Response(f"""<!DOCTYPE html>
+<html>
+<head><title>ButterClaw OAuth</title></head>
+<body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;">
+<div style="text-align:center;padding:2rem;">
+    <div style="font-size:3rem;">{icon}</div>
+    <h2 style="color:{color};margin:1rem 0;">{message}</h2>
+    <p style="color:#64748b;font-size:0.875rem;">This window will close automatically.</p>
+</div>
+<script>
+    if (window.opener) {{
+        window.opener.postMessage({{type: 'oauth_result', success: {str(success).lower()}, message: '{message}'}}, '*');
+    }}
+    setTimeout(function() {{ window.close(); }}, 2000);
+</script>
+</body>
+</html>""", mimetype="text/html")
+
+@app.route('/api/vault/oauth/start/<provider_name>', methods=['GET'])
+def oauth_start(provider_name):
+    """
+    Initiates the OAuth 2.0 authorization code flow.
+    Generates a CSRF state token, builds the authorization URL,
+    and returns it to the frontend for redirect.
+    """
+    provider = oauth_config.get_provider(provider_name)
+    if not provider:
+        return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
+    
+    if not provider["oauth_supported"]:
+        return jsonify({"error": f"{provider['display_name']} does not support OAuth. Use manual API key entry."}), 400
+    
+    # Retrieve client_id from ButterVault (Option C Architecture)
+    client_id = buttervault.get_key(f"{provider_name}_client_id")
+    if not client_id:
+        return jsonify({
+            "error": f"No client_id found in ButterVault for '{provider_name}'. "
+                     f"Please store it first via the Vault panel with provider name '{provider_name}_client_id'."
+        }), 400
+    
+    # Generate CSRF state token
+    state = secrets.token_urlsafe(32)
+    
+    # Build the redirect URI
+    redirect_uri = f"http://127.0.0.1:5000/api/vault/oauth/callback"
+    
+    # Store state for validation on callback
+    _cleanup_expired_oauth_states()
+    with _oauth_states_lock:
+        _oauth_states[state] = {
+            "provider": provider_name,
+            "created_at": time.time(),
+            "redirect_uri": redirect_uri
+        }
+    
+    # Build authorization URL
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(provider["scopes"]),
+        "state": state,
+        "access_type": "offline",     # Request refresh token (Google)
+        "prompt": "consent"           # Force consent screen to get refresh token (Google)
+    }
+    
+    query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
+    auth_url = f"{provider['authorize_url']}?{query}"
+    
+    print(f"🔑 [OAUTH] Starting {provider['display_name']} flow. State: {state[:8]}...")
+    
+    return jsonify({
+        "auth_url": auth_url,
+        "state": state,
+        "provider": provider_name
+    }), 200
+
+@app.route('/api/vault/oauth/callback', methods=['GET'])
+def oauth_callback():
+    """
+    Handles the OAuth 2.0 callback from the provider.
+    Validates state, exchanges code for tokens, and seals them in the Vault.
+    """
+    code = request.args.get("code")
+    state = request.args.get("state")
+    error = request.args.get("error")
+    
+    if error:
+        print(f"❌ [OAUTH] Provider returned error: {error}")
+        return _oauth_result_page(success=False, message=f"Authorization denied: {error}")
+    
+    if not code or not state:
+        return _oauth_result_page(success=False, message="Missing code or state parameter.")
+    
+    # Validate CSRF state
+    with _oauth_states_lock:
+        state_data = _oauth_states.pop(state, None)
+    
+    if not state_data:
+        print(f"⚠️ [OAUTH] Invalid or expired state token: {state[:8]}...")
+        return _oauth_result_page(success=False, message="Invalid or expired state. Please try again.")
+    
+    if time.time() - state_data["created_at"] > OAUTH_STATE_TTL:
+        print(f"⚠️ [OAUTH] State token expired: {state[:8]}...")
+        return _oauth_result_page(success=False, message="Authorization timed out. Please try again.")
+    
+    provider_name = state_data["provider"]
+    redirect_uri = state_data["redirect_uri"]
+    provider = oauth_config.get_provider(provider_name)
+    
+    if not provider:
+        return _oauth_result_page(success=False, message=f"Unknown provider: {provider_name}")
+    
+    client_id = buttervault.get_key(f"{provider_name}_client_id")
+    client_secret = buttervault.get_key(f"{provider_name}_client_secret")
+    
+    if not client_id or not client_secret:
+        return _oauth_result_page(success=False, message="Client credentials not found in ButterVault.")
+    
+    print(f"🔑 [OAUTH] Exchanging code for tokens ({provider['display_name']})...")
+    
+    try:
+        token_resp = http_requests.post(provider["token_url"], data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }, timeout=15)
+        
+        if token_resp.status_code != 200:
+            error_detail = token_resp.text[:200]
+            print(f"❌ [OAUTH] Token exchange failed: HTTP {token_resp.status_code} — {error_detail}")
+            return _oauth_result_page(success=False, message=f"Token exchange failed: HTTP {token_resp.status_code}")
+        
+        tokens = token_resp.json()
+        
+    except Exception as e:
+        print(f"❌ [OAUTH] Token exchange request failed: {e}")
+        return _oauth_result_page(success=False, message=f"Token exchange failed: {e}")
+    
+    token_dict = {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens.get("refresh_token"),
+        "expires_at": time.time() + tokens.get("expires_in", 3600),
+        "token_type": tokens.get("token_type", "Bearer"),
+        "scope": tokens.get("scope", " ".join(provider["scopes"])),
+    }
+    
+    buttervault.store_oauth_token(provider_name, token_dict)
+    
+    print(f"✅ [OAUTH] {provider['display_name']} tokens sealed in ButterVault. "
+          f"Expires in {tokens.get('expires_in', '?')}s. "
+          f"Refresh token: {'present' if token_dict['refresh_token'] else 'ABSENT'}.")
+    
+    try:
+        conn = get_db_connection()
+        conn.execute('''
+            INSERT INTO logs (title, desc, action, time, icon, color)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            f"OAuth Connected: {provider['display_name']}",
+            f"Successfully authenticated with {provider['display_name']} via OAuth 2.0. Tokens encrypted and sealed.",
+            "OAuth Sealed",
+            datetime.datetime.now().strftime("%H:%M:%S"),
+            "🔑",
+            "emerald"
+        ))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error:
+        pass
+    
+    return _oauth_result_page(success=True, message=f"{provider['display_name']} connected successfully!")
+
+@app.route('/api/vault/oauth/status', methods=['GET'])
+def oauth_status():
+    """Returns the connection status of all OAuth-capable providers."""
+    statuses = {}
+    connected_providers = buttervault.list_oauth_providers()
+    
+    for name in oauth_config.list_oauth_capable():
+        provider = oauth_config.get_provider(name)
+        token = buttervault.get_oauth_token(name) if name in connected_providers else None
+        
+        statuses[name] = {
+            "display_name": provider["display_name"],
+            "connected": token is not None,
+            "has_refresh_token": bool(token.get("refresh_token")) if token else False,
+            "expires_at": token.get("expires_at") if token else None,
+            "expired": token is not None and time.time() > token.get("expires_at", 0),
+            "has_client_credentials": (
+                buttervault.get_key(f"{name}_client_id") is not None
+                and buttervault.get_key(f"{name}_client_secret") is not None
+            )
+        }
+    
+    return jsonify(statuses), 200
+
+@app.route('/api/vault/oauth/revoke/<provider_name>', methods=['POST'])
+def oauth_revoke(provider_name):
+    """Revokes the OAuth token at the provider and removes it from the Vault."""
+    provider = oauth_config.get_provider(provider_name)
+    if not provider:
+        return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
+    
+    token_dict = buttervault.get_oauth_token(provider_name)
+    if not token_dict:
+        return jsonify({"error": f"No OAuth token found for {provider_name}"}), 404
+    
+    revoke_url = provider.get("revoke_url")
+    if revoke_url:
+        try:
+            http_requests.post(revoke_url, data={"token": token_dict["access_token"]}, timeout=10)
+            print(f"🔑 [OAUTH] Revoked token at {provider['display_name']}")
+        except Exception as e:
+            print(f"⚠️ [OAUTH] Remote revocation failed (proceeding with local removal): {e}")
+    
+    buttervault.delete_oauth_token(provider_name)
+    print(f"🗑️ [OAUTH] {provider['display_name']} disconnected and removed from Vault.")
+    
+    return jsonify({"status": "revoked", "provider": provider_name}), 200
 
 # --- THE CONTROL PANEL ---
 
@@ -1633,7 +1657,6 @@ def settings():
                 active = [k for k, v in gate_states.items() if v]
                 print(f"🔒 [GATES] Updated. Active: {', '.join(active) if active else 'NONE'}")
 
-    # [v0.5.0] MCP transport settings
     if "mcp_transport" in data:
         new_transport = str(data["mcp_transport"]).lower().strip()
         if new_transport not in VALID_MCP_TRANSPORTS:
@@ -1662,7 +1685,6 @@ def settings():
         return jsonify({"status": "partial", "errors": errors}), 400
 
     return jsonify({"status": "ok"})
-
 
 @app.route('/api/shield', methods=['POST'])
 def shield():
@@ -1704,7 +1726,6 @@ def shield():
 
     return jsonify({"status": "ok", "shield_enabled": shield_enabled})
 
-
 # =============================================
 # MCP OBSERVABILITY ENDPOINTS (v0.5.0)
 # =============================================
@@ -1732,7 +1753,6 @@ def mcp_tools():
 @app.route('/api/mcp/restart', methods=['POST'])
 def mcp_restart():
     global mcp_manager
-    # [v0.5.0] Check if transport mode changed — if so, create new manager
     with _state_lock:
         current_transport = mcp_transport_mode
 
@@ -1745,14 +1765,12 @@ def mcp_restart():
     code = 200 if success else 503
     return jsonify({"restarted": success, **status}), code
 
-
 # =============================================
 # MCP EVENT LEDGER ENDPOINTS (v0.5.0)
 # =============================================
 
 @app.route('/api/mcp/events', methods=['GET'])
 def mcp_events():
-    """Query the MCP event ledger with optional filters."""
     limit = request.args.get('limit', 50, type=int)
     tool = request.args.get('tool', None)
     status_filter = request.args.get('status', None)
@@ -1765,15 +1783,12 @@ def mcp_events():
         "total": ledger_count()
     }), 200
 
-
 @app.route('/api/mcp/events/<int:event_id>', methods=['GET'])
 def mcp_event_detail(event_id):
-    """Fetch a single event with full result payload."""
     event = ledger_get_event(event_id)
     if event is None:
         return jsonify({"error": f"Event {event_id} not found"}), 404
     return jsonify(event), 200
-
 
 # =============================================
 # SSE STREAM
@@ -1798,7 +1813,6 @@ def stream():
     response.headers.add('Connection', 'keep-alive')
     return response
 
-
 # =============================================
 # BOOT
 # =============================================
@@ -1815,7 +1829,6 @@ if __name__ == '__main__':
         print(f"   Ollama Endpoint: {OLLAMA_LOCAL_BASE}")
     active_gates = [k for k, v in gate_states.items() if v]
     print(f"   Active Gates: {', '.join(active_gates) if active_gates else 'NONE'}")
-    # [S5] References module-level constant
     print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%")
     print(f"   Rate Limit: {RATE_LIMIT_MAX} req / {RATE_LIMIT_WINDOW}s on /api/analyze")
     print(f"   CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
@@ -1825,7 +1838,7 @@ if __name__ == '__main__':
         print(f"   MCP SSE Auth: {'token set' if mcp_sse_token else 'none'}")
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.5.1 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.5.2 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
