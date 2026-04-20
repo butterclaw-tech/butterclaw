@@ -1,18 +1,18 @@
 """
-ButterClaw v0.6.1 — The Exoskeleton (Policy Engine)
+ButterClaw v0.6.2 — The Exoskeleton (Alert Dispatcher)
 =====================================================================
 Changelog:
-  [v0.4.1] QA Sterilization Patch (S1-S5)
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
   [v0.5.1] Tool Chaining (ChainExecutor, safe eval)
   [v0.5.2] ButterVault OAuth (Credential Lifecycle)
   [v0.6.0] API Gateway & Auth (RBAC, API Keys, Sessions)
-  [v0.6.1] Policy Engine:
-           - Deterministic DRIFT framework integration.
-           - Pre-brain filter (fast-track/block/escalate).
-           - Post-brain validator (confidence gates).
-           - Pre-tool gate (chain execution surgical blocks).
-           - CRUD API endpoints for policy management.
+  [v0.6.1] Policy Engine (Deterministic DRIFT framework)
+  [v0.6.2] Alert Dispatcher:
+           - Multi-channel notification routing (webhook, discord, ntfy, smtp, gotify).
+           - 7 injection hooks for critical system states.
+           - Global @after_request auth brute-force tracking.
+           - MCP health monitor daemon.
+           - Alert routing survives the Gibson.
 """
 
 from flask import Flask, request, jsonify, Response
@@ -46,11 +46,19 @@ except ImportError:
     POLICY_ENGINE_ENABLED = False
     print("⚠️ [WARN] policy_engine.py not found. Deterministic guardrails disabled.")
 
+# [v0.6.2] Alert Dispatcher Import
+try:
+    import alert_dispatcher
+    ALERT_DISPATCHER_ENABLED = True
+except ImportError:
+    ALERT_DISPATCHER_ENABLED = False
+    print("⚠️ [WARN] alert_dispatcher.py not found. External notifications disabled.")
+
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.1"
+VERSION = "0.6.2"
 DRY_RUN = False
 CONFIDENCE_THRESHOLD = 85
 
@@ -65,7 +73,20 @@ ALLOWED_ORIGINS = [
 ]
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
+
+# Register Module Routes
 register_auth_routes(app)
+if ALERT_DISPATCHER_ENABLED:
+    alert_dispatcher.register_alert_routes(app)
+
+# =============================================
+# [v0.6.2] GLOBAL AUTH TRACKER
+# =============================================
+@app.after_request
+def track_auth_failures(response):
+    if response.status_code in (401, 403) and ALERT_DISPATCHER_ENABLED:
+        alert_dispatcher.track_auth_failure(request.remote_addr)
+    return response
 
 # =============================================
 # THREAD-SAFE GLOBAL STATE
@@ -140,9 +161,11 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # [v0.6.1] Initialize Policy Engine DB if present
     if POLICY_ENGINE_ENABLED:
         policy_engine.init_policy_db()
+        
+    if ALERT_DISPATCHER_ENABLED:
+        alert_dispatcher.init_alert_db()
 
 init_db()
 
@@ -175,7 +198,7 @@ def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="au
             INSERT INTO mcp_events (timestamp, req_id, method, tool_name, arguments, status, trigger, chain_id, chain_step)
             VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         ''', (
-            datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             req_id, method, tool_name,
             json.dumps(arguments) if arguments else None,
             trigger, chain_id, chain_step
@@ -297,9 +320,6 @@ class ChainExecutor:
                 if event_id: ledger_log_end(event_id, status="skipped", result={"reason": "condition_not_met"})
                 return
 
-        # ==============================================
-        # [v0.6.1] PRE-TOOL POLICY GATE
-        # ==============================================
         if POLICY_ENGINE_ENABLED:
             pre_tool_ctx = {
                 "raw_data": str(step.get("args", {})),
@@ -315,12 +335,16 @@ class ChainExecutor:
             
             if gate_result["action"] == "skip_tool":
                 print(f"🚫 [POLICY] Pre-Tool gate blocked {tool_name}: {gate_result['reason']}")
+                if ALERT_DISPATCHER_ENABLED:
+                    alert_dispatcher.dispatch_alert("policy_blocked", {"tool_name": tool_name, "reason": gate_result["reason"]})
                 self.executed.append({"step": step_index, "tool": tool_name, "status": "policy_blocked"})
                 event_id = ledger_log_start(req_id=None, method="tools/call", tool_name=tool_name, arguments=step.get("args", {}), trigger="chain", chain_id=self.chain_id, chain_step=step_index)
                 if event_id: ledger_log_end(event_id, status="policy_blocked", result={"reason": gate_result["reason"], "policy_id": gate_result["policy_id"]})
                 return
             elif gate_result["action"] == "block":
                 print(f"🚫 [POLICY] Pre-Tool gate HARD BLOCKED {tool_name}: {gate_result['reason']}")
+                if ALERT_DISPATCHER_ENABLED:
+                    alert_dispatcher.dispatch_alert("policy_blocked", {"tool_name": tool_name, "reason": gate_result["reason"]})
                 self.executed.append({"step": step_index, "tool": tool_name, "status": "policy_blocked"})
                 return
 
@@ -620,6 +644,22 @@ def create_mcp_manager():
 mcp_manager = create_mcp_manager()
 
 # =============================================
+# [v0.6.2] MCP HEALTH MONITOR DAEMON
+# =============================================
+def mcp_health_monitor():
+    was_alive = True
+    while True:
+        time.sleep(10)
+        is_alive = mcp_manager.is_alive
+        if was_alive and not is_alive:
+            print("⚠️ [MCP] Disconnect/Crash detected by health monitor.")
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("mcp_offline", {"transport": mcp_manager.transport_name})
+        was_alive = is_alive
+
+threading.Thread(target=mcp_health_monitor, daemon=True).start()
+
+# =============================================
 # DYNAMIC ENDPOINT RESOLUTION
 # =============================================
 
@@ -788,7 +828,7 @@ def analyze_threat():
     if POLICY_ENGINE_ENABLED:
         pre_brain_ctx = {
             "raw_data": raw_data,
-            "payload": raw_data, # <- fixes payload context mapping
+            "payload": raw_data,
             "threat_type": threat_type,
             "source_ip": request.remote_addr,
         }
@@ -803,6 +843,8 @@ def analyze_threat():
                 "reasoning": f"[Policy Override] {pre_brain_result['reason']}",
                 "chain": None
             }
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("policy_override", {"threat_type": threat_type, "new_verdict": "CRITICAL", "reason": pre_brain_result["reason"]})
         elif pre_brain_result["action"] == "override_benign":
             print(f"✅ [POLICY] Pre-Brain fast-track → BENIGN: {pre_brain_result['reason']}")
             analysis = {
@@ -812,8 +854,12 @@ def analyze_threat():
                 "reasoning": f"[Policy Fast-Track] {pre_brain_result['reason']}",
                 "chain": None
             }
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("policy_override", {"threat_type": threat_type, "new_verdict": "BENIGN", "reason": pre_brain_result["reason"]})
         elif pre_brain_result["action"] == "block":
             print(f"🚫 [POLICY] Pre-Brain block: {pre_brain_result['reason']}")
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("policy_blocked", {"threat_type": threat_type, "reason": pre_brain_result["reason"]})
             return jsonify({
                 "status": "blocked",
                 "reason": pre_brain_result["reason"],
@@ -847,11 +893,15 @@ def analyze_threat():
             analysis["confidence"] = 1.0
             analysis["reasoning"] += f" [Policy Escalated: {post_brain_result['reason']}]"
             analysis["primary_gate"] = "Policy"
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("policy_override", {"threat_type": threat_type, "new_verdict": "CRITICAL", "reason": post_brain_result["reason"]})
 
         elif post_brain_result["action"] == "override_benign":
             print(f"✅ [POLICY] Post-Brain downgrade → BENIGN: {post_brain_result['reason']}")
             analysis["verdict"] = "BENIGN"
             analysis["reasoning"] += f" [Policy Downgraded: {post_brain_result['reason']}]"
+            if ALERT_DISPATCHER_ENABLED:
+                alert_dispatcher.dispatch_alert("policy_override", {"threat_type": threat_type, "new_verdict": "BENIGN", "reason": post_brain_result["reason"]})
 
         elif post_brain_result["action"] == "require_confidence":
             min_conf = post_brain_result.get("action_params", {}).get("min_confidence", 90)
@@ -860,6 +910,8 @@ def analyze_threat():
                 print(f"🛡️ [POLICY] Confidence gate: {conf_pct}% < {min_conf}% required → WARNING")
                 analysis["verdict"] = "WARNING"
                 analysis["reasoning"] += f" [Policy: Confidence {conf_pct}% below {min_conf}% policy minimum]"
+                if ALERT_DISPATCHER_ENABLED:
+                    alert_dispatcher.dispatch_alert("policy_override", {"threat_type": threat_type, "new_verdict": "WARNING", "reason": post_brain_result["reason"]})
 
     verdict_upper = analysis["verdict"]
     confidence_pct = int(analysis["confidence"] * 100)
@@ -874,6 +926,13 @@ def analyze_threat():
     verdict_text = f"[Gate: {trigger_gate}] [{confidence_pct}% Confidence] {reasoning}"
     print(f"🧠 [HTTP 200 OK] Model returned {verdict_upper} ({confidence_pct}%)")
     print("=" * 60)
+    
+    # [v0.6.2] Dispatch Final Verdict
+    if ALERT_DISPATCHER_ENABLED:
+        if verdict_upper == "CRITICAL":
+            alert_dispatcher.dispatch_alert("verdict_critical", {"threat_type": threat_type, "reasoning": reasoning})
+        elif verdict_upper == "WARNING":
+            alert_dispatcher.dispatch_alert("verdict_warning", {"threat_type": threat_type, "reasoning": reasoning})
 
     with _state_lock: kill_sw_armed = gate_states.get("kill_sw", True)
 
@@ -886,12 +945,11 @@ def analyze_threat():
                 executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
                 action = executor.execute()['action_summary']
                 
-                # ==============================================
-                # [PATCH 1A] CHAIN PATH: Only butter keys if a destructive tool ACTUALLY executed
-                # ==============================================
                 executed_tools = [s['tool'] for s in executor.executed if s.get('status') == 'executed']
                 if "execute_gibson_kill" in executed_tools or "rotate_keys" in executed_tools:
                     print("☢️ [SERVER] Chain executed a critical tool. Triggering ButterVault...")
+                    if ALERT_DISPATCHER_ENABLED:
+                        alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "chain"})
                     buttervault.butter_keys()
                 else:
                     print("🛡️ [SERVER] Critical tools were skipped/blocked. Vault remains sealed.")
@@ -899,7 +957,6 @@ def analyze_threat():
                 print(f"🔗 CHAIN EXECUTED: {action}")
             else:
                 mcp_failures = []
-                # [v0.6.1] Pre-tool gate for hardcoded gibson_kill
                 gibson_blocked = False
                 if POLICY_ENGINE_ENABLED:
                     gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "execute_gibson_kill", "tool_args": {"target_process": "openclaw"}, "verdict": "CRITICAL", "confidence": 1.0})
@@ -910,7 +967,6 @@ def analyze_threat():
                     gibson_resp = mcp_manager.send("tools/call", {"name": "execute_gibson_kill", "arguments": {"target_process": "openclaw"}}, trigger="critical")
                     if "error" in gibson_resp: mcp_failures.append("gibson_kill"); print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
                 
-                # [v0.6.1] Pre-tool gate for hardcoded rotate_keys
                 rotate_blocked = False
                 if POLICY_ENGINE_ENABLED:
                     gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "OpenRouter"}, "verdict": "CRITICAL", "confidence": 1.0})
@@ -921,15 +977,14 @@ def analyze_threat():
                     rotate_resp = mcp_manager.send("tools/call", {"name": "rotate_keys", "arguments": {"provider": "OpenRouter"}}, trigger="critical")
                     if "error" in rotate_resp: mcp_failures.append("rotate_keys"); print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
 
-                # ==============================================
-                # [PATCH 1B] FALLBACK PATH: Only butter keys if at least one tool was allowed
-                # ==============================================
                 if not gibson_blocked or not rotate_blocked:
                     print("☢️ [SERVER] Hardcoded critical tool allowed. Triggering ButterVault...")
+                    if ALERT_DISPATCHER_ENABLED:
+                        alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "fallback"})
                     buttervault.butter_keys()
                 else:
                     print("🛡️ [SERVER] All critical hardcoded tools blocked. Vault remains sealed.")
-                
+                    
                 action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Keys Buttered"
         else: action = "ALERT | Kill Switch Disarmed"
         threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()
@@ -962,6 +1017,8 @@ def get_logs():
 @app.route('/api/rotate-keys', methods=['POST'])
 @require_auth(min_role="admin")
 def manual_key_rotation():
+    if ALERT_DISPATCHER_ENABLED:
+        alert_dispatcher.dispatch_alert("gibson_manual", {"trigger": "admin_api"})
     buttervault.butter_keys()
     
     rotate_blocked = False
@@ -1347,13 +1404,17 @@ if __name__ == '__main__':
     print(f"   Active Gates: {', '.join(active_gates) if active_gates else 'NONE'}")
     print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%")
     print(f"   Policy Engine: {'ENABLED' if POLICY_ENGINE_ENABLED else 'DISABLED'}")
+    print(f"   Alert Dispatcher: {'ENABLED' if ALERT_DISPATCHER_ENABLED else 'DISABLED'}")
     print(f"   MCP Transport: {mcp_transport_mode}")
 
     print("\n🔐 [AUTH] Checking API key bootstrap...")
     bootstrap_admin_key()
+    
+    if ALERT_DISPATCHER_ENABLED:
+        alert_dispatcher.dispatch_alert("system_startup", {"version": VERSION, "routing_mode": routing_mode, "model": model_name})
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.6.1 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.6.2 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
