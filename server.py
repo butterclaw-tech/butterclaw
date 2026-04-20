@@ -788,6 +788,7 @@ def analyze_threat():
     if POLICY_ENGINE_ENABLED:
         pre_brain_ctx = {
             "raw_data": raw_data,
+            "payload": raw_data, # <- fixes payload context mapping
             "threat_type": threat_type,
             "source_ip": request.remote_addr,
         }
@@ -829,6 +830,7 @@ def analyze_threat():
     if POLICY_ENGINE_ENABLED:
         post_brain_ctx = {
             "raw_data": raw_data,
+            "payload": raw_data,
             "threat_type": threat_type,
             "source_ip": request.remote_addr,
             "verdict": analysis.get("verdict", "UNKNOWN"),
@@ -883,7 +885,17 @@ def analyze_threat():
                 print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
                 executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
                 action = executor.execute()['action_summary']
-                buttervault.butter_keys()
+                
+                # ==============================================
+                # [PATCH 1A] CHAIN PATH: Only butter keys if a destructive tool ACTUALLY executed
+                # ==============================================
+                executed_tools = [s['tool'] for s in executor.executed if s.get('status') == 'executed']
+                if "execute_gibson_kill" in executed_tools or "rotate_keys" in executed_tools:
+                    print("☢️ [SERVER] Chain executed a critical tool. Triggering ButterVault...")
+                    buttervault.butter_keys()
+                else:
+                    print("🛡️ [SERVER] Critical tools were skipped/blocked. Vault remains sealed.")
+                    
                 print(f"🔗 CHAIN EXECUTED: {action}")
             else:
                 mcp_failures = []
@@ -893,10 +905,10 @@ def analyze_threat():
                     gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "execute_gibson_kill", "tool_args": {"target_process": "openclaw"}, "verdict": "CRITICAL", "confidence": 1.0})
                     if gate["action"] in ("skip_tool", "block"):
                         gibson_blocked = True; print(f"🚫 [POLICY] gibson_kill blocked by policy: {gate['reason']}")
+                
                 if not gibson_blocked:
                     gibson_resp = mcp_manager.send("tools/call", {"name": "execute_gibson_kill", "arguments": {"target_process": "openclaw"}}, trigger="critical")
                     if "error" in gibson_resp: mcp_failures.append("gibson_kill"); print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
-                buttervault.butter_keys()
                 
                 # [v0.6.1] Pre-tool gate for hardcoded rotate_keys
                 rotate_blocked = False
@@ -904,10 +916,20 @@ def analyze_threat():
                     gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "OpenRouter"}, "verdict": "CRITICAL", "confidence": 1.0})
                     if gate["action"] in ("skip_tool", "block"):
                         rotate_blocked = True; print(f"🚫 [POLICY] rotate_keys blocked by policy: {gate['reason']}")
+                
                 if not rotate_blocked:
                     rotate_resp = mcp_manager.send("tools/call", {"name": "rotate_keys", "arguments": {"provider": "OpenRouter"}}, trigger="critical")
                     if "error" in rotate_resp: mcp_failures.append("rotate_keys"); print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
 
+                # ==============================================
+                # [PATCH 1B] FALLBACK PATH: Only butter keys if at least one tool was allowed
+                # ==============================================
+                if not gibson_blocked or not rotate_blocked:
+                    print("☢️ [SERVER] Hardcoded critical tool allowed. Triggering ButterVault...")
+                    buttervault.butter_keys()
+                else:
+                    print("🛡️ [SERVER] All critical hardcoded tools blocked. Vault remains sealed.")
+                
                 action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Keys Buttered"
         else: action = "ALERT | Kill Switch Disarmed"
         threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()

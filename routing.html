@@ -1117,21 +1117,23 @@
           ['pre_brain', 'post_brain', 'pre_tool'].forEach(scope => {
             const el = document.getElementById('policyTest' + scope.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(''));
             const scopeData = data[scope] || {};
-            const matchCount = (scopeData.policies_matched || []).length;
+            
+            // [v0.6.1 PATCH] The engine returns a single winning policy_id, not an array
+            const isMatch = (scopeData.policy_id && scopeData.action !== 'allow') ? 1 : 0;
             const countP = el.querySelector('p:last-child');
-            countP.textContent = matchCount;
-            countP.className = 'text-lg font-extrabold ' + (matchCount > 0 ? 'text-rose-600' : 'text-dark');
+            countP.textContent = isMatch;
+            countP.className = 'text-lg font-extrabold ' + (isMatch > 0 ? 'text-rose-600' : 'text-dark');
           });
 
           // Details panel
-          const hasDetails = Object.values(data).some(s => (s.policies_matched || []).length > 0);
+          const hasDetails = Object.values(data).some(s => s.policy_id && s.action !== 'allow');
           if (hasDetails) {
             detailsDiv.classList.remove('hidden');
             let detailText = '';
             Object.entries(data).forEach(([scope, result]) => {
-              if (result.policies_matched && result.policies_matched.length > 0) {
+              if (result.policy_id && result.action !== 'allow') {
                 detailText += scope + ': action=' + (result.action || 'none') +
-                  ', matched=' + result.policies_matched.join(', ') +
+                  ', policy_id=' + result.policy_id +
                   (result.reason ? ', reason="' + result.reason + '"' : '') + '\n';
               }
             });
