@@ -30,7 +30,10 @@
         'text-white', 'text-dark',
         'scale-95', 'animate-spin',
         'translate-x-0', '-translate-x-full',
-        'opacity-0', 'opacity-100', 'pointer-events-none'
+        'opacity-0', 'opacity-100', 'pointer-events-none',
+        // [v0.6.2] Alert Dispatcher badge colors
+        'bg-blue-50', 'border-blue-200', 'text-blue-600',
+        'bg-indigo-50', 'bg-indigo-100', 'border-indigo-200', 'text-indigo-600',
       ]
     }
   </script>
@@ -84,6 +87,10 @@
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">🛡️</span><span>Policy Engine</span>
         </a>
+        <a href="#alertDispatcherSection"
+           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">🔔</span><span>Alert Dispatcher</span>
+        </a>
         <a href="routing.html"
            class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
           <span class="animate-[spin_4s_linear_infinite]">⚙️</span><span>VPS Brain Routing</span>
@@ -117,7 +124,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.1</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.2</div>
     </div>
   </aside>
 
@@ -293,7 +300,7 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.1)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.2)</p>
           <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
         </div>
       </div>
@@ -418,8 +425,192 @@
         </div>
       </div>
 
+      <div id="alertDispatcherSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+        <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500 left-0"></div>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="bg-blue-100 text-blue-600 p-3 rounded-xl text-xl shadow-inner">🔔</div>
+            <div>
+              <h3 class="text-xl font-extrabold text-dark tracking-tight">Alert Dispatcher</h3>
+              <p id="alertStatusSummary" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-3">
+            <button id="alertRefreshBtn" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition uppercase tracking-wider">Refresh</button>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Notification Channels</label>
+            <button id="channelCreateBtn" class="bg-dark hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition flex items-center space-x-1.5">
+              <span>+</span><span>New Channel</span>
+            </button>
+          </div>
+          <div id="channelContainer" class="space-y-2 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
+              <p class="text-xs text-slate-400">Loading channels...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Alert Rules</label>
+            <button id="ruleCreateBtn" class="bg-dark hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition flex items-center space-x-1.5">
+              <span>+</span><span>New Rule</span>
+            </button>
+          </div>
+          <div id="ruleContainer" class="space-y-2 max-h-[250px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
+              <p class="text-xs text-slate-400">Loading rules...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Alert History</label>
+            <div class="flex items-center space-x-3">
+              <select id="alertHistoryFilterEvent" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+                <option value="">All Events</option>
+                <option value="verdict_critical">🔴 CRITICAL</option>
+                <option value="verdict_warning">🟡 WARNING</option>
+                <option value="gibson_triggered">☢️ Gibson Auto</option>
+                <option value="gibson_manual">☢️ Gibson Manual</option>
+                <option value="policy_override">🛡️ Policy Override</option>
+                <option value="policy_blocked">🚫 Policy Blocked</option>
+                <option value="auth_brute_force">🔐 Brute-Force</option>
+                <option value="mcp_offline">⚠️ MCP Offline</option>
+                <option value="system_startup">🚀 Startup</option>
+              </select>
+              <select id="alertHistoryFilterStatus" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+                <option value="">All Status</option>
+                <option value="sent">Sent</option>
+                <option value="failed">Failed</option>
+                <option value="cooldown">Cooldown</option>
+                <option value="retry_exhausted">Retry Exhausted</option>
+              </select>
+            </div>
+          </div>
+          <div id="alertHistoryContainer" class="space-y-1.5 max-h-[250px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
+              <p class="text-xs text-slate-400">Loading alert history...</p>
+            </div>
+          </div>
+          <div class="text-center mt-2">
+            <button id="alertHistoryLoadMore" class="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition uppercase tracking-wider hidden">Load More</button>
+          </div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700">
+          <p class="font-bold mb-1">🔔 Alert Dispatcher — External Notification Engine (v0.6.2)</p>
+          <p>Pushes notifications to external channels (webhook, Discord, ntfy, email, Gotify) when critical events occur. Rules map event types to channels with configurable cooldowns. Webhooks are HMAC-SHA256 signed. Gibson alerts fire BEFORE vault destruction — the notification always escapes. Channel secrets are stored outside the ButterVault by design.</p>
+        </div>
+      </div>
+
     </div>
   </main>
+
+  <div id="channelModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[140] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="channelModalContent" class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-3">
+          <span class="text-2xl">🔔</span>
+          <h3 id="channelModalTitle" class="text-xl font-extrabold text-dark tracking-tight">New Channel</h3>
+        </div>
+        <button id="channelModalCloseBtn" class="text-slate-400 hover:text-dark transition text-xl">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Channel Name</label>
+          <input id="channelNameInput" type="text" placeholder="Production Webhook"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Channel Type</label>
+          <select id="channelTypeSelect"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition bg-slate-50 text-slate-700 font-medium shadow-sm appearance-none">
+            <option value="webhook">Webhook (Generic HTTP POST)</option>
+            <option value="discord">Discord Webhook</option>
+            <option value="ntfy">ntfy (Push Notification)</option>
+            <option value="smtp">Email (SMTP)</option>
+            <option value="gotify">Gotify (Self-Hosted Push)</option>
+          </select>
+        </div>
+
+        <div id="channelConfigFields" class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Configuration</p>
+          </div>
+
+        <div id="channelSigningGroup" class="hidden">
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Signing Secret (optional — auto-generated if empty)</label>
+          <input id="channelSigningInput" type="text" placeholder="Leave empty to auto-generate"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm font-mono">
+        </div>
+
+        <p id="channelModalError" class="text-xs text-red-500 font-bold hidden"></p>
+
+        <button id="channelSaveBtn"
+          class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
+          <span>🔔</span><span>Create Channel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ruleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[140] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="ruleModalContent" class="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-3">
+          <span class="text-2xl">📋</span>
+          <h3 class="text-xl font-extrabold text-dark tracking-tight">New Alert Rule</h3>
+        </div>
+        <button id="ruleModalCloseBtn" class="text-slate-400 hover:text-dark transition text-xl">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Event Type</label>
+          <select id="ruleEventSelect"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition bg-slate-50 text-slate-700 font-medium shadow-sm appearance-none">
+            <option value="verdict_critical">🔴 Verdict: CRITICAL</option>
+            <option value="verdict_warning">🟡 Verdict: WARNING</option>
+            <option value="gibson_triggered">☢️ Gibson: Auto-Triggered</option>
+            <option value="gibson_manual">☢️ Gibson: Manual</option>
+            <option value="policy_override">🛡️ Policy Override</option>
+            <option value="policy_blocked">🚫 Policy Blocked</option>
+            <option value="auth_brute_force">🔐 Brute-Force Detected</option>
+            <option value="mcp_offline">⚠️ MCP Offline</option>
+            <option value="system_startup">🚀 System Startup</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Send To Channel</label>
+          <select id="ruleChannelSelect"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition bg-slate-50 text-slate-700 font-medium shadow-sm appearance-none">
+            </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cooldown (seconds)</label>
+          <input id="ruleCooldownInput" type="number" min="0" max="86400" value="60"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-4 focus:ring-blue-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm font-mono">
+          <p class="text-[10px] text-slate-400 mt-1">0 = no cooldown (every event fires). Default: 60s.</p>
+        </div>
+
+        <p id="ruleModalError" class="text-xs text-red-500 font-bold hidden"></p>
+
+        <button id="ruleSaveBtn"
+          class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
+          <span>📋</span><span>Create Rule</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div id="policyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
     <div id="policyModalContent" class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
@@ -550,7 +741,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.1 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.2 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -1199,6 +1390,740 @@
       }
     }, 0);
 
+    // =============================================
+    // [v0.6.2] ALERT DISPATCHER 🔔
+    // =============================================
+
+    const ALERT_CHANNEL_TYPES = {
+      webhook: { label: 'Webhook',  color: 'text-blue-600 bg-blue-50 border-blue-200',       icon: '🔵' },
+      discord: { label: 'Discord',  color: 'text-indigo-600 bg-indigo-50 border-indigo-200',  icon: '🟣' },
+      ntfy:    { label: 'ntfy',     color: 'text-emerald-600 bg-emerald-50 border-emerald-200', icon: '🟢' },
+      smtp:    { label: 'Email',    color: 'text-amber-600 bg-amber-50 border-amber-200',     icon: '📧' },
+      gotify:  { label: 'Gotify',   color: 'text-violet-600 bg-violet-50 border-violet-200',  icon: '🟣' },
+    };
+
+    const ALERT_EVENT_LABELS = {
+      verdict_critical:  '🔴 CRITICAL',
+      verdict_warning:   '🟡 WARNING',
+      gibson_triggered:  '☢️ Gibson Auto',
+      gibson_manual:     '☢️ Gibson Manual',
+      policy_override:   '🛡️ Policy Override',
+      policy_blocked:    '🚫 Policy Blocked',
+      auth_brute_force:  '🔐 Brute-Force',
+      mcp_offline:       '⚠️ MCP Offline',
+      system_startup:    '🚀 Startup',
+    };
+
+    const ALERT_HISTORY_COLORS = {
+      sent:            { bg: 'bg-emerald-50',  text: 'text-emerald-700', border: 'border-emerald-200' },
+      failed:          { bg: 'bg-red-50',      text: 'text-red-700',     border: 'border-red-200'     },
+      cooldown:        { bg: 'bg-amber-50',    text: 'text-amber-700',   border: 'border-amber-200'   },
+      retry_exhausted: { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200'    },
+    };
+
+    // Dynamic config field schemas per channel type
+    const CHANNEL_CONFIG_SCHEMAS = {
+      webhook: [
+        { key: 'url', label: 'Webhook URL', placeholder: 'https://hooks.example.com/butterclaw', type: 'url' }
+      ],
+      discord: [
+        { key: 'webhook_url', label: 'Discord Webhook URL', placeholder: 'https://discord.com/api/webhooks/...', type: 'url' }
+      ],
+      ntfy: [
+        { key: 'url', label: 'ntfy Server URL', placeholder: 'https://ntfy.sh', type: 'url' },
+        { key: 'topic', label: 'Topic', placeholder: 'butterclaw', type: 'text' }
+      ],
+      smtp: [
+        { key: 'host', label: 'SMTP Host', placeholder: 'smtp.gmail.com', type: 'text' },
+        { key: 'port', label: 'Port', placeholder: '587', type: 'number' },
+        { key: 'from_addr', label: 'From Address', placeholder: 'butterclaw@yourdomain.com', type: 'email' },
+        { key: 'to_addr', label: 'To Address', placeholder: 'operator@yourdomain.com', type: 'email' },
+        { key: 'username', label: 'Username (optional)', placeholder: '', type: 'text' },
+        { key: 'password', label: 'Password (optional)', placeholder: '', type: 'password' },
+      ],
+      gotify: [
+        { key: 'url', label: 'Gotify Server URL', placeholder: 'https://gotify.yourdomain.com', type: 'url' },
+        { key: 'token', label: 'App Token', placeholder: 'A...', type: 'password' }
+      ],
+    };
+
+    let _editingChannelId = null;
+    let _channelMap = {};       // channel_id -> channel object (for rule display)
+    let _alertHistoryPage = 0;
+
+    // ---- Fetch Status Summary ----
+
+    async function fetchAlertStatus() {
+      const summaryEl = document.getElementById('alertStatusSummary');
+      try {
+        const res = await authFetch(API_BASE + '/api/alerts/status');
+        if (!res.ok) throw new Error('status fetch failed');
+        const data = await res.json();
+        const parts = [];
+        parts.push((data.channels_total || 0) + ' channel' + ((data.channels_total || 0) === 1 ? '' : 's'));
+        parts.push((data.rules_total || 0) + ' rule' + ((data.rules_total || 0) === 1 ? '' : 's'));
+        if (data.alerts_sent) {
+          parts.push(data.alerts_sent + ' sent');
+        }
+        summaryEl.textContent = parts.join(' · ');
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        summaryEl.textContent = 'Offline';
+      }
+    }
+
+    // ---- Channels ----
+
+    async function fetchChannels() {
+      const container = document.getElementById('channelContainer');
+      try {
+        const res = await authFetch(API_BASE + '/api/alerts/channels');
+        if (!res.ok) throw new Error('channels fetch failed');
+        const data = await res.json();
+        const channels = data.channels || [];
+
+        _channelMap = {};
+        channels.forEach(c => { _channelMap[c.channel_id] = c; });
+
+        if (channels.length === 0) {
+          container.innerHTML = '<div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">'
+            + '<p class="text-sm font-bold text-slate-400 mb-1">No channels configured</p>'
+            + '<p class="text-xs text-slate-300">Add a webhook, Discord, ntfy, email, or Gotify channel to receive alerts.</p></div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        channels.forEach(ch => { container.appendChild(buildChannelCard(ch)); });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        container.innerHTML = '<div class="bg-red-50 border border-red-100 rounded-xl p-4 text-center">'
+          + '<p class="text-xs text-red-500 font-bold">Failed to load channels.</p></div>';
+      }
+    }
+
+    function buildChannelCard(ch) {
+      const card = document.createElement('div');
+      const typeInfo = ALERT_CHANNEL_TYPES[ch.channel_type] || ALERT_CHANNEL_TYPES.webhook;
+      const isDisabled = !ch.enabled;
+
+      card.className = 'border rounded-xl p-4 transition ' +
+        (isDisabled ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm');
+
+      // Header: name + type badge + status
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between mb-2';
+
+      const leftH = document.createElement('div');
+      leftH.className = 'flex items-center space-x-2 min-w-0';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'font-bold text-sm text-dark truncate';
+      nameSpan.textContent = ch.name;
+      nameSpan.title = ch.name;
+
+      leftH.appendChild(nameSpan);
+
+      const rightH = document.createElement('div');
+      rightH.className = 'flex items-center space-x-2 flex-shrink-0';
+
+      const typeBadge = document.createElement('span');
+      typeBadge.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' + typeInfo.color;
+      typeBadge.textContent = typeInfo.icon + ' ' + typeInfo.label;
+
+      const statusBadge = document.createElement('span');
+      if (ch.last_status === 'ok') {
+        statusBadge.className = 'text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md';
+        statusBadge.textContent = '✅ ok';
+      } else if (ch.last_status === 'error') {
+        statusBadge.className = 'text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md';
+        statusBadge.textContent = '❌ error';
+      } else {
+        statusBadge.className = 'text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md';
+        statusBadge.textContent = '— never used';
+      }
+
+      rightH.appendChild(typeBadge);
+      rightH.appendChild(statusBadge);
+
+      header.appendChild(leftH);
+      header.appendChild(rightH);
+      card.appendChild(header);
+
+      // Config preview (truncated URL — never secrets)
+      const config = ch.config || {};
+      const previewUrl = config.url || config.webhook_url || config.host || '';
+      if (previewUrl) {
+        const preview = document.createElement('p');
+        preview.className = 'text-[10px] text-slate-400 font-mono truncate mb-2';
+        preview.textContent = previewUrl.length > 60 ? previewUrl.substring(0, 57) + '...' : previewUrl;
+        preview.title = previewUrl;
+        card.appendChild(preview);
+      }
+
+      // Footer: last used + controls
+      const footer = document.createElement('div');
+      footer.className = 'flex items-center justify-between';
+
+      const lastUsed = document.createElement('span');
+      lastUsed.className = 'text-[10px] text-slate-300 font-mono';
+      lastUsed.textContent = ch.last_used ? 'Last: ' + _relativeTime(ch.last_used) : 'Never used';
+
+      const controls = document.createElement('div');
+      controls.className = 'flex items-center space-x-2';
+
+      // Test button
+      const testBtn = document.createElement('button');
+      testBtn.className = 'text-[10px] font-bold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-lg transition';
+      testBtn.textContent = '🧪 Test';
+      testBtn.addEventListener('click', (e) => { e.stopPropagation(); testChannel(ch.channel_id); });
+
+      // Toggle
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = isDisabled
+        ? 'text-[10px] font-bold text-slate-400 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 border border-slate-200 px-2 py-1 rounded-lg transition'
+        : 'text-[10px] font-bold text-emerald-600 hover:text-slate-400 bg-emerald-50 hover:bg-slate-100 border border-emerald-200 px-2 py-1 rounded-lg transition';
+      toggleBtn.textContent = isDisabled ? 'Enable' : 'Disable';
+      toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleChannel(ch.channel_id, isDisabled); });
+
+      // Edit
+      const editBtn = document.createElement('button');
+      editBtn.className = 'text-[10px] font-bold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-lg transition';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', (e) => { e.stopPropagation(); openEditChannelModal(ch); });
+
+      // Delete
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteChannel(ch.channel_id, ch.name); });
+
+      controls.appendChild(testBtn);
+      controls.appendChild(toggleBtn);
+      controls.appendChild(editBtn);
+      controls.appendChild(delBtn);
+
+      footer.appendChild(lastUsed);
+      footer.appendChild(controls);
+      card.appendChild(footer);
+
+      return card;
+    }
+
+    async function testChannel(channelId) {
+      try {
+        const res = await authFetch(API_BASE + '/api/alerts/channels/' + channelId + '/test', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.status === 'sent') {
+          alert('✅ Test alert sent successfully!');
+        } else {
+          alert('❌ Test failed: ' + (data.error_message || data.error || 'Unknown error'));
+        }
+        fetchChannels();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    async function toggleChannel(channelId, enable) {
+      try {
+        await authFetch(API_BASE + '/api/alerts/channels/' + channelId + '/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enable })
+        });
+        fetchChannels();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    async function deleteChannel(channelId, name) {
+      if (!confirm('Delete channel "' + name + '"? This will also delete all rules and history for this channel.')) return;
+      try {
+        await authFetch(API_BASE + '/api/alerts/channels/' + channelId, { method: 'DELETE' });
+        fetchChannels();
+        fetchRules();
+        fetchAlertHistory(false);
+        fetchAlertStatus();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    // ---- Rules ----
+
+    async function fetchRules() {
+      const container = document.getElementById('ruleContainer');
+      try {
+        const res = await authFetch(API_BASE + '/api/alerts/rules');
+        if (!res.ok) throw new Error('rules fetch failed');
+        const data = await res.json();
+        const rules = data.rules || [];
+
+        if (rules.length === 0) {
+          container.innerHTML = '<div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">'
+            + '<p class="text-sm font-bold text-slate-400 mb-1">No rules configured</p>'
+            + '<p class="text-xs text-slate-300">Rules map event types to channels. Create a channel first, then add rules.</p></div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        rules.forEach(rule => { container.appendChild(buildRuleRow(rule)); });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        container.innerHTML = '<div class="bg-red-50 border border-red-100 rounded-xl p-4 text-center">'
+          + '<p class="text-xs text-red-500 font-bold">Failed to load rules.</p></div>';
+      }
+    }
+
+    function buildRuleRow(rule) {
+      const row = document.createElement('div');
+      const isDisabled = !rule.enabled;
+      row.className = 'flex items-center justify-between border rounded-lg px-4 py-3 transition ' +
+        (isDisabled ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200');
+
+      const left = document.createElement('div');
+      left.className = 'flex items-center space-x-3 min-w-0';
+
+      const eventLabel = document.createElement('span');
+      eventLabel.className = 'text-xs font-bold text-dark';
+      eventLabel.textContent = ALERT_EVENT_LABELS[rule.event_type] || rule.event_type;
+
+      const arrow = document.createElement('span');
+      arrow.className = 'text-slate-300 text-xs';
+      arrow.textContent = '→';
+
+      const channelName = document.createElement('span');
+      channelName.className = 'text-xs text-slate-500 truncate';
+      const ch = _channelMap[rule.channel_id];
+      channelName.textContent = ch ? ch.name : rule.channel_id.substring(0, 8);
+      channelName.title = ch ? ch.name : rule.channel_id;
+
+      const cooldown = document.createElement('span');
+      cooldown.className = 'text-[10px] text-slate-300 font-mono';
+      cooldown.textContent = rule.cooldown_secs + 's';
+
+      left.appendChild(eventLabel);
+      left.appendChild(arrow);
+      left.appendChild(channelName);
+      left.appendChild(cooldown);
+
+      const controls = document.createElement('div');
+      controls.className = 'flex items-center space-x-2 flex-shrink-0';
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = isDisabled
+        ? 'text-[10px] font-bold text-slate-400 hover:text-emerald-600 transition'
+        : 'text-[10px] font-bold text-emerald-600 hover:text-slate-400 transition';
+      toggleBtn.textContent = isDisabled ? 'Enable' : 'Disable';
+      toggleBtn.addEventListener('click', () => toggleRule(rule.rule_id, isDisabled));
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-[10px] font-bold text-red-500 hover:text-red-700 transition';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', () => deleteRule(rule.rule_id));
+
+      controls.appendChild(toggleBtn);
+      controls.appendChild(delBtn);
+
+      row.appendChild(left);
+      row.appendChild(controls);
+      return row;
+    }
+
+    async function toggleRule(ruleId, enable) {
+      try {
+        await authFetch(API_BASE + '/api/alerts/rules/' + ruleId + '/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enable })
+        });
+        fetchRules();
+        fetchAlertStatus();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    async function deleteRule(ruleId) {
+      if (!confirm('Delete this alert rule?')) return;
+      try {
+        await authFetch(API_BASE + '/api/alerts/rules/' + ruleId, { method: 'DELETE' });
+        fetchRules();
+        fetchAlertStatus();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    // ---- Alert History ----
+
+    async function fetchAlertHistory(append) {
+      const container = document.getElementById('alertHistoryContainer');
+      const loadMoreBtn = document.getElementById('alertHistoryLoadMore');
+      const eventFilter = document.getElementById('alertHistoryFilterEvent').value;
+      const statusFilter = document.getElementById('alertHistoryFilterStatus').value;
+
+      if (!append) { _alertHistoryPage = 0; }
+
+      try {
+        // We fetch more than we need so we can do local pagination, 
+        // since the server API just takes a limit, not an offset.
+        let url = API_BASE + '/api/alerts/history?limit=' + ((_alertHistoryPage + 1) * 20);
+        if (eventFilter) url += '&event_type=' + eventFilter;
+        if (statusFilter) url += '&status=' + statusFilter;
+        
+        const res = await authFetch(url);
+        if (!res.ok) throw new Error('history fetch failed');
+        const data = await res.json();
+        const entries = data.history || [];
+
+        if (!append) container.innerHTML = '';
+
+        if (entries.length === 0 && !append) {
+          container.innerHTML = '<div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">'
+            + '<p class="text-xs text-slate-400">No alert history yet.</p></div>';
+          loadMoreBtn.classList.add('hidden');
+          return;
+        }
+
+        // Only render the current page's slice
+        const startIndex = append ? _alertHistoryPage * 20 : 0;
+        const pageEntries = entries.slice(startIndex, startIndex + 20);
+
+        pageEntries.forEach(entry => { container.appendChild(buildHistoryRow(entry)); });
+        
+        // Hide load more if we fetched exactly the limit and there were no more
+        loadMoreBtn.classList.toggle('hidden', entries.length < (_alertHistoryPage + 1) * 20);
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+      }
+    }
+
+    function buildHistoryRow(entry) {
+      const row = document.createElement('div');
+      const statusColor = ALERT_HISTORY_COLORS[entry.status] || ALERT_HISTORY_COLORS.failed;
+      row.className = 'flex items-center justify-between px-3 py-2 rounded-lg text-xs ' + statusColor.bg + ' border ' + statusColor.border;
+
+      const left = document.createElement('div');
+      left.className = 'flex items-center space-x-3 min-w-0';
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'text-[10px] text-slate-400 font-mono flex-shrink-0';
+      timeSpan.textContent = entry.created_at ? _relativeTime(entry.created_at) : '';
+
+      const eventSpan = document.createElement('span');
+      eventSpan.className = 'font-bold ' + statusColor.text;
+      eventSpan.textContent = ALERT_EVENT_LABELS[entry.event_type] || entry.event_type;
+
+      const arrow = document.createElement('span');
+      arrow.className = 'text-slate-300';
+      arrow.textContent = '→';
+
+      const channelSpan = document.createElement('span');
+      channelSpan.className = 'text-slate-500 truncate';
+      const ch = _channelMap[entry.channel_id];
+      channelSpan.textContent = ch ? ch.name : (entry.channel_id || '').substring(0, 8);
+
+      left.appendChild(timeSpan);
+      left.appendChild(eventSpan);
+      left.appendChild(arrow);
+      left.appendChild(channelSpan);
+
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md ' + statusColor.text;
+      statusBadge.textContent = entry.status;
+
+      row.appendChild(left);
+      row.appendChild(statusBadge);
+      return row;
+    }
+
+    // ---- Channel Modal Logic ----
+
+    function updateChannelConfigFields() {
+      const type = document.getElementById('channelTypeSelect').value;
+      const container = document.getElementById('channelConfigFields');
+      const signingGroup = document.getElementById('channelSigningGroup');
+      const schema = CHANNEL_CONFIG_SCHEMAS[type] || [];
+
+      // Keep the header
+      container.innerHTML = '<p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Configuration</p>';
+
+      schema.forEach(field => {
+        const wrapper = document.createElement('div');
+        const label = document.createElement('label');
+        label.className = 'block text-[10px] font-bold text-slate-400 uppercase mb-1';
+        label.textContent = field.label;
+        const input = document.createElement('input');
+        input.type = field.type || 'text';
+        input.placeholder = field.placeholder || '';
+        input.id = 'channelConfig_' + field.key;
+        input.className = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 font-mono focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10 outline-none transition';
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+      });
+
+      // Show signing secret only for webhooks
+      signingGroup.classList.toggle('hidden', type !== 'webhook');
+    }
+
+    function openCreateChannelModal() {
+      _editingChannelId = null;
+      document.getElementById('channelModalTitle').textContent = 'New Channel';
+      document.getElementById('channelSaveBtn').innerHTML = '<span>🔔</span><span>Create Channel</span>';
+      document.getElementById('channelNameInput').value = '';
+      document.getElementById('channelTypeSelect').value = 'webhook';
+      document.getElementById('channelSigningInput').value = '';
+      document.getElementById('channelModalError').classList.add('hidden');
+      updateChannelConfigFields();
+      showChannelModal();
+    }
+
+    function openEditChannelModal(ch) {
+      _editingChannelId = ch.channel_id;
+      document.getElementById('channelModalTitle').textContent = 'Edit Channel';
+      document.getElementById('channelSaveBtn').innerHTML = '<span>💾</span><span>Save Changes</span>';
+      document.getElementById('channelNameInput').value = ch.name || '';
+      document.getElementById('channelTypeSelect').value = ch.channel_type || 'webhook';
+      document.getElementById('channelSigningInput').value = '';  // never pre-fill secrets
+      document.getElementById('channelModalError').classList.add('hidden');
+      updateChannelConfigFields();
+
+      // Pre-fill config values
+      const config = ch.config || {};
+      const schema = CHANNEL_CONFIG_SCHEMAS[ch.channel_type] || [];
+      schema.forEach(field => {
+        const input = document.getElementById('channelConfig_' + field.key);
+        if (input && config[field.key] && config[field.key] !== '***') {
+          input.value = field.type === 'password' ? '' : config[field.key];  // never pre-fill passwords
+        }
+      });
+
+      showChannelModal();
+    }
+
+    function showChannelModal() {
+      const modal = document.getElementById('channelModal');
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        document.getElementById('channelModalContent').classList.remove('scale-95');
+      }, 10);
+    }
+
+    function hideChannelModal() {
+      const modal = document.getElementById('channelModal');
+      modal.classList.add('opacity-0');
+      document.getElementById('channelModalContent').classList.add('scale-95');
+      setTimeout(() => { modal.classList.add('hidden'); }, 300);
+    }
+
+    async function saveChannel() {
+      const errorEl = document.getElementById('channelModalError');
+      const name = document.getElementById('channelNameInput').value.trim();
+      const channelType = document.getElementById('channelTypeSelect').value;
+      const signingSecret = document.getElementById('channelSigningInput').value.trim();
+
+      if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('hidden'); return; }
+
+      // Build config from dynamic fields
+      const schema = CHANNEL_CONFIG_SCHEMAS[channelType] || [];
+      const config = {};
+      for (const field of schema) {
+        const input = document.getElementById('channelConfig_' + field.key);
+        const val = input ? input.value.trim() : '';
+        if (field.key === 'port' && val) { config[field.key] = parseInt(val) || 587; }
+        else if (val) { config[field.key] = val; }
+      }
+
+      const body = {
+        name: name,
+        channel_type: channelType,
+        config: config,
+      };
+      if (signingSecret) body.signing_secret = signingSecret;
+
+      errorEl.classList.add('hidden');
+      const saveBtn = document.getElementById('channelSaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span>⏳</span><span>Saving...</span>';
+
+      try {
+        let res;
+        if (_editingChannelId) {
+          res = await authFetch(API_BASE + '/api/alerts/channels/' + _editingChannelId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        } else {
+          res = await authFetch(API_BASE + '/api/alerts/channels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        }
+
+        if (res.ok) {
+          hideChannelModal();
+          fetchChannels();
+          fetchAlertStatus();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errorEl.textContent = data.error || 'Failed to save channel.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        errorEl.textContent = 'Server unreachable.';
+        errorEl.classList.remove('hidden');
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = _editingChannelId
+        ? '<span>💾</span><span>Save Changes</span>'
+        : '<span>🔔</span><span>Create Channel</span>';
+    }
+
+    // ---- Rule Modal Logic ----
+
+    function openCreateRuleModal() {
+      document.getElementById('ruleEventSelect').value = 'verdict_critical';
+      document.getElementById('ruleCooldownInput').value = '60';
+      document.getElementById('ruleModalError').classList.add('hidden');
+
+      // Populate channel dropdown from _channelMap
+      const channelSelect = document.getElementById('ruleChannelSelect');
+      channelSelect.innerHTML = '';
+      Object.values(_channelMap).forEach(ch => {
+        if (!ch.enabled) return;
+        const opt = document.createElement('option');
+        opt.value = ch.channel_id;
+        opt.textContent = ch.name + ' (' + (ALERT_CHANNEL_TYPES[ch.channel_type] || {}).label + ')';
+        channelSelect.appendChild(opt);
+      });
+
+      if (channelSelect.options.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '— Create a channel first —';
+        opt.disabled = true;
+        channelSelect.appendChild(opt);
+      }
+
+      showRuleModal();
+    }
+
+    function showRuleModal() {
+      const modal = document.getElementById('ruleModal');
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        document.getElementById('ruleModalContent').classList.remove('scale-95');
+      }, 10);
+    }
+
+    function hideRuleModal() {
+      const modal = document.getElementById('ruleModal');
+      modal.classList.add('opacity-0');
+      document.getElementById('ruleModalContent').classList.add('scale-95');
+      setTimeout(() => { modal.classList.add('hidden'); }, 300);
+    }
+
+    async function saveRule() {
+      const errorEl = document.getElementById('ruleModalError');
+      const eventType = document.getElementById('ruleEventSelect').value;
+      const channelId = document.getElementById('ruleChannelSelect').value;
+      const cooldown = parseInt(document.getElementById('ruleCooldownInput').value) || 60;
+
+      if (!channelId) { errorEl.textContent = 'Select a channel.'; errorEl.classList.remove('hidden'); return; }
+
+      const body = {
+        name: eventType + ' -> ' + (_channelMap[channelId] ? _channelMap[channelId].name : channelId.substring(0, 8)),
+        event_type: eventType,
+        channel_id: channelId,
+        cooldown_secs: cooldown,
+      };
+
+      errorEl.classList.add('hidden');
+      const saveBtn = document.getElementById('ruleSaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span>⏳</span><span>Saving...</span>';
+
+      try {
+        const res = await authFetch(API_BASE + '/api/alerts/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) {
+          hideRuleModal();
+          fetchRules();
+          fetchAlertStatus();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errorEl.textContent = data.error || 'Failed to create rule.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        errorEl.textContent = 'Server unreachable.';
+        errorEl.classList.remove('hidden');
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<span>📋</span><span>Create Rule</span>';
+    }
+
+    // ---- Relative Time Helper ----
+
+    function _relativeTime(isoString) {
+      try {
+        const then = new Date(isoString);
+        const now = new Date();
+        const diffSec = Math.floor((now - then) / 1000);
+        if (diffSec < 60) return diffSec + 's ago';
+        if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
+        if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
+        return Math.floor(diffSec / 86400) + 'd ago';
+      } catch (e) { return isoString; }
+    }
+
+    // ---- Alert Event Wiring ----
+
+    setTimeout(() => {
+      // Channel modal
+      const chCreateBtn = document.getElementById('channelCreateBtn');
+      if (chCreateBtn) chCreateBtn.addEventListener('click', openCreateChannelModal);
+      const chCloseBtn = document.getElementById('channelModalCloseBtn');
+      if (chCloseBtn) chCloseBtn.addEventListener('click', hideChannelModal);
+      const chSaveBtn = document.getElementById('channelSaveBtn');
+      if (chSaveBtn) chSaveBtn.addEventListener('click', saveChannel);
+      const chTypeSelect = document.getElementById('channelTypeSelect');
+      if (chTypeSelect) chTypeSelect.addEventListener('change', updateChannelConfigFields);
+      const chModal = document.getElementById('channelModal');
+      if (chModal) chModal.addEventListener('click', (e) => { if (e.target === chModal) hideChannelModal(); });
+
+      // Rule modal
+      const ruleCreateBtn = document.getElementById('ruleCreateBtn');
+      if (ruleCreateBtn) ruleCreateBtn.addEventListener('click', openCreateRuleModal);
+      const ruleCloseBtn = document.getElementById('ruleModalCloseBtn');
+      if (ruleCloseBtn) ruleCloseBtn.addEventListener('click', hideRuleModal);
+      const ruleSaveBtn = document.getElementById('ruleSaveBtn');
+      if (ruleSaveBtn) ruleSaveBtn.addEventListener('click', saveRule);
+      const ruleModal = document.getElementById('ruleModal');
+      if (ruleModal) ruleModal.addEventListener('click', (e) => { if (e.target === ruleModal) hideRuleModal(); });
+
+      // History filters
+      const historyEventFilter = document.getElementById('alertHistoryFilterEvent');
+      if (historyEventFilter) historyEventFilter.addEventListener('change', () => fetchAlertHistory(false));
+      const historyStatusFilter = document.getElementById('alertHistoryFilterStatus');
+      if (historyStatusFilter) historyStatusFilter.addEventListener('change', () => fetchAlertHistory(false));
+      const historyLoadMore = document.getElementById('alertHistoryLoadMore');
+      if (historyLoadMore) historyLoadMore.addEventListener('click', () => { _alertHistoryPage++; fetchAlertHistory(true); });
+
+      // Refresh all
+      const refreshBtn = document.getElementById('alertRefreshBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', () => {
+        fetchAlertStatus();
+        fetchChannels();
+        fetchRules();
+        fetchAlertHistory(false);
+      });
+    }, 0);
+
 
     const testPingBtn      = document.getElementById('testPingBtn');
     const endpointInput    = document.getElementById('endpointInput');
@@ -1432,13 +2357,17 @@
     }
 
     async function init() {
-      // [v0.6.1] Check session before loading data
+      // [v0.6.2] Check session before loading data
       const sessionValid = await checkSession();
       if (!sessionValid) return;
 
       renderGates();
       setRoutingMode('local');
       fetchPolicies();
+      fetchAlertStatus();
+      fetchChannels();
+      fetchRules();
+      fetchAlertHistory(false);
       
       try {
         const res = await authFetch(API_BASE + '/api/settings');
@@ -1471,6 +2400,8 @@
         setTimeout(() => { document.getElementById('eventLedgerSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
       } else if (window.location.hash === '#policyEngineSection') {
         setTimeout(() => { document.getElementById('policyEngineSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
+      } else if (window.location.hash === '#alertDispatcherSection') {
+        setTimeout(() => { document.getElementById('alertDispatcherSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
       }
     }
 
@@ -1568,9 +2499,9 @@
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.1 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.1 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.1 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.2 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.2 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.2 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
