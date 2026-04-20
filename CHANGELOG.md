@@ -6,6 +6,263 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.1] - The Exoskeleton: Policy Engine - 2026-04-19
+
+### Added
+- **Policy Engine Module (`policy_engine.py`):** New standalone module (~350 lines) providing deterministic guardrails for the probabilistic Brain. Implements the DRIFT framework pattern (NeurIPS 2025) — a Dynamic Validator that constrains the Brain's probabilistic reasoning with deterministic rules. Zero new pip dependencies — built entirely on stdlib.
+- **3-Scope Filter Pipeline (`policy_engine.py`):** Policies evaluate at three distinct points in the analysis pipeline:
+  - `pre_brain` — Pattern-match known-bad/known-good payloads before the Brain. Can short-circuit to CRITICAL or BENIGN without burning inference time.
+  - `post_brain` — Validate the Brain's verdict after reasoning. Can override, escalate, downgrade, or require higher confidence.
+  - `pre_tool` — Gate individual MCP tool calls inside ChainExecutor. Per-tool allowlist/blocklist.
+- **16 Safe Condition Operators (`policy_engine.py`):** Extends ChainExecutor's whitelist operator pattern with: `contains`, `not_contains`, `equals`, `not_equals`, `starts_with`, `ends_with`, `regex_match`, `greater_than`, `less_than`, `greater_equal`, `less_equal`, `in_list`, `not_in_list`, `length_gt`, `length_lt`. All use whitelist dispatch — no `eval()`.
+- **Scope-Aware Field Resolvers (`policy_engine.py`):** Each scope provides context-appropriate fields for condition matching:
+  - `pre_brain`: 6 fields — `payload`, `threat_type`, `payload_length`, `source_ip`, `hour_of_day`, `day_of_week`
+  - `post_brain`: +5 fields — `verdict`, `confidence`, `primary_gate`, `reasoning`, `has_chain`
+  - `pre_tool`: +3 fields — `tool_name`, `tool_args`, `chain_step`
+- **Policy CRUD (`policy_engine.py`):** `create_policy()`, `get_policy()`, `list_policies()`, `update_policy()`, `delete_policy()`, `toggle_policy()`. Full validation on every write — scope-action compatibility (e.g., `skip_tool` only valid for `pre_tool`, `require_confidence` only valid for `post_brain`), regex compile check at creation time, numeric value validation for comparison operators, `action_params` validation for `require_confidence`.
+- **Policy Events Audit Log (`policy_engine.py`):** `policy_events` table records every policy match with timestamp, policy_id, scope, action taken, original verdict, final verdict, payload preview (200 chars), tool name, and chain_id. Queryable via `get_policy_events()` with filters for policy_id, scope, since, and limit. `get_policy_event_count()` for totals.
+- **Core Evaluator (`policy_engine.py`):** `evaluate_policies(scope, context)` — loads enabled policies for the given scope in priority order (ascending), evaluates each condition against the context using safe operators. First non-"allow" match wins (short-circuit). "allow" policies are logged but do not stop evaluation. Returns action, policy_id, policy_name, reason, policies_checked, and policies_matched.
+- **Dry-Run Testing (`policy_engine.py`):** `test_payload(payload, threat_type)` — evaluates a payload against all 3 scopes without logging events or incrementing hit counters. Simulates Brain output for post_brain testing and tool calls for pre_tool testing.
+- **Async Hit Counter (`policy_engine.py`):** `_increment_hit_count()` fires a daemon thread for non-blocking counter updates — never blocks the evaluation hot path.
+- **12-Step Diagnostic Suite (`policy_engine.py`):** Self-test via `python policy_engine.py`. Tests: DB init, create (3 scopes), evaluate match/no-match, priority ordering, disabled skip, allow passthrough, unknown operator safety, dry-run, event logging, CRUD (update/toggle/delete), cleanup.
+- **New SQLite Tables:** 2 tables added to `butterclaw.db`:
+  - `policies` — `id`, `name`, `description`, `priority`, `enabled`, `scope`, `condition` (JSON), `action`, `action_params` (JSON), `created_by`, `created_at`, `updated_at`, `hit_count`
+  - `policy_events` — `id`, `timestamp`, `policy_id`, `policy_name`, `scope`, `action_taken`, `original_verdict`, `final_verdict`, `payload_preview`, `tool_name`, `chain_id`
+- **8 New API Endpoints (`server.py`):** Policy management endpoints registered with auth decorators:
+  - `GET /api/policies` (viewer) — List all policies with optional `?scope=` and `?enabled=` filters.
+  - `POST /api/policies` (admin) — Create a new policy rule. Validates required fields, passes `created_by` from `request.auth_context`.
+  - `GET /api/policies/<id>` (viewer) — Fetch a single policy by ID.
+  - `PUT /api/policies/<id>` (admin) — Update a policy rule.
+  - `DELETE /api/policies/<id>` (admin) — Permanently delete a policy.
+  - `POST /api/policies/<id>/toggle` (admin) — Enable/disable without deleting.
+  - `POST /api/policies/test` (operator) — Dry-run a payload against all policies.
+  - `GET /api/policies/events` (viewer) — Query policy event audit log with `?limit=`, `?policy_id=`, `?scope=`, `?since=` filters. Returns events, count, and total.
+- **Policy Management UI (`routing.html`):** Full policy engine panel below the Event Ledger section:
+  - Policy card list with priority badges, scope-colored badges (emerald=pre_brain, violet=post_brain, amber=pre_tool), action badges, condition previews, hit counts, and inline Toggle/Edit/Delete controls.
+  - Scope and status filter dropdowns with auto-refresh on change.
+  - Create/Edit modal with dynamic field dropdown (updates based on selected scope), all 15 operators, scope-action compatibility hints (disables incompatible actions), conditional confidence input for `require_confidence` action.
+  - Dry-run test panel with payload textarea, threat type selector, 3-column results grid (Pre-Brain / Post-Brain / Pre-Tool), and expandable match details.
+  - Info box documenting the DRIFT framework pattern and evaluation semantics.
+  - `#policyEngineSection` hash anchor for cross-page deep linking.
+- **Policy Override Badge (`index.html`):** Oopsie cards now display a 🛡️ badge when a verdict was influenced by a policy. Four badge variants: "Policy Override" (pre-brain/post-brain escalation), "Policy Fast-Track" (pre-brain benign), "Confidence Gate" (post-brain confidence threshold), "Policy Applied" (generic fallback). Each badge links to `routing.html#policyEngineSection`.
+- **Sidebar Nav Links:** Both `index.html` and `routing.html` now include a 🛡️ Policy Engine nav link. Index links to `routing.html#policyEngineSection` (cross-page). Routing links to `#policyEngineSection` (same-page scroll).
+- **Tailwind Safelist (`index.html`):** Added `rose` and `violet` color classes for policy badge rendering: `bg-rose-50`, `bg-rose-100`, `border-rose-200`, `text-rose-600`, `text-rose-700`, `bg-violet-50`, `bg-violet-100`, `border-violet-200`, `text-violet-500`, `text-violet-600`.
+
+### Changed
+- **Pre-Brain Filter Hook (`server.py`):** `analyze_threat()` now evaluates pre-brain policies before calling `ask_guardian_agent()`. Three outcomes: `override_critical` → skips Brain entirely with verdict=CRITICAL, confidence=1.0, gate=Policy; `override_benign` → skips Brain with verdict=BENIGN; `block` → returns 403 with policy reason. If no policy matches, Brain is called normally. Guarded by `POLICY_ENGINE_ENABLED` flag.
+- **Post-Brain Validator Hook (`server.py`):** After the Brain returns a verdict but before the confidence threshold check, post-brain policies can: `override_critical` → escalate to CRITICAL; `override_benign` → downgrade to BENIGN; `require_confidence` → downgrade CRITICAL to WARNING if confidence is below the policy's `min_confidence` threshold. Policy annotations are appended to the `reasoning` field.
+- **Pre-Tool Gate in ChainExecutor (`server.py`):** `_execute_step()` now evaluates pre-tool policies before each `mcp_manager.send()` call. `skip_tool` → logs `policy_blocked` status in the Event Ledger and skips the tool. `block` → hard block, tool skipped. Guarded by `POLICY_ENGINE_ENABLED`.
+- **Pre-Tool Gate for Hardcoded gibson_kill (`server.py`):** The hardcoded fallback path (when no chain is present) now evaluates pre-tool policies before calling `execute_gibson_kill`. Uses `gibson_blocked` flag pattern — `buttervault.butter_keys()` still fires unconditionally (Sovereign Seal holds). Only the MCP tool call is gated.
+- **Pre-Tool Gate for Hardcoded rotate_keys (`server.py`):** Same pattern as gibson_kill — `rotate_blocked` flag prevents the MCP `rotate_keys` call if policy blocks it.
+- **Pre-Tool Gate in manual_key_rotation (`server.py`):** The manual Gibson trigger endpoint now evaluates pre-tool policies for `rotate_keys`. Vault destruction fires first (correct), only the MCP call is gated.
+- **Policy Engine Import Guard (`server.py`):** `try: import policy_engine` with `except ImportError` sets `POLICY_ENGINE_ENABLED = False` and prints a warning. All policy hooks and endpoints are guarded by this flag — server.py works without policy_engine.py present (backward compat).
+- **init_db() Updated (`server.py`):** Now calls `policy_engine.init_policy_db()` when `POLICY_ENGINE_ENABLED` is True. Creates `policies` and `policy_events` tables.
+- **Boot Banner (`server.py`):** Now shows `Policy Engine: ENABLED` or `DISABLED` in the startup output. Handshake banner bumped to v0.6.1.
+- **All 8 Policy Endpoints Graceful Degradation (`server.py`):** Return 503 with `{"error": "Policy engine not available"}` when `POLICY_ENGINE_ENABLED` is False.
+- **Ledger Status Colors (`routing.html`):** Added `policy_blocked` status to `ledgerStatusColors`: `{ bg: 'bg-rose-100', text: 'text-rose-700', dot: 'bg-rose-500' }`.
+- **Ledger Status Filter (`routing.html`):** Added `Skipped` and `Policy Blocked` options to the status dropdown.
+- **Init Sequence (`routing.html`):** `fetchPolicies()` called after `renderGates()` and `setRoutingMode()` in the init function.
+- **Hash-Based Scroll (`routing.html`):** Added `#policyEngineSection` handler alongside existing `#mcpSection` and `#eventLedgerSection`.
+- **Version Bumps (`routing.html`):** 6 locations updated from v0.6.0 to v0.6.1 — sidebar footer, MCP Armed/Degraded/Offline badges, MCP Info Box, auth login modal footer.
+- **Version Bump (`index.html`):** Auth login modal footer updated from v0.6.0 to v0.6.1.
+- **Docstring + VERSION (`server.py`):** Updated to `ButterClaw v0.6.1 — The Exoskeleton (Policy Engine)`, `VERSION = "0.6.1"`.
+
+### Architecture Notes
+
+**Policy Evaluation Pipeline:**
+```
+Watcher → POST /api/analyze
+                │
+          ┌─────▼──────────┐
+          │ 1. PRE-BRAIN    │ ← Policy Engine: pattern match, fast-track
+          │    Filter       │    Can short-circuit to CRITICAL or BENIGN
+          │                 │    without burning inference time
+          └─────┬──────────┘
+                │ (if not short-circuited)
+          ┌─────▼──────────┐
+          │ 2. BRAIN        │ ← Gemma reasoning (unchanged)
+          │    (Ollama)     │
+          └─────┬──────────┘
+                │
+          ┌─────▼──────────┐
+          │ 3. POST-BRAIN   │ ← Policy Engine: verdict validation
+          │    Validator    │    Can override Brain's decision
+          └─────┬──────────┘
+                │
+          ┌─────▼──────────┐
+          │ 4. PRE-TOOL     │ ← Policy Engine: per-tool gate
+          │    Gate         │    Runs before each MCP send()
+          └─────┬──────────┘    inside ChainExecutor
+                │
+          ┌─────▼──────────┐
+          │ 5. MCP Tool     │ ← ChainExecutor or hardcoded fallback
+          │    Execution    │
+          └─────────────────┘
+```
+
+**Example Policy Rule:**
+```json
+{
+  "name": "Block external websocket exfiltration",
+  "scope": "pre_brain",
+  "priority": 10,
+  "condition": {
+    "field": "payload",
+    "operator": "regex_match",
+    "value": "wss?://[^\\s]*\\.(net|io|xyz|tk|ml)"
+  },
+  "action": "override_critical",
+  "description": "External websocket to suspicious TLD — pre-brain escalation"
+}
+```
+
+**Gibson Interaction:**
+```
+butter_keys()
+├── UPDATE vault SET ciphertext = garbage           ← Static API keys
+├── UPDATE oauth_tokens SET ciphertext = garbage    ← OAuth payloads
+├── auth.destroy_all_api_keys()                     ← API key hashes + sessions
+└── policies table: UNTOUCHED                       ← Config survives Gibson
+    policy_events table: UNTOUCHED                  ← Audit trail preserved
+```
+
+Policies survive Gibson. This is correct behavior — if the Gibson fires and destroys all credentials, you want the policies that triggered or detected the breach to still be there for the post-mortem audit. Policies are operational configuration, not sensitive data.
+
+**Design Decisions:**
+
+| Decision | Rationale |
+|---|---|
+| Single-condition rules | Compound AND/OR adds complexity for minimal v0.6.1 value — ship simple, extend later |
+| Priority-based short-circuit | First non-"allow" match wins — predictable, debuggable |
+| Policies survive Gibson | Config, not credentials — needed for post-mortem |
+| `try: import policy_engine` | Backward compat — server.py works without policy_engine.py present |
+| Regex via `re.search` not `re.match` | `search` finds patterns anywhere in the string — more intuitive for security rules |
+| Separate `policy_events` table | Don't pollute `mcp_events` — different audit concern |
+| Hit counter on daemon thread | Non-blocking — never slows the evaluation hot path |
+| No `eval()` | Same safety principle as ChainExecutor — whitelist operators only |
+
+**New Dependencies:** None. Zero new pip packages.
+
+**New Files:** 1 (`policy_engine.py`)
+
+**New SQLite Tables:** 2 (`policies`, `policy_events`)
+
+**New API Endpoints:** 8
+
+---
+
+## [0.6.0] - The Exoskeleton: API Gateway & Authentication - 2026-04-18
+
+### Added
+- **Authentication Module (`auth.py`):** New standalone module (~890 lines) providing the complete API gateway for ButterClaw. Zero new pip dependencies — built entirely on stdlib (`hmac`, `hashlib`, `secrets`, `json`, `base64`).
+- **API Key Manager (`auth.py`):** HMAC-SHA256 API key generation, hashing, and verification with per-key 16-byte random salts. Keys are hashed before storage — plaintext is shown exactly once at creation and never persists. Functions: `generate_api_key()`, `hash_api_key()`, `create_api_key()`, `verify_api_key()`, `revoke_api_key()`, `delete_api_key()`, `list_api_keys()`.
+- **Role-Based Access Control (`auth.py`):** Three-tier role hierarchy — `admin` (full access), `operator` (analyze + read + settings), `viewer` (read-only: events, health, status). Follows the trust-tier pattern from the OWASP Agent Security Checklist.
+- **Session Tokens (`auth.py`):** HMAC-SHA256 signed JSON tokens with 1-hour TTL, issued on dashboard login. Stored in `httpOnly` + `SameSite=Strict` cookies. No third-party JWT library. Session signing key derived from the ButterVault master key via HMAC domain separation — Gibson destruction automatically invalidates all active sessions.
+- **@require_auth Decorator (`auth.py`):** Flask route decorator with 4-strategy auth chain: `Authorization: Bearer` header → `X-Session-Token` header → session cookie → query parameter (for SSE `EventSource` which cannot set custom headers). Returns structured 401/403 JSON errors. Injects `request.auth_context` with `key_id`, `role`, and `label` for downstream use.
+- **Per-API-Key Rate Limiting (`auth.py`):** `is_rate_limited_for_key()` replaces the legacy IP-based rate limiter. Configurable thresholds per role tier: admin (30/min), operator (15/min), viewer (5/min). Sliding window implementation using `collections.deque`.
+- **Auth API Endpoints (`auth.py`):** Seven new routes registered via `register_auth_routes(app)`:
+  - `POST /api/auth/login` — Exchanges API key for session token. 0.1s delay on failure to prevent brute-force enumeration.
+  - `POST /api/auth/logout` — Clears session cookie.
+  - `GET /api/auth/whoami` — Returns current identity (role, label, key_id).
+  - `GET /api/auth/keys` — Lists all API keys (admin only, hashes redacted).
+  - `POST /api/auth/keys` — Creates a new API key with specified role and label. Privilege escalation blocked (operators cannot create admin keys).
+  - `DELETE /api/auth/keys/<id>` — Revokes (disables) an API key. Self-revocation blocked to prevent lockout.
+  - `DELETE /api/auth/keys/<id>/purge` — Permanently deletes an API key record.
+- **Bootstrap CLI (`auth.py`):** `bootstrap_admin_key()` generates a first-run admin API key and prints it to the server terminal. Called automatically during server boot after `init_db()`.
+- **New SQLite Table (`auth.py`):** `api_keys` table with `key_id`, `key_hash`, `salt`, `role`, `label`, `created_at`, `last_used`, `enabled` columns. Self-managed by auth.py — created on first connection.
+- **Dashboard Login Modal (`index.html`, `routing.html`):** Full-screen login modal at `z-[200]` blocks all dashboard interaction until authenticated. API key input with `bc_...` placeholder, error feedback, animated transitions.
+- **Auth Session Management JS (`index.html`, `routing.html`):** Shared auth module (~120 lines) providing:
+  - `authFetch()` — Wraps `fetch()` with Bearer token injection and auto-redirect to login modal on 401/403.
+  - `connectAuthSSE()` — Appends session token as query parameter for EventSource connections.
+  - `checkSession()` — Validates token via `/api/auth/whoami` on page load.
+  - `handleLogin()` / `handleLogout()` — Full login/logout lifecycle with localStorage session persistence.
+  - `updateAuthUI()` — Role badge colors (admin=red, operator=amber, viewer=emerald) in sidebar.
+- **Sidebar Auth Badge (`index.html`, `routing.html`):** Auth identity badge with role indicator, label text, and Logout button. Positioned above MCP/connection badges.
+- **Auth Diagnostic Mode (`auth.py`):** 10-step self-test suite via `python auth.py`. Tests key generation, hashing, verification, session tokens, rate limiting, role hierarchy, and CRUD operations.
+
+### Changed
+- **Route Protection (`server.py`):** All 20 existing routes decorated with `@require_auth()` at appropriate role tiers. Public: `/api/health`, `/api/vault/oauth/callback`. Viewer: logs, status, events, stream. Operator: analyze, settings GET, ping, OAuth start. Admin: vault key, rotate-keys, shield, settings POST, MCP restart, OAuth revoke.
+- **Settings Split (`server.py`):** `/api/settings` split into two functions — GET requires `operator`, POST requires `admin`. Operators can read settings but only admins can modify.
+- **Per-Key Rate Limiter (`server.py`):** `analyze_threat()` now uses `is_rate_limited_for_key(ctx["key_id"], ctx["role"])` instead of the legacy IP-based rate limiter. Error messages show the per-role limit.
+- **Gibson Auth Hook (`buttervault.py`):** `butter_keys()` now calls `auth.destroy_all_api_keys()` after vault destruction. Uses `try/except ImportError` for backward compatibility with pre-v0.6.0 deployments.
+- **authFetch Wrapping (`index.html`):** 12 `fetch()` calls wrapped with `authFetch()` — paranoia init/save, shield toggle, vault status/key, OAuth start/revoke/status, rotate-keys, logs, simulate attack, MCP status.
+- **authFetch Wrapping (`routing.html`):** 10 `fetch()` calls wrapped with `authFetch()` — settings load/save, gate save, MCP status/tools/ping/restart, SSE save/restart, ledger fetch.
+- **SSE Auth (`index.html`):** `connectSSE()` now uses `connectAuthSSE()` to pass session token as query parameter.
+- **Dashboard Init Gating (`index.html`, `routing.html`):** Page init functions now call `checkSession()` first — data loading and SSE connection only proceed if session is valid.
+- **Boot Sequence (`server.py`):** `bootstrap_admin_key()` called after `init_db()` and before MCP handshake. Prints admin key to terminal on first run.
+- **Version Bumps (`routing.html`):** 5 locations updated — sidebar footer, MCP Armed/Degraded/Offline badges, MCP Info Box. All bumped from v0.5.1 to v0.6.0.
+- **Auth Error Handling (`index.html`, `routing.html`):** Every `catch` block after `authFetch()` includes `if (e.message === 'auth_required') return;` to prevent error noise when login modal is shown.
+- **Docstring + VERSION (`server.py`):** Updated to `ButterClaw v0.6.0 — The Exoskeleton (API Gateway & Auth)`, `VERSION = "0.6.0"`.
+- **Docstring (`buttervault.py`):** Updated to v0.6.0 with `[v0.6.0] The Gibson now hooks into auth.py to destroy API key hashes.`
+
+### Architecture Notes
+
+**Authentication Flow:**
+```
+Browser → index.html / routing.html
+        → checkSession() → GET /api/auth/whoami
+        → No valid session → showLoginModal()
+        → User enters API key → POST /api/auth/login
+        → Server verifies key hash (HMAC-SHA256 + salt)
+        → Returns session token (HMAC-signed JSON, 1hr TTL)
+        → Token stored in localStorage + httpOnly cookie
+        → authFetch() injects Bearer header on all API calls
+        → 401/403 → auto-clear session → show login modal
+```
+
+**Endpoint Classification:**
+
+| Tier | Endpoints | Who |
+|---|---|---|
+| Public | `/api/health`, `/api/vault/oauth/callback`, `/api/auth/login`, `/api/auth/logout` | Anyone |
+| Viewer | `/api/logs`, `/api/mcp/status`, `/api/mcp/tools`, `/api/mcp/events`, `/api/mcp/events/<id>`, `/api/vault/status`, `/api/vault/oauth/status`, `/api/stream`, `/api/auth/whoami` | Read-only dashboards |
+| Operator | `/api/analyze`, `/api/settings` (GET), `/api/mcp/ping`, `/api/vault/oauth/start/<p>` | Active operators |
+| Admin | `/api/settings` (POST), `/api/vault/key`, `/api/rotate-keys`, `/api/shield`, `/api/mcp/restart`, `/api/vault/oauth/revoke/<p>`, `/api/auth/keys` (all methods) | System owner |
+
+**Gibson Destruction Scope (v0.6.0):**
+```
+butter_keys()
+├── UPDATE vault SET ciphertext = garbage           ← Static API keys
+├── UPDATE oauth_tokens SET ciphertext = garbage    ← OAuth payloads
+└── auth.destroy_all_api_keys()                     ← API key hashes + sessions
+```
+
+After Gibson: all authentication invalidated. System requires fresh `bootstrap_admin_key()` to re-enter.
+
+**What Does NOT Change:**
+
+| Component | Why |
+|---|---|
+| Watcher → Server comm | Localhost process-to-process — auth adds latency for zero gain |
+| stdio MCP transport | Child process, same machine |
+| SSE MCP transport auth | MCP-spec OAuth 2.1 territory — v0.7+ concern |
+| `butterclaw_mcp.py` | Execution layer, auth-unaware by design |
+| `mcp_transport.py` | Transport is auth-agnostic |
+| `oauth_config.py` | Static registry — stays pristine |
+
+**Security Design:**
+
+| Decision | Rationale |
+|---|---|
+| HMAC-SHA256 with per-key salt | Prevents rainbow table attacks |
+| Constant-time comparison | `hmac.compare_digest()` prevents timing side-channels |
+| 0.1s delay on failed login | Prevents brute-force enumeration |
+| Session key derived from Vault master | Gibson destruction invalidates all sessions |
+| httpOnly + SameSite=Strict cookies | Prevents XSS and CSRF |
+| Self-revocation blocked | Can't revoke your own admin key (prevents lockout) |
+| Privilege escalation blocked | Operators can't create admin keys |
+| Plaintext shown once | `create_api_key()` returns raw key exactly once |
+
+**New Dependencies:** None. Zero new pip packages.
+
+**New Files:** 1 (`auth.py`)
+
+**New SQLite Tables:** 1 (`api_keys`)
+
+**New API Endpoints:** 7
+
+---
+
 ## [0.5.2] - ButterVault OAuth (Credential Lifecycle Management) - 2026-04-16
 
 ### Added
