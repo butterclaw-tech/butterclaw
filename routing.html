@@ -124,7 +124,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.2</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.3</div>
     </div>
   </aside>
 
@@ -300,7 +300,7 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.2)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.3)</p>
           <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
         </div>
       </div>
@@ -504,7 +504,7 @@
         </div>
 
         <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700">
-          <p class="font-bold mb-1">🔔 Alert Dispatcher — External Notification Engine (v0.6.2)</p>
+          <p class="font-bold mb-1">🔔 Alert Dispatcher — External Notification Engine (v0.6.3)</p>
           <p>Pushes notifications to external channels (webhook, Discord, ntfy, email, Gotify) when critical events occur. Rules map event types to channels with configurable cooldowns. Webhooks are HMAC-SHA256 signed. Gibson alerts fire BEFORE vault destruction — the notification always escapes. Channel secrets are stored outside the ButterVault by design.</p>
         </div>
       </div>
@@ -741,7 +741,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.2 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.3 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -2499,9 +2499,9 @@
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.2 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.2 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.2 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.3 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.3 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.3 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
