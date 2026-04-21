@@ -1,0 +1,26 @@
+# =============================================
+# ButterClaw v0.6.3 — Development Override
+# =============================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Overrides for development:
+#   - Debug mode enabled
+#   - Port exposed to all interfaces (not just localhost)
+#   - Hot-reload via volume mount of all .py files
+#   - No nginx (direct access to Flask)
+
+version: '3.8'
+
+services:
+  butterclaw:
+    environment:
+      - BUTTERCLAW_DEBUG=true
+      - BUTTERCLAW_INSTANCE_ID=butterclaw-dev
+    volumes:
+      - .:/app                         # Mount entire project for hot-reload
+      - butterclaw-data:/data
+    ports:
+      - "5000:5000"                    # Exposed to all interfaces for dev
+
+  nginx:
+    profiles: ["production"]           # Disabled in dev

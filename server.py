@@ -1421,7 +1421,7 @@ if __name__ == '__main__':
     else: print(f"   Ollama Endpoint: {OLLAMA_LOCAL_BASE}")
     active_gates = [k for k, v in gate_states.items() if v]
     print(f"   Active Gates: {', '.join(active_gates) if active_gates else 'NONE'}")
-    print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%\")
+    print(f"   Self-DoS Threshold: {CONFIDENCE_THRESHOLD}%")
     print(f"   Policy Engine: {'ENABLED' if POLICY_ENGINE_ENABLED else 'DISABLED'}")
     print(f"   Alert Dispatcher: {'ENABLED' if ALERT_DISPATCHER_ENABLED else 'DISABLED'}")
     print(f"   MCP Transport: {mcp_transport_mode}")

@@ -1,0 +1,93 @@
+# =============================================
+# ButterClaw v0.6.3 — Production Deployment
+# =============================================
+# Usage:
+#   cp .env.example .env    (customize values)
+#   docker compose up -d    (start all services)
+#   docker compose logs -f  (follow logs)
+#
+# Services:
+#   butterclaw  — Main application (Flask + all modules)
+#   ollama      — Local LLM inference engine
+#   nginx       — TLS termination + reverse proxy
+
+version: '3.8'
+
+services:
+  butterclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: butterclaw
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - BUTTERCLAW_OLLAMA_URL=http://ollama:11434
+      - BUTTERCLAW_DB_PATH=/data/butterclaw.db
+    volumes:
+      - butterclaw-data:/data          # SQLite DB persistence
+      - ./index.html:/app/index.html   # Live dashboard updates
+      - ./routing.html:/app/routing.html
+    ports:
+      - "127.0.0.1:5000:5000"         # Only localhost — nginx fronts it
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - butterclaw-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: butterclaw-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama    # Model persistence
+    ports:
+      - "127.0.0.1:11434:11434"       # Only localhost
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]      # GPU passthrough if available
+    networks:
+      - butterclaw-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: butterclaw-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/butterclaw.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro      # TLS certs
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./routing.html:/usr/share/nginx/html/routing.html:ro
+    depends_on:
+      - butterclaw
+    networks:
+      - butterclaw-net
+
+volumes:
+  butterclaw-data:
+    name: butterclaw-data
+  ollama-models:
+    name: butterclaw-ollama-models
+
+networks:
+  butterclaw-net:
+    name: butterclaw-net

@@ -20,7 +20,27 @@ import datetime
 logger = logging.getLogger("butterclaw.vault")
 
 # Absolute path to the existing ButterClaw SQLite database
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
+#DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
+
+# FIND:
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+# REPLACE WITH:
+#try:
+#    from config import cfg
+#    DB_PATH = cfg.DB_PATH
+#except ImportError:
+#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
+
+# Keep this line so the diagnostic tests still know where they are!
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+try:
+    from config import cfg
+    DB_PATH = cfg.DB_PATH
+except ImportError:
+    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
 # OS Native Keyring Identifiers
 KEYRING_SERVICE = "butterclaw_sentinel"

@@ -1,0 +1,44 @@
+# =============================================
+# ButterClaw v0.6.3 — systemd Service Unit
+# =============================================
+# Install:
+#   sudo cp systemd/butterclaw.service /etc/systemd/system/
+#   sudo cp .env /etc/butterclaw.env
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable butterclaw
+#   sudo systemctl start butterclaw
+#
+# Logs: journalctl -u butterclaw -f
+
+[Unit]
+Description=ButterClaw — Local-First Agent Security Sentinel
+Documentation=https://github.com/butterclaw-tech/butterclaw
+After=network.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+User=butterclaw
+Group=butterclaw
+WorkingDirectory=/opt/butterclaw
+EnvironmentFile=/etc/butterclaw.env
+ExecStart=/usr/bin/python3 server.py
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/butterclaw /opt/butterclaw/butterclaw.db
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=butterclaw
+
+[Install]
+WantedBy=multi-user.target
