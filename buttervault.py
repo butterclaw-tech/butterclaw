@@ -1,9 +1,10 @@
 """
-ButterClaw v0.5.2 — The ButterVault (OAuth Ready)
+ButterClaw v0.6.0 — The ButterVault
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
-Now supports complex OAuth 2.0 token dictionary payloads.
+Supports complex OAuth 2.0 token dictionary payloads.
+[v0.6.0] The Gibson now hooks into auth.py to destroy API key hashes.
 """
 
 import os
@@ -257,6 +258,13 @@ def butter_keys(provider=None):
             conn.execute("UPDATE oauth_tokens SET ciphertext = ?", (garbage,))
             logger.warning("☢️ GLOBAL GIBSON TRIGGERED. ALL keys AND OAuth tokens destroyed.")
         conn.commit()
+
+    # [v0.6.0] Destroy API key hashes — invalidates all auth
+    try:
+        import auth
+        auth.destroy_all_api_keys()
+    except ImportError:
+        pass  # auth module not present (pre-v0.6.0 compat)
 
 if __name__ == "__main__":
     # --- DIAGNOSTIC MODE ---

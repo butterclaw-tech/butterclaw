@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.2 — ButterVault OAuth & Multi-Step Chaining
+ButterClaw v0.6.0 — The Exoskeleton (API Gateway & Auth)
 =====================================================================
 Changelog:
   [v0.3.1] Security: CONFIDENCE_THRESHOLD (85%) self-DoS prevention.
@@ -34,6 +34,12 @@ Changelog:
            - CSRF state validation with 10-minute TTL
            - Token refresh handled transparently by buttervault
            - Gibson destroys OAuth tokens alongside API keys
+  [v0.6.0] API Gateway & Auth:
+           - Role-based access control via auth.py (admin > operator > viewer)
+           - HMAC-SHA256 API key integration and session management
+           - @require_auth decorators applied to all sensitive endpoints
+           - Per-API-key rate limiting based on role tiers
+           - Split settings endpoint into separate GET (operator) and POST (admin)
 """
 
 from flask import Flask, request, jsonify, Response
@@ -53,15 +59,17 @@ from urllib.parse import urlparse, quote
 import json
 import subprocess
 import sys
-# requests.utils.quote <- replaced with urllib standard, maybe use later
+
 import buttervault
 import oauth_config
+import auth
+from auth import require_auth, register_auth_routes, bootstrap_admin_key, is_rate_limited_for_key
 
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 
 # [v0.5.1] Module-level dry run flag — disables actual MCP calls in ChainExecutor
 DRY_RUN = False
@@ -80,6 +88,9 @@ ALLOWED_ORIGINS = [
 ]
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
+
+# Register authentication endpoints
+register_auth_routes(app)
 
 # =============================================
 # THREAD-SAFE GLOBAL STATE
@@ -112,9 +123,9 @@ VALID_GATE_KEYS = frozenset(gate_states.keys())
 VALID_MCP_TRANSPORTS = ("stdio", "sse")
 
 # =============================================
-# SIMPLE RATE LIMITER
+# SIMPLE RATE LIMITER (Deprecated in v0.6.0 - using auth.py)
 # =============================================
-
+# Retained for legacy internal checks if needed, but endpoint uses is_rate_limited_for_key
 RATE_LIMIT_MAX = 10
 RATE_LIMIT_WINDOW = 60
 _rate_log = deque()
@@ -303,7 +314,6 @@ def ledger_count():
 
 # =============================================
 # CHAIN EXECUTOR (v0.5.1)
-# Brain-composed multi-step MCP tool sequences
 # =============================================
 
 VALID_CONDITION_OPERATORS = {
@@ -315,10 +325,6 @@ VALID_CONDITION_OPERATORS = {
 }
 
 class ChainExecutor:
-    """Executes a Brain-composed sequence of MCP tool calls with
-    optional inter-step conditions. Safety rails: 10-step max, 60s timeout,
-    no eval() — conditions use a closed operator whitelist."""
-
     MAX_STEPS = 10
     TIMEOUT = 60  # seconds
 
@@ -335,7 +341,6 @@ class ChainExecutor:
         self.timeout = self.TIMEOUT
 
     def execute(self):
-        """Run the chain. Returns summary dict."""
         print(f"\n🔗 [CHAIN {self.chain_id}] Starting {len(self.chain_steps)}-step chain"
               f"{' [DRY RUN]' if self.dry_run else ''}")
 
@@ -378,18 +383,15 @@ class ChainExecutor:
         }
 
     def _execute_step(self, step, step_index):
-        """Execute a single chain step with optional condition check."""
         tool_name = step.get('tool')
         if not tool_name:
             raise ValueError(f"Step {step_index} missing required 'tool' key")
 
-        # Check condition (if present)
         condition = step.get('condition')
         if condition:
             if not self._evaluate_condition(condition):
                 print(f"⏭️ [CHAIN {self.chain_id}] Step {step_index} ({tool_name}) skipped — condition not met")
                 self.executed.append({"step": step_index, "tool": tool_name, "status": "skipped"})
-                # Log skipped step to ledger
                 event_id = ledger_log_start(
                     req_id=None,
                     method="tools/call", tool_name=tool_name,
@@ -417,7 +419,6 @@ class ChainExecutor:
         print(f"✅ [CHAIN {self.chain_id}] Step {step_index}: {tool_name} → stored as '{store_as}'")
 
     def _evaluate_condition(self, condition):
-        """Evaluate a step condition using the safe operator whitelist."""
         if not isinstance(condition, dict):
             return False
 
@@ -437,13 +438,12 @@ class ChainExecutor:
         return VALID_CONDITION_OPERATORS[operator](source_value, expected)
 
     def summary(self):
-        """Return human-readable action summary string."""
         step_names = [s.get('tool', '?') for s in self.chain_steps[:len(self.executed)]]
         return f"Chain [{self.chain_id}]: {len(self.executed)}/{len(self.chain_steps)} steps — {', '.join(step_names)}"
 
 
 # =============================================
-# MCP MANAGER INTERFACE (v0.5.0)
+# MCP MANAGER INTERFACE
 # =============================================
 
 class BaseMCPManager:
@@ -469,7 +469,7 @@ class BaseMCPManager:
         raise NotImplementedError
 
 # =============================================
-# MCP PROCESS MANAGER — stdio transport (v0.5.0)
+# MCP PROCESS MANAGER — stdio transport
 # =============================================
 
 class MCPProcessManager(BaseMCPManager):
@@ -678,7 +678,7 @@ class MCPProcessManager(BaseMCPManager):
         }
 
 # =============================================
-# MCP SSE CLIENT — remote SSE transport (v0.5.0)
+# MCP SSE CLIENT — remote SSE transport
 # =============================================
 
 class MCPSSEClient(BaseMCPManager):
@@ -902,7 +902,7 @@ class MCPSSEClient(BaseMCPManager):
 
 
 # =============================================
-# MCP MANAGER FACTORY (v0.5.0)
+# MCP MANAGER FACTORY
 # =============================================
 
 def create_mcp_manager():
@@ -1159,6 +1159,7 @@ def health():
     return jsonify({"status": "ok", "version": VERSION}), 200
 
 @app.route('/api/vault/key', methods=['POST'])
+@require_auth(min_role="admin")
 def save_vault_key():
     data = request.json
     if not data or "provider" not in data or "api_key" not in data:
@@ -1167,6 +1168,7 @@ def save_vault_key():
     return jsonify({"status": "success"}), 200
 
 @app.route('/api/vault/status', methods=['GET'])
+@require_auth(min_role="viewer")
 def check_vault_status():
     providers = buttervault.list_providers()
     status = {provider: buttervault.get_key(provider) is not None for provider in providers}
@@ -1176,9 +1178,12 @@ def check_vault_status():
     return jsonify(status), 200
 
 @app.route('/api/analyze', methods=['POST'])
+@require_auth(min_role="operator")
 def analyze_threat():
-    if is_rate_limited():
-        return jsonify({"error": "Rate limit exceeded. Max 10 requests per minute."}), 429
+    ctx = request.auth_context
+    if is_rate_limited_for_key(ctx["key_id"], ctx["role"]):
+        limit = auth.ROLE_RATE_LIMITS.get(ctx["role"], 10)
+        return jsonify({"error": f"Rate limit exceeded. Max {limit} requests per minute for {ctx['role']} role."}), 429
 
     data = request.json
     if data is None:
@@ -1299,6 +1304,7 @@ def analyze_threat():
     return jsonify({"status": "success", "verdict": verdict_text}), 200
 
 @app.route('/api/logs', methods=['GET'])
+@require_auth(min_role="viewer")
 def get_logs():
     try:
         conn = get_db_connection()
@@ -1309,6 +1315,7 @@ def get_logs():
         return jsonify({"error": f"Database read failed: {e}"}), 500
 
 @app.route('/api/rotate-keys', methods=['POST'])
+@require_auth(min_role="admin")
 def manual_key_rotation():
     buttervault.butter_keys()
 
@@ -1350,7 +1357,6 @@ def manual_key_rotation():
 # =============================================
 
 def _oauth_result_page(success, message):
-    """Returns a self-closing HTML page that signals the opener window."""
     color = "#10b981" if success else "#ef4444"
     icon = "✅" if success else "❌"
     return Response(f"""<!DOCTYPE html>
@@ -1372,12 +1378,8 @@ def _oauth_result_page(success, message):
 </html>""", mimetype="text/html")
 
 @app.route('/api/vault/oauth/start/<provider_name>', methods=['GET'])
+@require_auth(min_role="operator")
 def oauth_start(provider_name):
-    """
-    Initiates the OAuth 2.0 authorization code flow.
-    Generates a CSRF state token, builds the authorization URL,
-    and returns it to the frontend for redirect.
-    """
     provider = oauth_config.get_provider(provider_name)
     if not provider:
         return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
@@ -1385,7 +1387,6 @@ def oauth_start(provider_name):
     if not provider["oauth_supported"]:
         return jsonify({"error": f"{provider['display_name']} does not support OAuth. Use manual API key entry."}), 400
     
-    # Retrieve client_id from ButterVault (Option C Architecture)
     client_id = buttervault.get_key(f"{provider_name}_client_id")
     if not client_id:
         return jsonify({
@@ -1393,13 +1394,9 @@ def oauth_start(provider_name):
                      f"Please store it first via the Vault panel with provider name '{provider_name}_client_id'."
         }), 400
     
-    # Generate CSRF state token
     state = secrets.token_urlsafe(32)
-    
-    # Build the redirect URI
     redirect_uri = f"http://127.0.0.1:5000/api/vault/oauth/callback"
     
-    # Store state for validation on callback
     _cleanup_expired_oauth_states()
     with _oauth_states_lock:
         _oauth_states[state] = {
@@ -1408,15 +1405,14 @@ def oauth_start(provider_name):
             "redirect_uri": redirect_uri
         }
     
-    # Build authorization URL
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(provider["scopes"]),
         "state": state,
-        "access_type": "offline",     # Request refresh token (Google)
-        "prompt": "consent"           # Force consent screen to get refresh token (Google)
+        "access_type": "offline",
+        "prompt": "consent"
     }
     
     query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
@@ -1432,10 +1428,6 @@ def oauth_start(provider_name):
 
 @app.route('/api/vault/oauth/callback', methods=['GET'])
 def oauth_callback():
-    """
-    Handles the OAuth 2.0 callback from the provider.
-    Validates state, exchanges code for tokens, and seals them in the Vault.
-    """
     code = request.args.get("code")
     state = request.args.get("state")
     error = request.args.get("error")
@@ -1447,7 +1439,6 @@ def oauth_callback():
     if not code or not state:
         return _oauth_result_page(success=False, message="Missing code or state parameter.")
     
-    # Validate CSRF state
     with _oauth_states_lock:
         state_data = _oauth_states.pop(state, None)
     
@@ -1529,8 +1520,8 @@ def oauth_callback():
     return _oauth_result_page(success=True, message=f"{provider['display_name']} connected successfully!")
 
 @app.route('/api/vault/oauth/status', methods=['GET'])
+@require_auth(min_role="viewer")
 def oauth_status():
-    """Returns the connection status of all OAuth-capable providers."""
     statuses = {}
     connected_providers = buttervault.list_oauth_providers()
     
@@ -1553,8 +1544,8 @@ def oauth_status():
     return jsonify(statuses), 200
 
 @app.route('/api/vault/oauth/revoke/<provider_name>', methods=['POST'])
+@require_auth(min_role="admin")
 def oauth_revoke(provider_name):
-    """Revokes the OAuth token at the provider and removes it from the Vault."""
     provider = oauth_config.get_provider(provider_name)
     if not provider:
         return jsonify({"error": f"Unknown provider: {provider_name}"}), 404
@@ -1578,24 +1569,29 @@ def oauth_revoke(provider_name):
 
 # --- THE CONTROL PANEL ---
 
-@app.route('/api/settings', methods=['GET', 'POST'])
-def settings():
+@app.route('/api/settings', methods=['GET'])
+@require_auth(min_role="operator")
+def settings_get():
     global current_level, routing_mode, model_name, remote_endpoint, gate_states
     global mcp_transport_mode, mcp_sse_url, mcp_sse_token
+    with _state_lock:
+        return jsonify({
+            "level": current_level,
+            "shield_enabled": shield_enabled,
+            "routing_mode": routing_mode,
+            "model": model_name,
+            "endpoint": remote_endpoint,
+            "gates": dict(gate_states),
+            "mcp_transport": mcp_transport_mode,
+            "mcp_sse_url": mcp_sse_url,
+            "mcp_sse_token_set": bool(mcp_sse_token)
+        })
 
-    if request.method == 'GET':
-        with _state_lock:
-            return jsonify({
-                "level": current_level,
-                "shield_enabled": shield_enabled,
-                "routing_mode": routing_mode,
-                "model": model_name,
-                "endpoint": remote_endpoint,
-                "gates": dict(gate_states),
-                "mcp_transport": mcp_transport_mode,
-                "mcp_sse_url": mcp_sse_url,
-                "mcp_sse_token_set": bool(mcp_sse_token)
-            })
+@app.route('/api/settings', methods=['POST'])
+@require_auth(min_role="admin")
+def settings_post():
+    global current_level, routing_mode, model_name, remote_endpoint, gate_states
+    global mcp_transport_mode, mcp_sse_url, mcp_sse_token
 
     data = request.json
     if data is None:
@@ -1687,6 +1683,7 @@ def settings():
     return jsonify({"status": "ok"})
 
 @app.route('/api/shield', methods=['POST'])
+@require_auth(min_role="admin")
 def shield():
     global shield_enabled
 
@@ -1731,10 +1728,12 @@ def shield():
 # =============================================
 
 @app.route('/api/mcp/status', methods=['GET'])
+@require_auth(min_role="viewer")
 def mcp_status():
     return jsonify(mcp_manager.status()), 200
 
 @app.route('/api/mcp/ping', methods=['GET'])
+@require_auth(min_role="operator")
 def mcp_ping():
     start = time.time()
     resp = mcp_manager.send("ping", {}, timeout=5, trigger="ping")
@@ -1744,6 +1743,7 @@ def mcp_ping():
     return jsonify({"pong": True, "ms": elapsed_ms}), 200
 
 @app.route('/api/mcp/tools', methods=['GET'])
+@require_auth(min_role="viewer")
 def mcp_tools():
     return jsonify({
         "tools": mcp_manager.discovered_tools,
@@ -1751,6 +1751,7 @@ def mcp_tools():
     }), 200
 
 @app.route('/api/mcp/restart', methods=['POST'])
+@require_auth(min_role="admin")
 def mcp_restart():
     global mcp_manager
     with _state_lock:
@@ -1770,6 +1771,7 @@ def mcp_restart():
 # =============================================
 
 @app.route('/api/mcp/events', methods=['GET'])
+@require_auth(min_role="viewer")
 def mcp_events():
     limit = request.args.get('limit', 50, type=int)
     tool = request.args.get('tool', None)
@@ -1784,6 +1786,7 @@ def mcp_events():
     }), 200
 
 @app.route('/api/mcp/events/<int:event_id>', methods=['GET'])
+@require_auth(min_role="viewer")
 def mcp_event_detail(event_id):
     event = ledger_get_event(event_id)
     if event is None:
@@ -1795,6 +1798,7 @@ def mcp_event_detail(event_id):
 # =============================================
 
 @app.route('/api/stream')
+@require_auth(min_role="viewer")
 def stream():
     def event_stream():
         global total_logs_processed
@@ -1837,8 +1841,11 @@ if __name__ == '__main__':
         print(f"   MCP SSE URL: {mcp_sse_url}")
         print(f"   MCP SSE Auth: {'token set' if mcp_sse_token else 'none'}")
 
+    print("\n🔐 [AUTH] Checking API key bootstrap...")
+    bootstrap_admin_key()
+
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.5.2 Handshake Sequence...")
+    print("📡 [MCP] Initiating v0.6.0 Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():

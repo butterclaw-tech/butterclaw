@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VPS Routing | ButterClaw 🦞</title>
 
-  <!-- [v0.4.1 R1] PATCHED: Removed HTML comment that was inside CSP content attribute. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
@@ -88,6 +87,19 @@
     </div>
 
     <div class="p-6">
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm mb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm">🔐</span>
+          <div>
+            <span id="authRoleBadge" class="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border text-slate-400 bg-slate-100 border-slate-200">...</span>
+            <p id="authLabelText" class="text-[10px] text-slate-400 mt-0.5">Checking...</p>
+          </div>
+        </div>
+        <button id="authLogoutBtn" class="hidden text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition">
+          Logout
+        </button>
+      </div>
+
       <div id="sidebarMcpBadge" class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center space-x-3 shadow-sm mb-3 cursor-pointer hover:bg-slate-100 transition" title="Scroll to MCP section">
         <div id="sidebarMcpDot" class="h-3 w-3 bg-slate-400 rounded-full animate-pulse"></div>
         <div class="flex-1">
@@ -100,7 +112,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.5.1</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.0</div>
     </div>
   </aside>
 
@@ -118,7 +130,6 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-      <!-- Routing Mode -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-blue-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
@@ -145,7 +156,6 @@
         </div>
       </div>
 
-      <!-- Endpoint Setup -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-butter-400 to-butter-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
@@ -184,7 +194,6 @@
         </div>
       </div>
 
-      <!-- Active Logic Gates -->
       <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-dark to-slate-600 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
@@ -194,9 +203,6 @@
         <div id="gatesContainer" class="space-y-3"></div>
       </div>
 
-      <!-- ============================================= -->
-      <!-- MCP EXECUTION LAYER — v0.5.0 LIVE PANEL       -->
-      <!-- ============================================= -->
       <div id="mcpSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-violet-400 to-fuchsia-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
@@ -205,7 +211,6 @@
           <span id="mcpVersionBadge" class="text-[10px] font-extrabold tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md uppercase">Checking...</span>
         </div>
 
-        <!-- Status + Controls Row -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div id="mcpStatusCard" class="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div class="flex items-center space-x-2 mb-2">
@@ -237,7 +242,6 @@
           </div>
         </div>
 
-        <!-- [v0.5.0] Transport Selector -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Transport Mode</label>
@@ -252,7 +256,6 @@
           </div>
         </div>
 
-        <!-- [v0.5.0] SSE Remote Config (hidden by default) -->
         <div id="mcpSSEConfig" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 hidden">
           <div>
             <label for="mcpSSEUrlInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">MCP SSE Server URL</label>
@@ -272,7 +275,6 @@
           </div>
         </div>
 
-        <!-- Discovered Tools List -->
         <div class="mb-6">
           <div class="flex items-center justify-between mb-3">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Discovered Tools</label>
@@ -286,15 +288,11 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.5.1)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.0)</p>
           <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
-
         </div>
       </div>
 
-      <!-- ============================================= -->
-      <!-- [v0.5.0] EVENT LEDGER — Audit Log Panel        -->
-      <!-- ============================================= -->
       <div id="eventLedgerSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-teal-500 left-0"></div>
         <div class="flex items-center justify-between mb-6">
@@ -335,11 +333,204 @@
     </div>
   </main>
 
-    <script>
+  <div id="authLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="authLoginContent" class="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
+      <div class="flex items-center space-x-3 mb-2">
+        <span class="text-3xl">🦞</span>
+        <h3 class="text-2xl font-extrabold text-dark tracking-tight">Butter<span class="text-butter-500">Claw</span></h3>
+      </div>
+      <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+        Enter your API key to authenticate. Keys are generated via the server CLI or the admin API.
+      </p>
+      <div class="space-y-4">
+        <div>
+          <label for="authKeyInput" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">API Key</label>
+          <input id="authKeyInput" type="password" placeholder="bc_..."
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition font-mono text-sm bg-slate-50 text-slate-700 shadow-sm">
+        </div>
+        <p id="authLoginError" class="text-xs text-red-500 font-bold hidden"></p>
+        <button id="authLoginBtn"
+          class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
+          <span>🔐</span><span>Authenticate</span>
+        </button>
+      </div>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.0 — The Exoskeleton</p>
+    </div>
+  </div>
+
+  <script>
   document.addEventListener('DOMContentLoaded', () => {
 
     const API_BASE = 'http://127.0.0.1:5000';
     const HEALTH_CHECK_INTERVAL = 30000;
+
+    // =============================================
+    // [v0.6.0] AUTH SESSION MANAGEMENT 🔐
+    // =============================================
+    const AUTH_TOKEN_KEY = 'butterclaw_session';
+    let _currentRole = null;
+
+    function getSessionToken() {
+      return localStorage.getItem(AUTH_TOKEN_KEY);
+    }
+    function setSessionToken(token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    }
+    function clearSession() {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      _currentRole = null;
+    }
+
+    // Wraps fetch() with Authorization header + auto-logout on 401/403
+    async function authFetch(url, options) {
+      if (!options) options = {};
+      const token = getSessionToken();
+      if (token) {
+        if (!options.headers) options.headers = {};
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      const res = await fetch(url, options);
+      if (res.status === 401 || res.status === 403) {
+        clearSession();
+        showLoginModal();
+        throw new Error('auth_required');
+      }
+      return res;
+    }
+
+    // SSE with session token as query param
+    function connectAuthSSE(url) {
+      const token = getSessionToken();
+      const authUrl = token ? url + (url.indexOf('?') !== -1 ? '&' : '?') + 'token=' + encodeURIComponent(token) : url;
+      return new EventSource(authUrl);
+    }
+
+    // Login modal show/hide
+    function showLoginModal() {
+      const modal = document.getElementById('authLoginModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      setTimeout(function() {
+        modal.classList.remove('opacity-0');
+        var content = document.getElementById('authLoginContent');
+        if (content) content.classList.remove('scale-95');
+      }, 10);
+    }
+    function hideLoginModal() {
+      const modal = document.getElementById('authLoginModal');
+      if (!modal) return;
+      modal.classList.add('opacity-0');
+      var content = document.getElementById('authLoginContent');
+      if (content) content.classList.add('scale-95');
+      setTimeout(function() { modal.classList.add('hidden'); }, 300);
+    }
+
+    // Login handler
+    async function handleLogin() {
+      const input = document.getElementById('authKeyInput');
+      const errorEl = document.getElementById('authLoginError');
+      const loginBtn = document.getElementById('authLoginBtn');
+      const key = input.value.trim();
+      if (!key) {
+        errorEl.textContent = 'Please enter your API key.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      loginBtn.innerHTML = '<span>⏳</span><span>Authenticating...</span>';
+      loginBtn.disabled = true;
+      errorEl.classList.add('hidden');
+      try {
+        const res = await fetch(API_BASE + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: key })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSessionToken(data.token || data.session_token);
+          _currentRole = data.role;
+          updateAuthUI(data.role, data.label);
+          hideLoginModal();
+          input.value = '';
+          location.reload();
+        } else {
+          const data = await res.json().catch(function() { return {}; });
+          errorEl.textContent = data.error || 'Invalid API key.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        if (e.message !== 'auth_required') {
+          errorEl.textContent = 'Server unreachable. Is ButterClaw running?';
+          errorEl.classList.remove('hidden');
+        }
+      }
+      loginBtn.innerHTML = '<span>🔐</span><span>Authenticate</span>';
+      loginBtn.disabled = false;
+    }
+
+    // Logout handler
+    async function handleLogout() {
+      try { await authFetch(API_BASE + '/api/auth/logout', { method: 'POST' }); } catch (e) {}
+      clearSession();
+      location.reload(); // Force the UI to wipe clean
+    }
+
+    // Update sidebar auth UI
+    function updateAuthUI(role, label) {
+      const roleEl = document.getElementById('authRoleBadge');
+      const labelEl = document.getElementById('authLabelText');
+      const logoutBtn = document.getElementById('authLogoutBtn');
+      if (roleEl) {
+        const colors = {
+          admin: 'text-red-600 bg-red-100 border-red-200',
+          operator: 'text-amber-600 bg-amber-100 border-amber-200',
+          viewer: 'text-emerald-600 bg-emerald-100 border-emerald-200'
+        };
+        roleEl.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' + (colors[role] || colors.viewer);
+        roleEl.textContent = role;
+      }
+      if (labelEl) labelEl.textContent = label || 'Autclated';
+      if (logoutBtn) logoutBtn.classList.remove('hidden');
+    }
+
+    // Session check on page load — show login if no valid session
+    async function checkSession() {
+      const token = getSessionToken();
+      if (!token) { showLoginModal(); return false; }
+      try {
+        const res = await fetch(API_BASE + '/api/auth/whoami', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          _currentRole = data.role;
+          updateAuthUI(data.role, data.label);
+          return true;
+        } else {
+          clearSession();
+          showLoginModal();
+          return false;
+        }
+      } catch (e) {
+        // Server offline — allow cached session
+        return true;
+      }
+    }
+
+    // Wire up login button + Enter key
+    setTimeout(function() {
+      var loginBtn = document.getElementById('authLoginBtn');
+      var logoutBtn = document.getElementById('authLogoutBtn');
+      var keyInput = document.getElementById('authKeyInput');
+
+      if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+      if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
+      if (keyInput) keyInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') handleLogin();
+      });
+    }, 0);
+
 
     const testPingBtn      = document.getElementById('testPingBtn');
     const endpointInput    = document.getElementById('endpointInput');
@@ -427,12 +618,15 @@
       const states = {};
       GATES.forEach(g => { states[g.id] = g.active; });
       try {
-        fetch(API_BASE + '/api/settings', {
+        authFetch(API_BASE + '/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gates: states })
-        }).catch(() => {});
-      } catch (e) { /* offline graceful */ }
+        }).catch((e) => { if (e.message === 'auth_required') return; });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        /* offline graceful */
+      }
     }
 
     function renderGates() {
@@ -504,10 +698,13 @@
       saveConfigFeed.textContent = 'Saving...';
       saveConfigFeed.className = 'text-xs text-center h-4 text-slate-500';
       try {
-        const res = await fetch(API_BASE + '/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const res = await authFetch(API_BASE + '/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (res.ok) { saveConfigFeed.textContent = '✓ Configuration saved'; saveConfigFeed.className = 'text-xs text-center h-4 text-emerald-600 font-bold'; }
         else { throw new Error('Server returned ' + res.status); }
-      } catch (err) { saveConfigFeed.textContent = '✗ Save failed — is the server running?'; saveConfigFeed.className = 'text-xs text-center h-4 text-red-500 font-bold'; }
+      } catch (err) {
+        if (err.message === 'auth_required') return;
+        saveConfigFeed.textContent = '✗ Save failed — is the server running?'; saveConfigFeed.className = 'text-xs text-center h-4 text-red-500 font-bold';
+      }
       setTimeout(() => { saveConfigFeed.textContent = ''; }, 4000);
     });
 
@@ -567,10 +764,14 @@
     }
 
     async function init() {
+      // [v0.6.0] Check session before loading data
+      const sessionValid = await checkSession();
+      if (!sessionValid) return;
+
       renderGates();
       setRoutingMode('local');
       try {
-        const res = await fetch(API_BASE + '/api/settings');
+        const res = await authFetch(API_BASE + '/api/settings');
         if (res.ok) {
           const data = await res.json();
           if (data.routing_mode) setRoutingMode(data.routing_mode);
@@ -581,7 +782,10 @@
           if (data.mcp_transport) { setMcpTransportMode(data.mcp_transport); }
           if (data.mcp_sse_url) { mcpSSEUrlInput.value = data.mcp_sse_url; }
         }
-      } catch { /* Server offline — use defaults */ }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        /* Server offline — use defaults */
+      }
       checkConnection();
       setInterval(checkConnection, HEALTH_CHECK_INTERVAL);
       mcpCheckStatus();
@@ -667,12 +871,12 @@
       mcpSSEFeedback.textContent = 'Saving & restarting...';
       mcpSSEFeedback.className = 'text-[10px] font-mono text-slate-500 mt-2 text-center h-3';
       try {
-        const settingsRes = await fetch(API_BASE + '/api/settings', {
+        const settingsRes = await authFetch(API_BASE + '/api/settings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mcp_transport: _currentMcpTransport, mcp_sse_url: sseUrl, mcp_sse_token: sseToken })
         });
         if (!settingsRes.ok) throw new Error('Settings save failed');
-        const restartRes = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
+        const restartRes = await authFetch(API_BASE + '/api/mcp/restart', { method: 'POST' });
         const restartData = await restartRes.json();
         if (restartData.restarted) {
           mcpSSEFeedback.textContent = '✓ MCP restarted with new transport';
@@ -683,6 +887,7 @@
           mcpSSEFeedback.className = 'text-[10px] font-mono text-amber-600 mt-2 text-center h-3';
         }
       } catch (e) {
+        if (e.message === 'auth_required') return;
         mcpSSEFeedback.textContent = '✗ Failed: ' + e.message;
         mcpSSEFeedback.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
       }
@@ -691,9 +896,9 @@
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.5.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.5.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.5.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
@@ -710,7 +915,7 @@
 
     async function mcpCheckStatus() {
       try {
-        const res = await fetch(API_BASE + '/api/mcp/status');
+        const res = await authFetch(API_BASE + '/api/mcp/status');
         if (!res.ok) { setMcpVisualState('offline', 0, null); _prevMcpArmed = false; return; }
         const data = await res.json();
         if (data.protocol_version && mcpProtocolVersion) { mcpProtocolVersion.textContent = data.protocol_version; }
@@ -729,7 +934,8 @@
           setMcpVisualState('offline', 0, null);
           _prevMcpArmed = false;
         }
-      } catch {
+      } catch (e) {
+        if (e.message === 'auth_required') return;
         setMcpVisualState('offline', 0, null);
         _prevMcpArmed = false;
       }
@@ -737,7 +943,7 @@
 
     async function mcpFetchTools() {
       try {
-        const res = await fetch(API_BASE + '/api/mcp/tools');
+        const res = await authFetch(API_BASE + '/api/mcp/tools');
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         const tools = data.tools || [];
@@ -765,7 +971,8 @@
           }
           mcpToolsList.appendChild(card);
         });
-      } catch {
+      } catch (e) {
+        if (e.message === 'auth_required') return;
         mcpToolsList.innerHTML = '';
         const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-4 text-center';
         const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch tools. Server may be offline.';
@@ -779,10 +986,13 @@
       const s2 = document.createElement('span'); s2.textContent = 'Pinging...';
       mcpPingBtn.appendChild(s1); mcpPingBtn.appendChild(s2);
       try {
-        const res = await fetch(API_BASE + '/api/mcp/ping'); const data = await res.json();
+        const res = await authFetch(API_BASE + '/api/mcp/ping'); const data = await res.json();
         if (data.pong) { mcpPingResult.textContent = 'Pong! ' + data.ms + 'ms round-trip'; mcpPingResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold'; }
         else { mcpPingResult.textContent = 'No pong: ' + (data.error || 'unknown'); mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
-      } catch { mcpPingResult.textContent = 'Server unreachable'; mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        mcpPingResult.textContent = 'Server unreachable'; mcpPingResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+      }
       mcpPingBtn.textContent = '';
       const r1 = document.createElement('span'); r1.textContent = '📡';
       const r2 = document.createElement('span'); r2.textContent = 'Ping MCP';
@@ -797,10 +1007,13 @@
       mcpRestartBtn.appendChild(s1); mcpRestartBtn.appendChild(s2);
       mcpRestartBtn.disabled = true;
       try {
-        const res = await fetch(API_BASE + '/api/mcp/restart', { method: 'POST' }); const data = await res.json();
+        const res = await authFetch(API_BASE + '/api/mcp/restart', { method: 'POST' }); const data = await res.json();
         if (data.restarted) { mcpRestartResult.textContent = 'Restarted successfully'; mcpRestartResult.className = 'text-[10px] font-mono text-emerald-600 mt-2 text-center h-3 font-bold'; setTimeout(() => { mcpCheckStatus(); mcpFetchTools(); }, 500); }
         else { mcpRestartResult.textContent = 'Restart failed'; mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
-      } catch { mcpRestartResult.textContent = 'Server unreachable'; mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3'; }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        mcpRestartResult.textContent = 'Server unreachable'; mcpRestartResult.className = 'text-[10px] font-mono text-red-500 mt-2 text-center h-3';
+      }
       mcpRestartBtn.disabled = false;
       mcpRestartBtn.textContent = '';
       const r1 = document.createElement('span'); r1.textContent = '🔄';
@@ -819,14 +1032,6 @@
     const ledgerFilterTool   = document.getElementById('ledgerFilterTool');
     const ledgerFilterStatus = document.getElementById('ledgerFilterStatus');
     const ledgerRefreshBtn   = document.getElementById('ledgerRefreshBtn');
-/***
-    const ledgerStatusColors = {
-      success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
-      error:   { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     text: 'text-red-700' },
-      timeout: { bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-500',   text: 'text-amber-700' },
-      pending: { bg: 'bg-slate-50',   border: 'border-slate-200',   dot: 'bg-slate-400',   text: 'text-slate-500' }
-    };
-***/
 
     const ledgerStatusColors = {
       success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
@@ -925,37 +1130,6 @@
 
       return card;
     }
-/*** v0.5.0
-    async function ledgerFetch() {
-      const toolFilter = ledgerFilterTool.value;
-      const statusFilter = ledgerFilterStatus.value;
-      let url = API_BASE + '/api/mcp/events?limit=50';
-      if (toolFilter) url += '&tool=' + encodeURIComponent(toolFilter);
-      if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
-
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Failed');
-        const data = await res.json();
-        const events = data.events || [];
-        ledgerTotalCount.textContent = data.total + ' total events';
-        ledgerContainer.innerHTML = '';
-
-        if (events.length === 0) {
-          const empty = document.createElement('div'); empty.className = 'bg-slate-50 border border-slate-100 rounded-xl p-6 text-center';
-          const emptyP = document.createElement('p'); emptyP.className = 'text-xs text-slate-400';
-          emptyP.textContent = toolFilter || statusFilter ? 'No events match this filter.' : 'No events recorded yet. Trigger an analysis to populate the ledger.';
-          empty.appendChild(emptyP); ledgerContainer.appendChild(empty); return;
-        }
-        events.forEach(ev => { ledgerContainer.appendChild(buildLedgerRow(ev)); });
-      } catch {
-        ledgerContainer.innerHTML = '';
-        const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-6 text-center';
-        const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch event ledger. Server may be offline.';
-        errDiv.appendChild(errP); ledgerContainer.appendChild(errDiv);
-      }
-    }
-***/
 
     // [v0.5.1] Build a chain group wrapper with step badges
     function buildChainGroup(chainId, chainEvents) {
@@ -1030,7 +1204,7 @@
       if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
 
       try {
-        const res = await fetch(url);
+        const res = await authFetch(url);
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
         const events = data.events || [];
@@ -1087,7 +1261,8 @@
           }
         });
 
-      } catch {
+      } catch (e) {
+        if (e.message === 'auth_required') return;
         ledgerContainer.innerHTML = '';
         const errDiv = document.createElement('div'); errDiv.className = 'bg-red-50 border border-red-100 rounded-xl p-6 text-center';
         const errP = document.createElement('p'); errP.className = 'text-xs text-red-500'; errP.textContent = 'Failed to fetch event ledger. Server may be offline.';
