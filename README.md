@@ -275,7 +275,7 @@ butterclaw/
 
 | Version | Codename | Date | Highlights |
 |---------|----------|------|------------|
-| **0.6.0** | **The Exoskeleton** | 2026-04-18 | API Gateway, HMAC auth, role-based access, session tokens, dashboard login |
+| **0.6.0** | **The Exoskeleton** | 2026-04-23 | API Gateway, HMAC auth, role-based access, session tokens, dashboard login |
 | 0.5.2 | ButterVault OAuth | 2026-04-16 | OAuth 2.0 flow, encrypted token storage, automatic refresh, Gibson update |
 | 0.5.1 | Tool Chaining | 2026-04-16 | ChainExecutor, conditional logic, ledger chain grouping, oopsie card links |
 | 0.5.0 | The Nervous System | 2026-04-14 | Event Ledger, SSE Transport, Memory Injection, MCP Manager Factory |
