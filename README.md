@@ -57,29 +57,29 @@ After a Gibson event, all authentication is invalidated. The system requires a f
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    ButterClaw v0.6.0                      │
+│                    ButterClaw v0.6.0                     │
 │                                                          │
-│  ┌─────────┐    ┌──────────┐    ┌───────────────────┐   │
-│  │ Watcher  │───▶│  Flask   │───▶│   Brain (Ollama)  │   │
+│  ┌──────────┐    ┌──────────┐    ┌───────────────────┐   │
+│  │ Watcher  │───▶│  Flask   │───▶│  Brain (Ollama)  │   │
 │  │ (OS Tel) │    │  API     │    │   Gemma 4 e2b     │   │
-│  └─────────┘    │  Gateway  │    └───────────────────┘   │
-│                  │  + Auth   │              │             │
+│  └──────────┘    │  Gateway │    └───────────────────┘   │
+│                  │  + Auth  │              │             │
 │                  └────┬─────┘              │             │
-│                       │            ┌───────▼──────┐      │
-│                  ┌────▼─────┐      │ ChainExecutor │      │
-│                  │ Dashboard │      │ (Multi-Step)  │      │
-│                  │ (Auth'd) │      └───────┬──────┘      │
-│                  └──────────┘              │             │
-│                                    ┌───────▼──────┐      │
-│                                    │  MCP Manager  │      │
-│                                    │  (The Claws)  │      │
-│                                    └───────┬──────┘      │
+│                       │            ┌───────▼───────┐     │
+│                  ┌────▼──────┐     │ ChainExecutor │     │
+│                  │ Dashboard │     │ (Multi-Step)  │     │
+│                  │ (Auth'd)  │     └───────┬───────┘     │
+│                  └───────────┘             │             │
+│                                    ┌───────▼───────┐     │
+│                                    │  MCP Manager  │     │
+│                                    │  (The Claws)  │     │
+│                                    └───────┬───────┘     │
 │                                            │             │
-│                                    ┌───────▼──────┐      │
-│                                    │ ButterVault   │      │
-│                                    │ + OAuth Store │      │
-│                                    │ + API Keys    │      │
-│                                    └──────────────┘      │
+│                                    ┌───────▼───────┐     │
+│                                    │ ButterVault   │     │
+│                                    │ + OAuth Store │     │
+│                                    │ + API Keys    │     │
+│                                    └───────────────┘     │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -162,7 +162,7 @@ After a Gibson event, all authentication is invalidated. The system requires a f
 ### Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.ai) with Gemma 4 e4b model
+- [Ollama](https://ollama.ai) with Gemma4:e4b model
 - OS keyring support (macOS Keychain, Windows Credential Manager, or Linux SecretService)
 
 ### Installation
