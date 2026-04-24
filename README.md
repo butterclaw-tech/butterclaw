@@ -8,6 +8,28 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 > **Note:** *ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.*
 
+**🦞 Disambiguation**
+ButterClaw Tech (butterclaw.tech) is an independent, from‑the‑ground‑up local‑first Agentic SOC and kinetic security layer for autonomous AI systems.
+
+It is not affiliated with:
+- butterclaw.ai — a managed hosting service built on top of OpenClaw
+- OpenClaw or any OpenClaw forks (including ai‑nhancement/ButterClaw)
+- any other “ButterClaw” projects in the ecosystem
+
+ButterClaw Tech has its own architecture, runtime, memory model, and execution semantics.
+It exists to watch, audit, and protect agentic systems — not to be another agent runtime.
+
+If you’re looking for:
+
+- a hosted OpenClaw experience? 
+	→ use butterclaw.ai OR Hostinger.com/openclaw for a one-click solution
+
+- a general autonomous agent framework? 
+	→ use OpenClaw or Hermes Agent
+
+- a local‑first kinetic security layer with behavioral drift tracking, dual‑hemisphere reasoning, and a vault that actually shreds keys? 
+	→ you’re in the right place (ButterClaw.tech)
+
 ---
 
 ## 🚀 What's New in v0.6.0?
