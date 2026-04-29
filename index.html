@@ -118,7 +118,7 @@
             <p id="authLabelText" class="text-[10px] text-slate-400 mt-0.5">Checking...</p>
           </div>
         </div>
-        <button id="authLogoutBtn" class="hidden text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition" onclick="handleLogout()">
+        <button id="authLogoutBtn" class="hidden text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition">
           Logout
         </button>
       </div>
@@ -404,9 +404,9 @@
 
     // Logout handler
     async function handleLogout() {
-      try { await fetch(API_BASE + '/api/auth/logout', { method: 'POST' }); } catch (e) {}
+      try { await authFetch(API_BASE + '/api/auth/logout', { method: 'POST' }); } catch (e) {}
       clearSession();
-      showLoginModal();
+      location.reload(); // Force the UI to wipe clean
     }
 
     // Update sidebar auth UI
@@ -454,8 +454,12 @@
     // Wire up login button + Enter key
     setTimeout(function() {
       var loginBtn = document.getElementById('authLoginBtn');
+      var logoutBtn = document.getElementById('authLogoutBtn');
       var keyInput = document.getElementById('authKeyInput');
+      
       if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+      if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
       if (keyInput) keyInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') handleLogin();
       });
@@ -648,7 +652,7 @@
 
     const buildOAuthProviderCard = (providerName, status) => {
         const card = document.createElement('div');
-        card.className = 'bg-white border border-slate-200 rounded-2xl p-4 transition shadow-sm';
+        card.className = 'bg-white border border-slate-200 rounded-2xl p-4 transition shadow-sm flex flex-col';
         
         const header = document.createElement('div');
         header.className = 'flex items-center justify-between mb-3';
@@ -671,19 +675,25 @@
         if (status.connected) {
             statusBadge.className = 'text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center space-x-1';
             statusBadge.innerHTML = '<span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span><span>Connected</span>';
+        } else if (status.has_client_credentials) {
+            statusBadge.className = 'text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full flex items-center space-x-1';
+            statusBadge.innerHTML = '<span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span><span>Keys Sealed</span>';
         } else {
             statusBadge.className = 'text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full flex items-center space-x-1';
-            statusBadge.innerHTML = '<span class="w-1.5 h-1.5 bg-slate-400 rounded-full"></span><span>Not Connected</span>';
+            statusBadge.innerHTML = '<span class="w-1.5 h-1.5 bg-slate-400 rounded-full"></span><span>Unprotected</span>';
         }
         
         header.appendChild(nameDiv);
         header.appendChild(statusBadge);
         card.appendChild(header);
         
-        const actions = document.createElement('div');
-        actions.className = 'flex items-center space-x-2';
+        const body = document.createElement('div');
+        body.className = 'mt-2';
         
         if (status.connected) {
+            // Already connected
+            const actions = document.createElement('div');
+            actions.className = 'flex items-center space-x-2';
             const disconnectBtn = document.createElement('button');
             disconnectBtn.className = 'text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl hover:bg-red-100 transition';
             disconnectBtn.textContent = 'Disconnect';
@@ -696,20 +706,70 @@
                 expiredBadge.textContent = '⚠️ Token expired (auto-refresh)';
                 actions.appendChild(expiredBadge);
             }
+            body.appendChild(actions);
+            
         } else if (status.has_client_credentials) {
+            // Keys are sealed, ready to authenticate
             const connectBtn = document.createElement('button');
-            connectBtn.className = 'text-[10px] font-bold text-white bg-dark hover:bg-slate-800 px-4 py-1.5 rounded-xl transition';
+            connectBtn.className = 'text-[10px] font-bold text-white bg-dark hover:bg-slate-800 px-4 py-2 rounded-xl transition w-full';
             connectBtn.textContent = '🔑 Connect via OAuth';
             connectBtn.onclick = () => startOAuth(providerName);
-            actions.appendChild(connectBtn);
+            body.appendChild(connectBtn);
+            
         } else {
-            const setupMsg = document.createElement('span');
-            setupMsg.className = 'text-[10px] text-slate-500 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-100';
-            setupMsg.textContent = `Store '${providerName}_client_id' & '_secret' in Vault first.`;
-            actions.appendChild(setupMsg);
+            // Missing keys! Show the dual-input UI
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'flex flex-col space-y-2 w-full';
+
+            const idInput = document.createElement('input');
+            idInput.type = 'text';
+            idInput.placeholder = 'Client ID';
+            idInput.className = 'px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-butter-500 outline-none w-full';
+
+            const secretInput = document.createElement('input');
+            secretInput.type = 'password';
+            secretInput.placeholder = 'Client Secret';
+            secretInput.className = 'px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-butter-500 outline-none w-full';
+
+            const sealBtn = document.createElement('button');
+            sealBtn.className = 'text-[10px] font-bold text-white bg-dark hover:bg-slate-800 px-4 py-2 rounded-xl transition w-full';
+            sealBtn.textContent = 'Seal Credentials';
+            
+            sealBtn.onclick = async () => {
+                const clientId = idInput.value.trim();
+                const clientSecret = secretInput.value.trim();
+                if (!clientId || !clientSecret) { alert('Both ID and Secret are required.'); return; }
+                
+                sealBtn.textContent = 'Sealing...';
+                try {
+                    // Sequentially seal both halves of the credential using the built-in authFetch
+                    await authFetch(`${API_BASE}/api/vault/key`, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ provider: `${providerName}_client_id`, api_key: clientId }) 
+                    });
+                    await authFetch(`${API_BASE}/api/vault/key`, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ provider: `${providerName}_client_secret`, api_key: clientSecret }) 
+                    });
+                    
+                    // Refresh the vault UI to show the "Connect via OAuth" button
+                    fetchVaultStatus();
+                } catch(e) {
+                    if (e.message === 'auth_required') return;
+                    alert('Failed to seal keys: ' + e);
+                    sealBtn.textContent = 'Seal Credentials';
+                }
+            };
+            
+            inputGroup.appendChild(idInput);
+            inputGroup.appendChild(secretInput);
+            inputGroup.appendChild(sealBtn);
+            body.appendChild(inputGroup);
         }
         
-        card.appendChild(actions);
+        card.appendChild(body);
         return card;
     };
 
