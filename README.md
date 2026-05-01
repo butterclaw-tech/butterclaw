@@ -542,5 +542,4 @@ MIT License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <em>*The Sentinel never goes silent.* 🦞</em>
-</p>
+<em>The Sentinel never goes silent.</em>
