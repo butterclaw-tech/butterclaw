@@ -6,6 +6,168 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.2] - The Exoskeleton: Alert Dispatcher - 2026-05-01
+
+### Added
+- **Alert Dispatcher Module (`alert_dispatcher.py`):** New standalone module (~1,566 lines) providing external push notifications when critical events occur. Pushes to 5 channel types: webhook (generic HTTP POST with HMAC-SHA256 signing), Discord (rich embeds), ntfy (push notifications), SMTP email, and Gotify (self-hosted push). Zero new pip dependencies — built entirely on stdlib (`urllib.request`, `smtplib`, `hmac`, `hashlib`).
+- **9 Alert Event Types (`alert_dispatcher.py`):** Complete coverage of every critical system event:
+  - `verdict_critical` — Brain or Policy returned CRITICAL verdict
+  - `verdict_warning` — Brain returned WARNING verdict (≥ 50% confidence)
+  - `gibson_triggered` — Automatic Gibson from ChainExecutor critical path
+  - `gibson_manual` — Manual Gibson via `/api/rotate-keys`
+  - `policy_override` — Policy Engine overrode Brain verdict (pre-brain or post-brain)
+  - `policy_blocked` — Policy Engine blocked a request or skipped a tool
+  - `auth_brute_force` — 5+ auth failures from one IP within 60 seconds
+  - `mcp_offline` — MCP child process health check detected alive→dead transition
+  - `system_startup` — ButterClaw server started successfully
+- **Channel CRUD (`alert_dispatcher.py`):** `create_channel()`, `get_channel()`, `list_channels()`, `update_channel()`, `delete_channel()`, `toggle_channel()`. Full config validation per channel type — required fields enforced (e.g., webhook requires `url`, smtp requires `host`, `port`, `from_addr`, `to_addr`). Cascade delete removes all rules and history when a channel is deleted.
+- **Rule-Based Event Routing (`alert_dispatcher.py`):** `create_rule()`, `get_rule()`, `list_rules()`, `update_rule()`, `delete_rule()`, `toggle_rule()`. Each rule maps one event type to one channel with a configurable cooldown (default 60s, 0 = no cooldown). Per-rule cooldown — same channel can have different cooldowns for different event types.
+- **Core Dispatch Engine (`alert_dispatcher.py`):** `dispatch_alert(event_type, context)` — main entry point called from server.py at each integration hook. Finds all enabled rules matching the event type, spawns `_dispatch_worker()` in a daemon thread for non-blocking delivery. `analyze_threat()` returns immediately while alerts fire in the background.
+- **Retry with Exponential Backoff (`alert_dispatcher.py`):** Failed deliveries retry with exponential backoff (1s → 2s → 4s, max 3 attempts). Each attempt logged to `alert_history` with response code and error message. Final status: `sent`, `failed`, or `retry_exhausted`.
+- **HMAC-SHA256 Webhook Signing (`alert_dispatcher.py`):** Every outbound webhook payload is signed with a per-channel signing secret. Headers: `X-ButterClaw-Signature: sha256=<hex>`, `X-ButterClaw-Event: <event_type>`, `X-ButterClaw-Timestamp: <ISO8601>`. Same pattern as GitHub webhooks — receivers can verify payload authenticity.
+- **Per-Channel Payload Formatting (`alert_dispatcher.py`):** `_format_payload()` builds channel-appropriate payloads:
+  - `webhook` — JSON with event_type, timestamp, severity, context, instance_id
+  - `discord` — Rich embed with color-coded severity sidebar (red=critical, amber=warning, emerald=info), structured fields, footer with version
+  - `ntfy` — Title + body + priority mapping (critical=5/urgent, warning=3/default, info=2/low) + tags
+  - `smtp` — Subject line with severity emoji + plain-text body with structured fields
+  - `gotify` — Title + message + priority (critical=8, warning=5, info=2)
+- **Alert History Audit Log (`alert_dispatcher.py`):** `alert_history` table records every dispatch attempt with timestamp, rule_id, channel_id, event_type, status, response_code, error_message, payload_preview (200 chars), and attempt_count. Queryable via `get_alert_history()` with filters for channel_id, event_type, status, since, and limit. `get_alert_history_count()` for totals.
+- **Auth Brute-Force Detection (`alert_dispatcher.py`):** `track_auth_failure(ip_address)` tracks 401/403 responses per IP using a thread-safe in-memory sliding window (`collections.deque`). Fires `auth_brute_force` alert when 5 failures from the same IP occur within 60 seconds. Called from server.py via `@after_request` hook.
+- **Test Alert (`alert_dispatcher.py`):** `send_test_alert(channel_id)` sends a test notification to any configured channel on demand. Returns delivery result with status, response code, and error message if failed.
+- **Cooldown Engine (`alert_dispatcher.py`):** `_is_cooled_down(rule_id, cooldown_secs)` checks `alert_history` for the last successful dispatch within the cooldown window. Prevents alert storms during sustained attacks. Status logged as `cooldown` in history.
+- **3 New SQLite Tables (`alert_dispatcher.py`):** All in shared `butterclaw.db`:
+  - `alert_channels` — channel_id, name, channel_type, config (JSON), signing_secret, enabled, created_at, last_used, last_status
+  - `alert_rules` — rule_id, name, event_type, channel_id (FK), cooldown_secs, enabled, created_at
+  - `alert_history` — history_id, rule_id, channel_id, event_type, status, response_code, error_message, payload_preview, attempt_count, created_at
+- **13 Alert API Endpoints (`alert_dispatcher.py`):** Registered via `register_alert_routes(app)`:
+  - `GET /api/alerts/channels` (viewer) — List all alert channels
+  - `POST /api/alerts/channels` (admin) — Create a new channel with config validation
+  - `PUT /api/alerts/channels/<id>` (admin) — Update channel config
+  - `DELETE /api/alerts/channels/<id>` (admin) — Delete channel (cascades rules + history)
+  - `POST /api/alerts/channels/<id>/toggle` (admin) — Enable/disable channel
+  - `POST /api/alerts/channels/<id>/test` (operator) — Send test alert to channel
+  - `GET /api/alerts/rules` (viewer) — List all rules (filter: event_type, channel_id)
+  - `POST /api/alerts/rules` (admin) — Create a new rule
+  - `PUT /api/alerts/rules/<id>` (admin) — Update a rule
+  - `DELETE /api/alerts/rules/<id>` (admin) — Delete a rule
+  - `POST /api/alerts/rules/<id>/toggle` (admin) — Enable/disable rule
+  - `GET /api/alerts/history` (viewer) — Query history (filters: channel_id, event_type, status, since, limit)
+  - `GET /api/alerts/status` (viewer) — Summary: total channels, active rules, recent dispatches, last alert timestamp
+- **14-Step Diagnostic Suite (`alert_dispatcher.py`):** Standalone self-test when run as `python alert_dispatcher.py`: DB init, channel CRUD (5 types), channel validation, channel toggle, rule CRUD, rule validation, rule toggle, webhook signing verification, cooldown enforcement, auth failure tracking (threshold detection), payload formatting (all 5 types), alert history logging, dispatch path (dry run with expected failure), cascade delete cleanup.
+- **MCP Health Monitor (`server.py`):** New `mcp_health_monitor()` daemon thread polls MCP process health every 10 seconds. Uses `was_alive` state tracking — dispatches `mcp_offline` only on alive→dead transition (not on persistent-dead, preventing alert storms). Auto-started at module load.
+- **Auth Failure Tracking Hook (`server.py`):** `@after_request` decorator on all responses — calls `alert_dispatcher.track_auth_failure(request.remote_addr)` on every 401/403 response. Catches both API key failures and session token failures in one place.
+- **Alert Dispatcher UI (`routing.html`):** New full-width section after Policy Engine with:
+  - Channel cards — name, type badge (color-coded: webhook=blue, discord=indigo, ntfy=emerald, smtp=amber, gotify=violet), enabled/disabled toggle, last used timestamp, last status badge, config preview (truncated URL — never secrets), Test/Edit/Delete buttons
+  - Rule rows — event type label, arrow, channel name, cooldown display, toggle/delete controls
+  - Alert history timeline — time-relative timestamps, color-coded status badges (sent=emerald, failed=red, cooldown=amber, retry_exhausted=rose), event type + channel name, event/status filter dropdowns, Load More pagination
+  - Channel create/edit modal with dynamic config fields per channel type, signing secret input (webhook only)
+  - Rule create modal with event type selector, channel dropdown (populated from enabled channels), cooldown input
+  - Status summary bar (channel count, rule count, last alert timestamp)
+  - Info box explaining Alert Dispatcher design decisions
+- **Alert Dispatch Badge (`index.html`):** Oopsie cards now show a 🔔 "Alert Sent" badge when `alert_dispatched` is true in the SSE payload. Links to routing.html#alertDispatcherSection.
+- **Sidebar Nav Links:** 🔔 Alert Dispatcher link added to both `routing.html` (internal anchor) and `index.html` (cross-page link to routing.html#alertDispatcherSection).
+- **Tailwind Safelist:** Added indigo color classes (`bg-indigo-50`, `bg-indigo-100`, `border-indigo-200`, `text-indigo-600`) to both files for Discord channel badges.
+
+### Changed
+- **Alert Dispatcher Import Guard (`server.py`):** `try: import alert_dispatcher` with `ALERT_DISPATCHER_ENABLED` flag. Graceful degradation — `dispatch_alert()` and `track_auth_failure()` become no-ops when module is not present. All 13 endpoints return 503 when disabled.
+- **Route Registration (`server.py`):** `register_alert_routes(app)` called after `register_auth_routes(app)` when `ALERT_DISPATCHER_ENABLED` is True.
+- **init_db() (`server.py`):** Now calls `alert_dispatcher.init_alert_db()` after `policy_engine.init_policy_db()` when dispatcher is enabled. Creates 3 new tables.
+- **Boot Banner (`server.py`):** Now shows `Alert Dispatcher: ENABLED/DISABLED` alongside Auth and Policy Engine status. `system_startup` alert dispatched after `bootstrap_admin_key()` with version, routing mode, and model name.
+- **Verdict Dispatch Hooks (`server.py`):** `dispatch_alert("verdict_critical", ...)` and `dispatch_alert("verdict_warning", ...)` called after final verdict determination in `analyze_threat()`. Context includes payload preview (500 chars), verdict, confidence, primary gate, reasoning preview, source IP, and policy action if applicable.
+- **Policy Override/Block Dispatch Hooks (`server.py`):** At each `evaluate_policies()` call site (pre-brain, post-brain, ChainExecutor pre-tool), non-"allow" policy results trigger `dispatch_alert("policy_override", ...)` or `dispatch_alert("policy_blocked", ...)` with scope, policy name, action, original/final verdict, and payload preview.
+- **Gibson Alert-Then-Burn Ordering (`server.py`):** All 3 Gibson paths (chain auto, hardcoded fallback, manual rotation) now dispatch the alert BEFORE calling `buttervault.butter_keys()`. Timeline: alert goes out → HTTP requests fire → vault destroyed → auth destroyed → operator receives notification.
+- **SSE Oopsie Payload (`server.py`):** Added `alert_dispatched: true` flag when `dispatch_alert()` was called for a verdict. Frontend uses this for the oopsie card badge — no alert content or channel details leak to the frontend.
+- **MCP Health Monitoring (`server.py`):** Replaced passive error handling with active health monitor daemon thread. 10-second polling interval with state-transition detection (alive→dead only).
+- **Version Bumps:** `VERSION = "0.6.2"` in server.py. 6 version string updates in `routing.html` (sidebar, MCP badges ×3, MCP info box, auth modal). 1 version string update in `index.html` (auth modal footer).
+- **Hash-Based Scroll (`routing.html`):** Added `#alertDispatcherSection` handler.
+- **Init Sequence (`routing.html`):** `fetchAlertStatus()`, `fetchChannels()`, `fetchRules()`, `fetchAlertHistory()` called after `fetchPolicies()` on session validation.
+
+### Architecture Notes
+
+**Channel Secrets — Why They Live Outside the ButterVault:**
+
+The primary purpose of the Alert Dispatcher is to notify the operator when something catastrophic happens. If Gibson fires and also destroys the ability to notify, that defeats the purpose. Channel secrets (webhook URLs, SMTP passwords, Discord webhook URLs, Gotify tokens) are stored in the `alert_channels` SQLite table, NOT in the ButterVault.
+
+```
+Gibson Timeline:
+1. dispatch_alert("gibson_triggered", {...})   ← alert goes out over HTTP
+2. _dispatch_worker sends to all channels      ← webhook/discord/ntfy/smtp/gotify fire
+3. buttervault.butter_keys()                   ← vault destroyed (API keys, OAuth tokens)
+4. auth.destroy_all_api_keys()                 ← auth destroyed (sessions invalidated)
+5. Operator receives notification              ← Discord ping / email / push arrives
+```
+
+If the operator wants to manually purge channel secrets post-Gibson, they can delete channels via the API after re-bootstrapping auth.
+
+**What Survives Gibson (v0.6.2):**
+
+```
+DESTROYED by Gibson:           SURVIVES Gibson:
+├── vault table (API keys)     ├── policies table (rules are config)
+├── oauth_tokens table         ├── policy_events table (audit trail)
+├── api_keys table             ├── alert_channels table (delivery config)
+├── session cache              ├── alert_rules table (routing config)
+└── OS keyring master key      ├── alert_history table (audit trail)
+                               ├── mcp_events table (execution ledger)
+                               └── logs table (oopsie log)
+```
+
+**Dispatch Architecture:**
+
+```
+server.py hook point
+    │
+    ▼
+dispatch_alert(event_type, context)     ← main thread (non-blocking)
+    │
+    ├── find matching enabled rules
+    ├── spawn daemon thread
+    │       │
+    │       ▼
+    │   _dispatch_worker()              ← background thread
+    │       │
+    │       ├── for each rule:
+    │       │   ├── check cooldown      → skip if within window
+    │       │   ├── resolve channel     → get config + type
+    │       │   ├── format payload      → channel-specific format
+    │       │   ├── sign payload        → HMAC-SHA256 (webhook only)
+    │       │   ├── deliver             → HTTP POST / SMTP
+    │       │   │   └── retry on fail   → 1s, 2s, 4s (max 3)
+    │       │   └── log to history      → status + response code
+    │       └── update channel last_used / last_status
+    │
+    └── return immediately              ← analyze_threat() continues
+```
+
+**API Surface (v0.6.2):** 41 total routes
+
+| Category | Count | Auth Tiers |
+|----------|-------|------------|
+| Auth (v0.6.0) | 7 | admin, operator |
+| Core (v0.5.x) | 6 | operator, viewer, admin, public |
+| MCP (v0.5.0) | 7 | admin, operator, viewer |
+| Vault/OAuth (v0.5.x) | 6 | admin, operator, viewer, public |
+| Policy (v0.6.1) | 8 | admin, operator, viewer |
+| **Alert (v0.6.2)** | **13** | **admin, operator, viewer** |
+
+**Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| Channel secrets outside ButterVault | Gibson alert must fire before vault destruction |
+| Dispatch in daemon thread | Non-blocking — analyze_threat() returns immediately |
+| Per-rule cooldown, not per-channel | Same channel can have different cooldowns for different events |
+| HMAC-SHA256 webhook signing | Same pattern as GitHub webhooks — receivers verify authenticity |
+| Zero new pip dependencies | urllib.request for HTTP, smtplib for email, hmac for signing |
+| Retry with exponential backoff | 1s → 2s → 4s handles transient network failures |
+| 10s delivery timeout | Prevents slow receivers from blocking dispatch thread |
+| alert_dispatched flag in SSE | Frontend knows alert went out without leaking content |
+| @after_request for auth tracking | Catches both API key and session failures in one place |
+| Cascade delete on channel removal | Prevents orphaned rules/history |
+| State-transition MCP monitoring | Only fires on alive→dead, not persistent-dead |
+
+---
+
 ## [0.6.1] - The Exoskeleton: Policy Engine - 2026-05-01
 
 ### Added
@@ -74,30 +236,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 Watcher → POST /api/analyze
                 │
           ┌─────▼──────────┐
-          │ 1. PRE-BRAIN    │ ← Policy Engine: pattern match, fast-track
-          │    Filter       │    Can short-circuit to CRITICAL or BENIGN
-          │                 │    without burning inference time
+          │ 1. PRE-BRAIN   │ ← Policy Engine: pattern match, fast-track
+          │    Filter      │    Can short-circuit to CRITICAL or BENIGN
+          │                │    without burning inference time
           └─────┬──────────┘
                 │ (if not short-circuited)
           ┌─────▼──────────┐
-          │ 2. BRAIN        │ ← Gemma reasoning (unchanged)
-          │    (Ollama)     │
+          │ 2. BRAIN       │ ← Gemma reasoning (unchanged)
+          │    (Ollama)    │
           └─────┬──────────┘
                 │
           ┌─────▼──────────┐
-          │ 3. POST-BRAIN   │ ← Policy Engine: verdict validation
-          │    Validator    │    Can override Brain's decision
+          │ 3. POST-BRAIN  │ ← Policy Engine: verdict validation
+          │    Validator   │    Can override Brain's decision
           └─────┬──────────┘
                 │
           ┌─────▼──────────┐
-          │ 4. PRE-TOOL     │ ← Policy Engine: per-tool gate
-          │    Gate         │    Runs before each MCP send()
+          │ 4. PRE-TOOL    │ ← Policy Engine: per-tool gate
+          │    Gate        │    Runs before each MCP send()
           └─────┬──────────┘    inside ChainExecutor
                 │
           ┌─────▼──────────┐
-          │ 5. MCP Tool     │ ← ChainExecutor or hardcoded fallback
-          │    Execution    │
-          └─────────────────┘
+          │ 5. MCP Tool    │ ← ChainExecutor or hardcoded fallback
+          │    Execution   │
+          └────────────────┘
 ```
 
 **Example Policy Rule:**
