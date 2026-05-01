@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.2 — The Exoskeleton (Alert Dispatcher)
+ButterClaw v0.6.3 — The Exoskeleton (Deployment Packaging)
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -7,12 +7,11 @@ Changelog:
   [v0.5.2] ButterVault OAuth (Credential Lifecycle)
   [v0.6.0] API Gateway & Auth (RBAC, API Keys, Sessions)
   [v0.6.1] Policy Engine (Deterministic DRIFT framework)
-  [v0.6.2] Alert Dispatcher:
-           - Multi-channel notification routing (webhook, discord, ntfy, smtp, gotify).
-           - 7 injection hooks for critical system states.
-           - Global @after_request auth brute-force tracking.
-           - MCP health monitor daemon.
-           - Alert routing survives the Gibson.
+  [v0.6.2] Alert Dispatcher (Notifications & monitoring)
+  [v0.6.3] Deployment Packaging:
+           - Centralized config module via .env/env vars.
+           - Enhanced health checks for orchestration.
+           - Boot parameters and DB_PATH centralized.
 """
 
 from flask import Flask, request, jsonify, Response
@@ -32,6 +31,9 @@ from urllib.parse import urlparse, quote
 import json
 import subprocess
 import sys
+
+from config import cfg
+_server_start_time = time.time()
 
 import buttervault
 import oauth_config
@@ -58,19 +60,13 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.2"
-DRY_RUN = False
-CONFIDENCE_THRESHOLD = 85
+VERSION = "0.6.3"
+DRY_RUN = cfg.DRY_RUN
+CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
 app = Flask(__name__)
 
-ALLOWED_ORIGINS = [
-    "http://127.0.0.1:5000",
-    "http://localhost:5000",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "null"
-]
+ALLOWED_ORIGINS = cfg.CORS_ORIGINS
 
 CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})
 
@@ -96,13 +92,13 @@ _state_lock = threading.Lock()
 total_logs_processed = 0
 current_level = "3"
 shield_enabled = True
-model_name = "butterclaw-optimized:latest"
+model_name = cfg.MODEL_NAME
 routing_mode = "local"
 remote_endpoint = ""
 
-mcp_transport_mode = "stdio"
-mcp_sse_url = ""
-mcp_sse_token = ""
+mcp_transport_mode = cfg.MCP_TRANSPORT
+mcp_sse_url = cfg.MCP_SSE_URL
+mcp_sse_token = cfg.MCP_SSE_TOKEN
 
 gate_states = {
     "sig_scan": True,
@@ -111,8 +107,8 @@ gate_states = {
     "kill_sw": True
 }
 
-OLLAMA_LOCAL_BASE = "http://localhost:11434"
-OLLAMA_CHAT_PATH = "/api/chat"
+OLLAMA_LOCAL_BASE = cfg.OLLAMA_BASE_URL
+OLLAMA_CHAT_PATH = cfg.OLLAMA_CHAT_PATH
 VALID_ROUTING_MODES = ("local", "remote")
 VALID_GATE_KEYS = frozenset(gate_states.keys())
 VALID_MCP_TRANSPORTS = ("stdio", "sse")
@@ -121,8 +117,8 @@ VALID_MCP_TRANSPORTS = ("stdio", "sse")
 # ABSOLUTE DB PATH + THREAD-SAFE SQLITE
 # =============================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+BASE_DIR = cfg.BASE_DIR
+DB_PATH = cfg.DB_PATH
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -178,7 +174,7 @@ log.setLevel(logging.WARNING)
 
 _oauth_states = {}
 _oauth_states_lock = threading.Lock()
-OAUTH_STATE_TTL = 600
+OAUTH_STATE_TTL = cfg.OAUTH_STATE_TTL
 
 def _cleanup_expired_oauth_states():
     now = time.time()
@@ -639,7 +635,7 @@ def create_mcp_manager():
         return MCPSSEClient(base_url=url, token=token)
     else:
         print("📡 [MCP] Using stdio transport (local child process)")
-        return MCPProcessManager(script_path=os.path.join(BASE_DIR, "butterclaw_mcp.py"))
+        return MCPProcessManager(script_path=cfg.MCP_SCRIPT)
 
 mcp_manager = create_mcp_manager()
 
@@ -783,7 +779,28 @@ def run_self_audit(original_threat):
 # =============================================
 
 @app.route('/api/health', methods=['GET'])
-def health(): return jsonify({"status": "ok", "version": VERSION}), 200
+def health():
+    """Enhanced health check for Docker/systemd/load balancers."""
+    health_data = {
+        "status": "ok",
+        "version": VERSION,
+        "instance_id": cfg.INSTANCE_ID,
+        "uptime_seconds": int(time.time() - _server_start_time),
+        "components": {
+            "auth": "enabled",
+            "policy_engine": "enabled" if POLICY_ENGINE_ENABLED else "disabled",
+            "alert_dispatcher": "enabled" if ALERT_DISPATCHER_ENABLED else "disabled",
+            "mcp": "alive" if mcp_manager.is_alive else "dead",
+        },
+        "config_source": "env" if os.environ.get("BUTTERCLAW_PORT") else "defaults",
+    }
+    return jsonify(health_data), 200
+
+@app.route('/api/config', methods=['GET'])
+@require_auth(min_role="admin")
+def get_config():
+    """Read-only view of current configuration. Secrets redacted."""
+    return jsonify(cfg.to_dict(redact_secrets=True)), 200
 
 @app.route('/api/vault/key', methods=['POST'])
 @require_auth(min_role="admin")
@@ -1394,7 +1411,9 @@ def stream():
 
 if __name__ == '__main__':
     print(f"🦞 ButterClaw Reasoning Engine v{VERSION} is ONLINE.")
-    print(f"   Database: {DB_PATH}")
+    print(f"   Config Source: {'env' if os.environ.get('BUTTERCLAW_PORT') else '.env/defaults'}")
+    print(f"   Instance ID: {cfg.INSTANCE_ID}")
+    print(f"   Database: {cfg.DB_PATH}")
     print(f"   Paranoia Level: {current_level}")
     print(f"   Routing Mode: {routing_mode}")
     print(f"   Active Model: {model_name}")
@@ -1414,7 +1433,7 @@ if __name__ == '__main__':
         alert_dispatcher.dispatch_alert("system_startup", {"version": VERSION, "routing_mode": routing_mode, "model": model_name})
 
     print("\n" + "=" * 60)
-    print("📡 [MCP] Initiating v0.6.2 Handshake Sequence...")
+    print(f"📡 [MCP] Initiating v{VERSION} Handshake Sequence...")
     print("=" * 60)
 
     if mcp_manager.start():
@@ -1428,4 +1447,4 @@ if __name__ == '__main__':
     print(f"📋 [LEDGER] Event ledger initialized. {ledger_count()} historical events.")
     print("=" * 60 + "\n")
 
-    app.run(host='127.0.0.1', port=5000)
+    app.run(host=cfg.HOST, port=cfg.PORT, debug=cfg.DEBUG)

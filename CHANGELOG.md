@@ -6,6 +6,232 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.3] - The Exoskeleton: Deployment Packaging - 2026-05-01
+
+### Added
+- **Configuration Module (`config.py`):** New standalone module (~480 lines) providing centralized, environment-driven configuration for all ButterClaw modules. Loads from environment variables (highest priority), `.env` file (if present), and hardcoded defaults (lowest priority, matching v0.6.2 behavior exactly). Includes a minimal `.env` parser built entirely on stdlib — no `python-dotenv` dependency. Zero new pip dependencies.
+  - Singleton pattern: `from config import cfg` — import and use everywhere.
+  - `ButterClawConfig` class with 26 configurable fields across 9 categories: Paths (`DB_PATH`, `MCP_SCRIPT`, `BASE_DIR`), Server (`HOST`, `PORT`, `DEBUG`), CORS (`CORS_ORIGINS`), Brain/Ollama (`OLLAMA_BASE_URL`, `OLLAMA_CHAT_PATH`, `MODEL_NAME`, `CONFIDENCE_THRESHOLD`, `DRY_RUN`), MCP Transport (`MCP_TRANSPORT`, `MCP_SSE_URL`, `MCP_SSE_TOKEN`), Auth (`AUTH_RATE_ADMIN`, `AUTH_RATE_OPERATOR`, `AUTH_RATE_VIEWER`, `SESSION_TTL`), Alerts (`ALERT_DELIVERY_TIMEOUT`, `ALERT_MAX_RETRIES`, `ALERT_RETRY_BACKOFF`, `AUTH_FAILURE_THRESHOLD`, `AUTH_FAILURE_WINDOW`), OAuth (`OAUTH_STATE_TTL`), Identity (`INSTANCE_ID`).
+  - `BUTTERCLAW_` prefix on all env vars — namespace isolation prevents collision with system variables.
+  - `_validate()` runs at import time — fail-fast on invalid config (bad port range, out-of-range confidence, invalid transport mode, malformed URL).
+  - `to_dict(redact_secrets=True)` for API-safe config export — secrets like `MCP_SSE_TOKEN` are masked.
+  - `to_flat_dict()` for internal diagnostics — all 26 fields, no nesting.
+  - 21-step diagnostic suite (`python config.py`): singleton loading, version check, path validation, value range checks, `.env` parser format handling (plain, quoted, single-quoted, inline comments, `export` prefix, whitespace), env-over-dotenv priority enforcement, invalid config rejection (port, confidence, transport, URL), `to_dict()` structure/redaction verification, `config_source` metadata.
+- **Environment Template (`.env.example`):** Documented template (~130 lines) of all 26 `BUTTERCLAW_*` variables with per-variable documentation covering Docker, systemd, and bare-metal usage patterns. Copy to `.env` and customize — never edit `.py` files for deployment config.
+- **Dockerfile:** Multi-stage production container build based on `python:3.11-slim`. Non-root `butterclaw` user for security hardening. `HEALTHCHECK` directive using `scripts/healthcheck.py`. Default env vars set for Docker context (`BUTTERCLAW_DB_PATH=/data/butterclaw.db`, `BUTTERCLAW_OLLAMA_URL=http://ollama:11434`). `/data` directory created and `chown`ed for volume mount. Exposes port 5000.
+- **Docker Compose (`docker-compose.yml`):** Production orchestration with 3 services:
+  - `butterclaw` — Main application container. Depends on Ollama healthcheck. Mounts `butterclaw-data` volume at `/data` for SQLite persistence. JSON-file logging with 10MB rotation.
+  - `ollama` — Local LLM inference engine. GPU passthrough via `nvidia-container-toolkit` (degrades gracefully to CPU if unavailable). Mounts `ollama-models` volume for model persistence. Healthcheck polls `/api/tags`.
+  - `nginx` — TLS termination + reverse proxy. Serves static dashboard files (`index.html`, `routing.html`). Mounts `nginx/butterclaw.conf` and TLS certs directory.
+  - Named volumes: `butterclaw-data` (SQLite persistence), `ollama-models` (model cache).
+  - Named network: `butterclaw-net` (inter-container communication).
+- **Docker Compose Dev Override (`docker-compose.dev.yml`):** Development mode overlay. Enables debug mode, exposes port to all interfaces, mounts entire project directory for hot-reload, disables nginx via profiles.
+- **Docker Ignore (`.dockerignore`):** Build context exclusions — `.git`, `__pycache__`, `*.db`, `.env`, `backups/`, `nginx/certs/`, docs, compose files.
+- **Nginx Reverse Proxy (`nginx/butterclaw.conf`):** Production-grade reverse proxy configuration:
+  - HTTP → HTTPS redirect (port 80 → 443).
+  - TLS termination with TLSv1.2/1.3, ECDHE cipher suites, session caching.
+  - Security headers: HSTS (1 year), X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy.
+  - SSE-specific proxy settings: `proxy_buffering off`, `chunked_transfer_encoding off`, 24-hour `proxy_read_timeout` for long-lived `/api/stream` connections.
+  - API proxy: 300s read timeout for Brain inference on large payloads. 1MB client body limit.
+  - Health endpoint: access logging disabled (prevents log spam from monitoring probes).
+  - Static file serving for dashboard HTML.
+- **systemd Service Unit (`systemd/butterclaw.service`):** Bare-metal VPS deployment:
+  - `Restart=on-failure` with 5s delay — auto-restart on crash.
+  - `EnvironmentFile=/etc/butterclaw.env` — config via standard systemd mechanism.
+  - `After=ollama.service` — starts after Ollama.
+  - Security hardening: `ProtectSystem=strict`, `NoNewPrivileges=true`, `PrivateTmp=true`, `ReadWritePaths` restricted to `/opt/butterclaw`.
+  - Logs to journal: `journalctl -u butterclaw -f`.
+- **Health Check Script (`scripts/healthcheck.py`):** Docker HEALTHCHECK endpoint. Hits `http://localhost:$BUTTERCLAW_PORT/api/health` with 5s timeout. Exit 0 = healthy, exit 1 = unhealthy. Reads port from environment.
+- **Backup Script (`scripts/backup.sh`):** Cron-ready backup utility:
+  - SQLite `.backup` command (atomic — never `cp` on a live DB, which risks corruption).
+  - Copies `.env` configuration alongside the database.
+  - Timestamped `.tar.gz` archive in `backups/` directory.
+  - Auto-prunes old backups (keeps last 7).
+  - Version marker file with instance ID.
+- **Restore Script (`scripts/restore.sh`):** Interactive restore from backup archive:
+  - Lists available backups when run without arguments.
+  - Interactive confirmation prompt before overwrite.
+  - Restores both database and `.env` from archive.
+  - Extracts to temp directory for safety before replacing live files.
+- **Formal Requirements File (`requirements.txt`):** Pinned dependency ranges formalizing the 3 existing pip dependencies: `flask>=3.0,<4.0`, `flask-cors>=4.0,<5.0`, `requests>=2.31,<3.0`. Zero new dependencies.
+- **Enhanced Health Endpoint (`server.py`):** `GET /api/health` now returns `instance_id`, `uptime_seconds`, `config_source`, and per-component status (`auth`, `policy_engine`, `alert_dispatcher`, `mcp`) alongside `version`. Used by Docker HEALTHCHECK, load balancers, and monitoring.
+- **Config Endpoint (`server.py`):** New `GET /api/config` (admin-only) returns the resolved configuration via `cfg.to_dict(redact_secrets=True)`. Shows config source (env vars vs `.env` vs defaults), instance identity, and all operational parameters.
+
+### Changed
+- **Unified DB_PATH (`server.py`, `auth.py`, `policy_engine.py`, `alert_dispatcher.py`, `buttervault.py`):** All 5 modules now import `DB_PATH` from `config.cfg` via `try/except ImportError` guard. `BASE_DIR` preserved as a standalone variable for backward compatibility — `alert_dispatcher.py` uses it in diagnostic mode, `buttervault.py` uses it for keyring paths. Eliminates 5 independent `DB_PATH` computations — single source of truth via `config.py`.
+  ```python
+  BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+  try:
+      from config import cfg
+      DB_PATH = cfg.DB_PATH
+  except ImportError:
+      DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+  ```
+- **Externalized Hardcoded Values (`server.py`):** 14 previously hardcoded values now read from `config.cfg`:
+  - `DRY_RUN` ← `cfg.DRY_RUN`
+  - `CONFIDENCE_THRESHOLD` ← `cfg.CONFIDENCE_THRESHOLD`
+  - `ALLOWED_ORIGINS` ← `cfg.CORS_ORIGINS`
+  - `OLLAMA_LOCAL_BASE` ← `cfg.OLLAMA_BASE_URL`
+  - `OLLAMA_CHAT_PATH` ← `cfg.OLLAMA_CHAT_PATH`
+  - `model_name` ← `cfg.MODEL_NAME`
+  - `mcp_transport_mode` ← `cfg.MCP_TRANSPORT`
+  - `mcp_sse_url` ← `cfg.MCP_SSE_URL`
+  - `mcp_sse_token` ← `cfg.MCP_SSE_TOKEN`
+  - `OAUTH_STATE_TTL` ← `cfg.OAUTH_STATE_TTL`
+  - MCP script path ← `cfg.MCP_SCRIPT`
+  - `app.run()` host/port/debug ← `cfg.HOST` / `cfg.PORT` / `cfg.DEBUG`
+- **Boot Banner (`server.py`):** Now shows config source (env/dotenv/defaults), instance ID, database path, and all module statuses (Auth, Policy Engine, Alert Dispatcher, Config).
+- **Version Bumps:** `VERSION = "0.6.3"` in `server.py`. 6 version string updates in `routing.html` (sidebar footer, MCP Armed/Degraded/Offline badges, MCP Info Box, auth login modal footer). 1 version string update in `index.html` (auth login modal footer).
+- **Project Structure:** Infrastructure files organized into subdirectories:
+  - `scripts/` — `healthcheck.py`, `backup.sh`, `restore.sh`
+  - `nginx/` — `butterclaw.conf`
+  - `systemd/` — `butterclaw.service`
+
+### Architecture Notes
+
+**Configuration Priority Chain:**
+```
+┌─────────────────────────────────────────┐
+│  1. Environment Variables (highest)     │
+│     Set by Docker, systemd, or shell    │
+│     BUTTERCLAW_PORT=8080                │
+├─────────────────────────────────────────┤
+│  2. .env File                           │
+│     Project root, loaded by config.py   │
+│     Only sets vars NOT already in env   │
+├─────────────────────────────────────────┤
+│  3. Hardcoded Defaults (lowest)         │
+│     In ButterClawConfig.__init__()      │
+│     Match v0.6.2 behavior exactly       │
+└─────────────────────────────────────────┘
+```
+
+**DB_PATH Unification:**
+```
+BEFORE (v0.6.2):                    AFTER (v0.6.3):
+┌── server.py ──────────────┐      ┌── config.py ──────────────┐
+│ BASE_DIR = dirname(...)   │      │ cfg.DB_PATH = env or      │
+│ DB_PATH = join(BASE_DIR)  │      │   .env or default         │
+├── auth.py ────────────────┤      └───────────┬───────────────┘
+│ BASE_DIR = dirname(...)   │                  │
+│ DB_PATH = join(BASE_DIR)  │      ┌───────────▼───────────────┐
+├── policy_engine.py ───────┤      │ All 5 modules:            │
+│ BASE_DIR = dirname(...)   │      │   from config import cfg  │
+│ DB_PATH = join(BASE_DIR)  │      │   DB_PATH = cfg.DB_PATH   │
+├── alert_dispatcher.py ────┤      │                           │
+│ BASE_DIR = dirname(...)   │      │ Fallback (no config.py):  │
+│ DB_PATH = join(BASE_DIR)  │      │   DB_PATH = join(BASE_DIR,│
+├── buttervault.py ─────────┤      │     'butterclaw.db')      │
+│ BASE_DIR = dirname(...)   │      └───────────────────────────┘
+│ DB_PATH = join(BASE_DIR)  │
+└───────────────────────────┘
+  5 independent computations         1 source of truth
+```
+
+**Docker Deployment Architecture:**
+```
+┌─────────────────────────────────────────┐
+│  Host Machine                           │
+│                                         │
+│  ┌──── nginx (TLS termination) ──────┐  │
+│  │  :443 → butterclaw:5000           │  │
+│  │  :80 → redirect to :443           │  │
+│  │  /api/stream → SSE proxy (24h)    │  │
+│  │  Security headers (HSTS, CSP)     │  │
+│  └───────────────────────────────────┘  │
+│                                         │
+│  ┌──── butterclaw (app) ──────────── ─┐ │
+│  │  config.py ← .env                  │ │
+│  │  server.py + auth + policy + alert │ │
+│  │  Volume: /data/butterclaw.db       │ │
+│  │  HEALTHCHECK: healthcheck.py       │ │
+│  │  User: butterclaw (non-root)       │ │
+│  └────────────────────────────────────┘ │
+│                                         │
+│  ┌──── ollama (inference) ────────────┐ │
+│  │  GPU passthrough (if available)    │ │
+│  │  Volume: ollama-models             │ │
+│  │  HEALTHCHECK: /api/tags            │ │
+│  └────────────────────────────────────┘ │
+│                                         │
+│  Volumes:                               │
+│  ├── butterclaw-data (SQLite)           │
+│  └── ollama-models (model cache)        │
+│                                         │
+│  Network: butterclaw-net                │
+└─────────────────────────────────────────┘
+```
+
+**What Survives Gibson (updated for v0.6.3):**
+```
+DESTROYED by Gibson:           SURVIVES Gibson:
+├── vault table (API keys)     ├── policies table
+├── oauth_tokens table         ├── policy_events table
+├── api_keys table             ├── alert_channels table
+├── session cache              ├── alert_rules table
+└── OS keyring master key      ├── alert_history table
+                               ├── mcp_events table
+                               ├── logs table
+                               └── config.py / .env (filesystem)
+```
+
+**What Survives Container Restart:**
+
+| Data | Storage | Persists? |
+|------|---------|-----------|
+| SQLite DB (all tables) | butterclaw-data volume | Yes |
+| Ollama models | ollama-models volume | Yes |
+| TLS certs | ./nginx/certs/ bind mount | Yes |
+| .env config | env_file directive | Yes |
+| API keys (in DB) | butterclaw-data volume | Yes |
+| Policies (in DB) | butterclaw-data volume | Yes |
+| Alert channels/rules (in DB) | butterclaw-data volume | Yes |
+| In-memory session cache | Container memory | No (re-auth required) |
+| Auth failure tracker | Container memory | No (resets) |
+| MCP process state | Container memory | No (re-handshake) |
+
+**Deployment Options:**
+
+| Feature | Docker Compose | systemd (Bare-Metal) | Manual (python server.py) |
+|---------|---------------|---------------------|---------------------------|
+| TLS termination | nginx container | Bring your own | None |
+| Auto-restart | restart: unless-stopped | Restart=on-failure | None |
+| GPU passthrough | nvidia-container-toolkit | Native | Native |
+| Log rotation | JSON-file driver | journald | None |
+| Backup/restore | scripts/backup.sh | scripts/backup.sh | scripts/backup.sh |
+| Health monitoring | HEALTHCHECK directive | Manual probes | None |
+| Isolation | Container sandbox | ProtectSystem=strict | None |
+| Config via env | env_file | EnvironmentFile | .env file |
+
+**Design Decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| Stdlib .env parser | No python-dotenv dependency — ~30 lines of stdlib replaces a third-party package |
+| Env vars override .env | 12-factor app behavior — Docker/systemd env vars must always win |
+| try/except ImportError for config | Backward compat — all modules still work without config.py present |
+| Non-root Docker user | Container security hardening — minimal process permissions |
+| /data volume for SQLite | Persistence survives container rebuilds and image upgrades |
+| Nginx serves static HTML | Dashboard served by nginx directly; only /api/ proxied to Flask |
+| SSE-specific proxy config | SSE requires proxy_buffering off + 24h timeout or streams break |
+| systemd ProtectSystem=strict | Filesystem hardening — only the working directory is writable |
+| SQLite .backup in backup script | cp on a live SQLite DB risks journal corruption — .backup is atomic |
+| Keep last 7 backups | Prevents disk fill on cron-scheduled backups |
+| BUTTERCLAW_ prefix on all vars | Namespace isolation — no collision with system environment variables |
+| GPU passthrough conditional | Ollama uses GPU if nvidia-container-toolkit available; CPU fallback is automatic |
+| requirements.txt with ranges | Pin major version, allow patch updates — e.g., flask>=3.0,<4.0 |
+| BASE_DIR preserved in modules | alert_dispatcher.py diagnostic mode and buttervault.py keyring ops need it |
+
+**Impact Summary:**
+- ~748 lines added, ~77 lines modified across all files
+- 12 new files, 7 modified files
+- 0 new pip dependencies (formalizes 3 existing in requirements.txt)
+- 0 new SQLite tables
+- 2 new/enhanced API endpoints (enhanced /api/health + new /api/config)
+- 43 total API routes (41 from v0.6.2 + enhanced health + new config)
+
+---
+
 ## [0.6.2] - The Exoskeleton: Alert Dispatcher - 2026-05-01
 
 ### Added

@@ -72,8 +72,28 @@ DEFAULT_PRIORITY = 50
 # DATABASE
 # =============================================
 
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+# FIND:
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+# REPLACE WITH:
+#try:
+#    from config import cfg
+#    DB_PATH = cfg.DB_PATH
+#except ImportError:
+#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
+
+# Keep this line so the diagnostic tests still know where they are!
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+try:
+    from config import cfg
+    DB_PATH = cfg.DB_PATH
+except ImportError:
+    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
 _db_lock = threading.Lock()
 

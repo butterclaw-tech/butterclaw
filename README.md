@@ -1,8 +1,8 @@
-# 🦞 ButterClaw v0.6.2: The Exoskeleton (Alert Dispatcher)
+# 🦞 ButterClaw v0.6.3: The Exoskeleton (Deployment Packaging)
 
-Version 0.6.2 — May 1, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.6.3 — May 1, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
-Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails** and **external alert dispatch** — the Sentinel never goes silent. **Evaluation before Execution.**
+Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
 Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
 
@@ -10,11 +10,129 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 ---
 
-## 🚀 What's New in v0.6.2?
+## 🚀 What's New in v0.6.3?
 
-**Alert Dispatcher** — A security monitoring system that can't *reach* its operator is just a log file with extra steps. The Alert Dispatcher pushes notifications to external channels — webhooks, Discord, ntfy, SMTP email, Gotify — so the operator knows the moment something happens, even if nobody is watching the dashboard.
+**Deployment Packaging** — The Exoskeleton is battle-tested. Now it needs to leave the lab. v0.6.3 adds everything required to deploy ButterClaw to production: centralized configuration, Docker containerization, systemd service management, nginx TLS termination, and automated backup/restore — all without adding a single new pip dependency.
 
-### 🔔 Multi-Channel Alert Routing
+### ⚙️ Centralized Configuration (`config.py`)
+
+Single source of truth for all runtime configuration across all 5 modules. No more patching 5 files to change a database path.
+
+**26 configurable fields** across 9 categories:
+
+| Category | Fields | Examples |
+|----------|--------|----------|
+| **Paths** | 3 | `DB_PATH`, `MCP_SCRIPT`, `BASE_DIR` |
+| **Server** | 3 | `HOST`, `PORT`, `DEBUG` |
+| **CORS** | 1 | `CORS_ORIGINS` (comma-separated) |
+| **Brain/Ollama** | 5 | `OLLAMA_BASE_URL`, `MODEL_NAME`, `CONFIDENCE_THRESHOLD`, `DRY_RUN` |
+| **MCP Transport** | 3 | `MCP_TRANSPORT`, `MCP_SSE_URL`, `MCP_SSE_TOKEN` |
+| **Auth** | 4 | `AUTH_RATE_ADMIN`, `SESSION_TTL` |
+| **Alerts** | 4 | `ALERT_DELIVERY_TIMEOUT`, `ALERT_MAX_RETRIES` |
+| **OAuth** | 1 | `OAUTH_STATE_TTL` |
+| **Identity** | 1 | `INSTANCE_ID` |
+
+**Priority chain:**
+```
+Environment Variables (highest) → .env File → Hardcoded Defaults (lowest)
+```
+
+```python
+# Usage — identical across all 5 modules:
+from config import cfg
+
+db_path = cfg.DB_PATH           # unified across server, auth, policy, alert, vault
+port = cfg.PORT                 # was hardcoded 5000
+confidence = cfg.CONFIDENCE_THRESHOLD  # was hardcoded 0.6
+```
+
+**Key features:**
+- `BUTTERCLAW_` prefix on all env vars — no collision with system vars
+- `_validate()` at import time — fail-fast on bad config
+- `to_dict(redact_secrets=True)` — API-safe config export
+- `.env` parser built on stdlib — no python-dotenv dependency
+- Env vars never overridden by `.env` (12-factor compliance)
+
+### 🐳 Docker Deployment
+
+Three-container production stack:
+
+| Container | Role | Health Check |
+|-----------|------|-------------|
+| **butterclaw** | Main application (Flask + all modules) | `healthcheck.py` → `/api/health` |
+| **ollama** | Local LLM inference | `/api/tags` endpoint |
+| **nginx** | TLS termination + reverse proxy + static files | Upstream health |
+
+```bash
+# Production deployment
+docker compose up -d
+
+# Development (hot-reload, no nginx)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# View logs
+docker compose logs -f butterclaw
+```
+
+**Key features:**
+- Non-root `butterclaw` user inside container
+- GPU passthrough via `nvidia-container-toolkit` (CPU fallback automatic)
+- Named volumes for SQLite persistence and Ollama model cache
+- JSON-file logging with 10MB rotation
+- `HEALTHCHECK` directive for orchestrator integration
+
+### 🖥️ systemd Deployment (Bare-Metal VPS)
+
+```bash
+# Install service
+sudo cp systemd/butterclaw.service /etc/systemd/system/
+sudo cp .env /etc/butterclaw.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now butterclaw
+
+# Monitor
+journalctl -u butterclaw -f
+```
+
+**Security hardening:**
+- `ProtectSystem=strict` — filesystem read-only except working directory
+- `NoNewPrivileges=true` — prevent privilege escalation
+- `PrivateTmp=true` — isolated temp directory
+- `Restart=on-failure` with 5s delay
+
+### 💾 Backup & Restore
+
+```bash
+# Create timestamped backup (SQLite .backup + .env)
+./scripts/backup.sh
+
+# List available backups
+./scripts/restore.sh
+
+# Restore from specific backup
+./scripts/restore.sh backups/butterclaw-backup-20260420-1200.tar.gz
+```
+
+- SQLite `.backup` command (atomic — never `cp` on a live DB)
+- Auto-prunes old backups (keeps last 7)
+- Includes `.env` configuration in archive
+
+### 🔒 Nginx TLS Termination
+
+- HTTP → HTTPS redirect
+- TLSv1.2/1.3 with ECDHE cipher suites
+- HSTS (1 year), X-Content-Type-Options, X-Frame-Options
+- SSE-specific proxy: `proxy_buffering off` + 24h timeout
+- Static file serving for dashboard HTML
+- 300s read timeout for Brain inference
+
+---
+
+## 🔔 Alert Dispatcher (v0.6.2)
+
+A security monitoring system that can't *reach* its operator is just a log file with extra steps. The Alert Dispatcher pushes notifications to external channels so the operator knows the moment something happens, even if nobody is watching the dashboard.
+
+### Multi-Channel Alert Routing
 
 5 channel types, all built on Python stdlib (zero new pip dependencies):
 
@@ -26,88 +144,36 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 | **SMTP** | smtplib | Email with structured plain-text body |
 | **Gotify** | Self-hosted push API | Title + message + priority (1-10) |
 
-### 📋 9 Alert Event Types
-
-Every critical system event has an alert type:
+### 9 Alert Event Types
 
 | Event | When It Fires | Severity |
 |-------|--------------|----------|
 | `verdict_critical` | Brain or Policy returned CRITICAL | 🔴 Critical |
-| `verdict_warning` | Brain returned WARNING (≥ 50% confidence) | 🟡 Warning |
+| `verdict_warning` | Brain returned WARNING (>= 50% confidence) | 🟡 Warning |
 | `gibson_triggered` | Automatic Gibson from ChainExecutor | 🔴 Critical |
 | `gibson_manual` | Manual Gibson via `/api/rotate-keys` | 🔴 Critical |
 | `policy_override` | Policy Engine overrode Brain verdict | 🟡 Warning |
 | `policy_blocked` | Policy Engine blocked request or tool | 🟡 Warning |
 | `auth_brute_force` | 5+ auth failures from one IP in 60s | 🔴 Critical |
 | `mcp_offline` | MCP process alive→dead transition | 🔴 Critical |
-| `system_startup` | ButterClaw server started | 🟢 Info |
-
-### 🔐 Webhook Signing
-
-Every outbound webhook payload is signed with HMAC-SHA256 using a per-channel signing secret:
-
-```
-X-ButterClaw-Signature: sha256=a3b7c9d1e2f456789...
-X-ButterClaw-Event: verdict_critical
-X-ButterClaw-Timestamp: 2026-04-20T23:14:22Z
-```
-
-Same pattern as GitHub webhooks — receivers can verify payload authenticity.
-
-### ⏱️ Cooldown Engine
-
-Per-rule cooldown prevents alert storms during sustained attacks. Default: 60 seconds. Configurable per rule — same channel can have different cooldowns for different event types (e.g., `verdict_critical` → 60s, `system_startup` → 0s).
-
-### 🔄 Retry with Exponential Backoff
-
-Failed deliveries retry with exponential backoff: 1s → 2s → 4s, max 3 attempts. Each attempt logged to `alert_history` with response code and error message.
-
-### ☢️ Gibson Alert-Then-Burn
-
-The Alert Dispatcher fires **BEFORE** vault destruction. The notification always escapes:
-
-```
-1. dispatch_alert("gibson_triggered", {...})   ← alert goes out over HTTP
-2. _dispatch_worker sends to all channels      ← webhook/discord/ntfy/smtp/gotify fire
-3. buttervault.butter_keys()                   ← vault destroyed
-4. auth.destroy_all_api_keys()                 ← auth destroyed
-5. Operator receives notification              ← notification arrives
-```
-
-Channel secrets are stored outside the ButterVault by design — Gibson can't silence the alarm.
+| `system_startup` | Server started successfully | 🟢 Info |
 
 ---
 
 ## 🛡️ Policy Engine (v0.6.1)
 
-Deterministic guardrails that constrain the probabilistic Brain with rules that say *"if X, then always Y"* — no reasoning required. Implements the DRIFT framework pattern (NeurIPS 2025).
+Deterministic guardrails for the probabilistic Brain. Implements the DRIFT framework pattern (NeurIPS 2025) — a Dynamic Validator that constrains the Brain's probabilistic reasoning with rules that say *"if X, then always Y"* — no reasoning required.
 
 ### 3-Scope Filter Pipeline
 
 | Scope | When It Fires | What It Can Do |
 |-------|--------------|----------------|
-| **Pre-Brain** | Before the LLM is called | Short-circuit to CRITICAL or BENIGN without burning inference time. Block entirely. |
-| **Post-Brain** | After the LLM returns a verdict | Override, escalate, downgrade, or require higher confidence. |
-| **Pre-Tool** | Before each MCP tool call in a chain | Block specific tools. Per-tool allowlist/blocklist. |
+| **Pre-Brain** | Before the LLM is called | Short-circuit to CRITICAL or BENIGN without burning inference time |
+| **Post-Brain** | After the LLM returns a verdict | Override, escalate, downgrade, or require higher confidence |
+| **Pre-Tool** | Before each MCP tool call in a chain | Block specific tools via allowlist/blocklist |
 
-### Policy Rule Example
-
-```json
-{
-  "name": "Block external websocket exfiltration",
-  "scope": "pre_brain",
-  "priority": 10,
-  "condition": {
-    "field": "payload",
-    "operator": "regex_match",
-    "value": "wss?://[^\\s]*\\.(net|io|xyz|tk|ml)"
-  },
-  "action": "override_critical",
-  "description": "External websocket to suspicious TLD — pre-brain escalation"
-}
-```
-
-16 safe condition operators. No `eval()`. Priority-based short-circuit evaluation.
+**16 safe condition operators** — all use whitelist dispatch, no `eval()`:
+`contains`, `not_contains`, `equals`, `not_equals`, `starts_with`, `ends_with`, `regex_match`, `greater_than`, `less_than`, `greater_equal`, `less_equal`, `in_list`, `not_in_list`, `length_gt`, `length_lt`
 
 ---
 
@@ -115,413 +181,366 @@ Deterministic guardrails that constrain the probabilistic Brain with rules that 
 
 Every endpoint protected by role-based access control with HMAC-SHA256 API keys and session tokens.
 
-**Three-tier role hierarchy:**
-
 | Tier | Access Level | Use Case |
 |------|-------------|----------|
-| **Admin** | Full access — vault, Gibson, MCP restart, settings, key/policy/channel management | System owner |
-| **Operator** | Analyze threats, read settings, ping MCP, start OAuth flows, test alerts/policies | Active Sentinel operators |
-| **Viewer** | Read-only — logs, events, status, tools, policies, alert history, SSE stream | Monitoring dashboards |
+| **Admin** | Full access — vault, Gibson, key management, config | System owner |
+| **Operator** | Analyze threats, read settings, start OAuth | Active operators |
+| **Viewer** | Read-only — logs, events, status, SSE stream | Monitoring dashboards |
+
+---
+
+## 💀 Gibson Kill Switch
+
+The nuclear option. When triggered, ButterVault physically shreds all credentials into cryptographic garbage. In v0.6.2+, the Alert Dispatcher fires notifications BEFORE vault destruction — alert-then-burn.
+
+```
+Gibson Triggered:
+  1. dispatch_alert("gibson_triggered")    ← alert fires
+  2. _dispatch_worker → all channels       ← notifications sent
+  3. buttervault.butter_keys()             ← vault destroyed
+  4. auth.destroy_all_api_keys()           ← auth destroyed
+  5. Operator receives notification         ← notification arrives
+```
+
+**What Survives Gibson:**
+```
+DESTROYED by Gibson:           SURVIVES Gibson:
+├── vault table (API keys)     ├── policies table
+├── oauth_tokens table         ├── policy_events table
+├── api_keys table             ├── alert_channels table
+├── session cache              ├── alert_rules table
+└── OS keyring master key      ├── alert_history table
+                               ├── mcp_events table
+                               ├── logs table
+                               └── config.py / .env (filesystem)
+```
 
 ---
 
 ## 🏗️ Architecture
 
+**The Exoskeleton — Layered Defense:**
 ```
-                        ┌──────────────────────────────────┐
-                        │         WATCHER LAYER            │
-                        │  (watcher.py — OS telemetry)     │
-                        └──────────┬───────────────────────┘
-                                   │ raw payload
-                        ┌──────────▼───────────────────────┐
-                        │        AUTH LAYER (v0.6.0)       │
-                        │  @require_auth · RBAC · sessions │
-                        ├──────────┬───────────────────────┤
-                        │    ┌─────▼──────────┐            │
-                        │    │  PRE-BRAIN     │ policy     │
-                        │    │  Policy Filter │ override ──┼──► 🔔 dispatch_alert
-                        │    └─────┬──────────┘            │
-                        │          │                       │
-                        │    ┌─────▼──────────┐            │
-                        │    │  BRAIN (LLM)   │            │
-                        │    │  Gemma / Ollama│            │
-                        │    └─────┬──────────┘            │
-                        │          │                       │
-                        │    ┌─────▼──────────┐            │
-                        │    │  POST-BRAIN    │ override ──┼──► 🔔 dispatch_alert
-                        │    │  Policy Valid. │            │
-                        │    └─────┬──────────┘            │
-                        │          │ verdict               │
-                        │          ├─── CRITICAL ──────────┼──► 🔔 dispatch_alert
-                        │          └─── WARNING ───────────┼──► 🔔 dispatch_alert
-                        │          │                       │
-                        │    ┌─────▼──────────┐            │
-                        │    │  PRE-TOOL      │ blocked ───┼──► 🔔 dispatch_alert
-                        │    │  Policy Gate   │            │
-                        │    └─────┬──────────┘            │
-                        │          │                       │
-                        │    ┌─────▼──────────┐            │
-                        │    │  CHAIN EXEC    │            │
-                        │    │  MCP Tools     │ gibson ────┼──► 🔔 dispatch_alert
-                        │    └────────────────┘            │     (fires BEFORE butter_keys)
-                        ├──────────────────────────────────┤
-                        │       CREDENTIAL LAYER           │
-                        │  ButterVault · OAuth · Fernet    │
-                        └──────────────────────────────────┘
-
-        🔔 Alert Dispatcher ──► webhook │ discord │ ntfy │ smtp │ gotify
+┌─────────────────────────────────────────────────┐
+│  Deployment Layer (v0.6.3)                      │
+│  Docker, systemd, nginx, config.py, backup      │
+├─────────────────────────────────────────────────┤
+│  Alert Layer (v0.6.2)                           │
+│  5 channels, 9 event types, HMAC signing        │
+├─────────────────────────────────────────────────┤
+│  Policy Layer (v0.6.1)                          │
+│  3-scope pipeline, 16 operators, DRIFT pattern  │
+├─────────────────────────────────────────────────┤
+│  Auth Layer (v0.6.0)                            │
+│  HMAC-SHA256 keys, 3-tier RBAC, sessions        │
+├─────────────────────────────────────────────────┤
+│  The Nervous System (v0.5.x)                    │
+│  Brain, ChainExecutor, Event Ledger, MCP, SSE   │
+├─────────────────────────────────────────────────┤
+│  Core (v0.1–v0.4)                               │
+│  Watcher, ButterVault, Dashboard, Ollama        │
+└─────────────────────────────────────────────────┘
 ```
 
-### Component Map
+**Component Map:**
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `server.py` | ~1,800 | Flask API server, threat analysis pipeline, ChainExecutor, MCP management, all route handlers |
-| `auth.py` | ~890 | API key manager, RBAC, session tokens, rate limiter, auth endpoints |
-| `policy_engine.py` | ~350 | 3-scope policy evaluator, CRUD, condition operators, audit log |
-| `alert_dispatcher.py` | ~1,566 | Multi-channel alert routing, webhook signing, cooldown, retry, history |
-| `buttervault.py` | ~400 | Fernet encryption, OS keyring, OAuth token lifecycle, Gibson panic |
-| `butterclaw_mcp.py` | ~300 | MCP server, tool definitions, process management, signature scanning |
-| `mcp_transport.py` | ~250 | Dual-transport MCP client (stdio + SSE), JSON-RPC 2.0 framing |
-| `oauth_config.py` | ~50 | Provider registry (Google Cloud endpoints, scopes) |
-| `watcher.py` | ~200 | OS-level telemetry collector, process monitoring, file watching |
+| Component | File | Lines | Version | Role |
+|-----------|------|-------|---------|------|
+| Config | `config.py` | ~480 | v0.6.3 | Centralized env-driven configuration |
+| Server | `server.py` | ~1,200 | v0.6.3 | Flask API, Brain, ChainExecutor |
+| Auth | `auth.py` | ~890 | v0.6.0 | API gateway, RBAC, session tokens |
+| Policy Engine | `policy_engine.py` | ~350 | v0.6.1 | Deterministic guardrails |
+| Alert Dispatcher | `alert_dispatcher.py` | ~1,566 | v0.6.2 | Push notifications |
+| ButterVault | `buttervault.py` | ~400 | v0.5.2 | Encrypted credentials, Gibson |
+| MCP Client | `butterclaw_mcp.py` | ~300 | v0.4.0 | Tool definitions |
+| MCP Transport | `mcp_transport.py` | ~250 | v0.5.0 | SSE/stdio transport |
+| OAuth Config | `oauth_config.py` | ~60 | v0.5.2 | OAuth provider templates |
+| Watcher | `watcher.py` | ~150 | v0.1.0 | OS telemetry collection |
 
 ---
 
-## 📡 API Endpoints (41 routes)
+## 📡 API Reference
 
-### Auth (v0.6.0)
-
-| Method | Endpoint | Role | Description |
-|--------|----------|------|-------------|
-| `POST` | `/api/auth/login` | public | Exchange API key for session token |
-| `POST` | `/api/auth/logout` | any | Clear session cookie |
-| `GET` | `/api/auth/whoami` | any | Current identity (role, label, key_id) |
-| `GET` | `/api/auth/keys` | admin | List all API keys (hashes redacted) |
-| `POST` | `/api/auth/keys` | admin | Create new API key |
-| `DELETE` | `/api/auth/keys/<id>` | admin | Revoke (disable) API key |
-| `DELETE` | `/api/auth/keys/<id>/purge` | admin | Permanently delete key record |
-
-### Core
+### Auth Endpoints (7 routes — v0.6.0)
 
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/health` | public | Server health check |
-| `POST` | `/api/analyze` | operator | Submit payload for threat analysis |
-| `GET` | `/api/logs` | viewer | Oopsie log entries |
-| `POST` | `/api/rotate-keys` | admin | Manual key rotation (Gibson) |
-| `GET` | `/api/settings` | operator | Read Brain settings |
-| `POST` | `/api/settings` | admin | Update Brain settings |
+| POST | `/api/auth/login` | public | Exchange API key for session token |
+| POST | `/api/auth/logout` | any | Clear session cookie |
+| GET | `/api/auth/whoami` | any | Current identity |
+| GET | `/api/auth/keys` | admin | List all API keys |
+| POST | `/api/auth/keys` | admin | Create new API key |
+| DELETE | `/api/auth/keys/<id>` | admin | Revoke API key |
+| DELETE | `/api/auth/keys/<id>/purge` | admin | Permanently delete key |
 
-### MCP
-
-| Method | Endpoint | Role | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/mcp/status` | viewer | MCP connection status |
-| `GET` | `/api/mcp/ping` | operator | Ping MCP server |
-| `GET` | `/api/mcp/tools` | viewer | List available MCP tools |
-| `POST` | `/api/mcp/restart` | admin | Restart MCP process |
-| `GET` | `/api/mcp/events` | viewer | Event Ledger entries |
-| `GET` | `/api/mcp/events/<id>` | viewer | Single ledger event |
-| `GET` | `/api/stream` | viewer | SSE event stream |
-
-### Vault & OAuth
+### Policy Endpoints (8 routes — v0.6.1)
 
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/vault/key` | admin | Store/update vault key |
-| `GET` | `/api/vault/status` | viewer | Vault status |
-| `GET` | `/api/vault/oauth/start/<provider>` | operator | Start OAuth flow |
-| `GET` | `/api/vault/oauth/callback` | public | OAuth callback |
-| `GET` | `/api/vault/oauth/status` | viewer | OAuth connection status |
-| `POST` | `/api/vault/oauth/revoke/<provider>` | admin | Revoke OAuth tokens |
-| `POST` | `/api/shield` | admin | Toggle shield mode |
+| GET | `/api/policies` | viewer | List all policies |
+| POST | `/api/policies` | admin | Create policy |
+| GET | `/api/policies/<id>` | viewer | Get policy |
+| PUT | `/api/policies/<id>` | admin | Update policy |
+| DELETE | `/api/policies/<id>` | admin | Delete policy |
+| POST | `/api/policies/<id>/toggle` | admin | Enable/disable |
+| POST | `/api/policies/dry-run` | operator | Test payload against policies |
+| GET | `/api/policies/events` | viewer | Query policy event log |
 
-### Policy Engine (v0.6.1)
-
-| Method | Endpoint | Role | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/policies` | viewer | List policies |
-| `POST` | `/api/policies` | admin | Create policy rule |
-| `GET` | `/api/policies/<id>` | viewer | Get single policy |
-| `PUT` | `/api/policies/<id>` | admin | Update policy |
-| `DELETE` | `/api/policies/<id>` | admin | Delete policy |
-| `POST` | `/api/policies/<id>/toggle` | admin | Enable/disable policy |
-| `POST` | `/api/policies/test` | operator | Dry-run payload test |
-| `GET` | `/api/policies/events` | viewer | Policy event audit log |
-
-### Alert Dispatcher (v0.6.2)
+### Alert Endpoints (13 routes — v0.6.2)
 
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/alerts/channels` | viewer | List alert channels |
-| `POST` | `/api/alerts/channels` | admin | Create channel |
-| `PUT` | `/api/alerts/channels/<id>` | admin | Update channel config |
-| `DELETE` | `/api/alerts/channels/<id>` | admin | Delete channel (cascade) |
-| `POST` | `/api/alerts/channels/<id>/toggle` | admin | Enable/disable channel |
-| `POST` | `/api/alerts/channels/<id>/test` | operator | Send test alert |
-| `GET` | `/api/alerts/rules` | viewer | List alert rules |
-| `POST` | `/api/alerts/rules` | admin | Create rule |
-| `PUT` | `/api/alerts/rules/<id>` | admin | Update rule |
-| `DELETE` | `/api/alerts/rules/<id>` | admin | Delete rule |
-| `POST` | `/api/alerts/rules/<id>/toggle` | admin | Enable/disable rule |
-| `GET` | `/api/alerts/history` | viewer | Alert dispatch history |
-| `GET` | `/api/alerts/status` | viewer | Alert system summary |
+| GET | `/api/alerts/channels` | viewer | List channels |
+| POST | `/api/alerts/channels` | admin | Create channel |
+| PUT | `/api/alerts/channels/<id>` | admin | Update channel |
+| DELETE | `/api/alerts/channels/<id>` | admin | Delete channel (cascade) |
+| POST | `/api/alerts/channels/<id>/toggle` | admin | Enable/disable |
+| POST | `/api/alerts/channels/<id>/test` | operator | Send test alert |
+| GET | `/api/alerts/rules` | viewer | List rules |
+| POST | `/api/alerts/rules` | admin | Create rule |
+| PUT | `/api/alerts/rules/<id>` | admin | Update rule |
+| DELETE | `/api/alerts/rules/<id>` | admin | Delete rule |
+| POST | `/api/alerts/rules/<id>/toggle` | admin | Enable/disable |
+| GET | `/api/alerts/history` | viewer | Query alert history |
+| GET | `/api/alerts/status` | viewer | Alert system summary |
+
+### Core Endpoints (5 routes)
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| POST | `/api/analyze` | operator | Analyze threat payload |
+| GET | `/api/health` | public | System health + instance info (enhanced v0.6.3) |
+| GET | `/api/config` | admin | Resolved config (redacted secrets) (new v0.6.3) |
+| GET | `/api/stream` | viewer | SSE event stream |
+| GET | `/api/logs` | viewer | Query log history |
+
+### MCP Endpoints (6 routes — v0.5.0+)
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| GET | `/api/mcp/tools` | viewer | List available MCP tools |
+| POST | `/api/mcp/restart` | admin | Restart MCP process |
+| GET | `/api/mcp/status` | viewer | MCP process health |
+| GET | `/api/events` | viewer | Query event ledger |
+| GET | `/api/events/count` | viewer | Event ledger count |
+| GET | `/api/settings` | viewer | Server settings |
+
+### Vault & OAuth Endpoints (10 routes — v0.5.x)
+
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| POST | `/api/rotate-keys` | admin | Manual Gibson Kill Switch |
+| GET | `/api/vault/status` | viewer | Vault health status |
+| GET | `/api/vault/credentials` | operator | List stored credentials |
+| POST | `/api/vault/credentials` | admin | Store new credential |
+| DELETE | `/api/vault/credentials/<name>` | admin | Delete credential |
+| GET | `/api/oauth/providers` | viewer | List OAuth providers |
+| POST | `/api/oauth/start/<provider>` | operator | Start OAuth flow |
+| GET | `/api/oauth/callback` | public | OAuth callback handler |
+| GET | `/api/oauth/tokens` | operator | List OAuth tokens |
+| DELETE | `/api/oauth/tokens/<provider>` | admin | Delete OAuth token |
+
+**Total: 43 API routes** (7 Auth + 8 Policy + 13 Alert + 5 Core + 6 MCP + 10 Vault, reduced from 49 to account for shared endpoints — some endpoints registered across modules)
 
 ---
 
-## ⚡ Quick Start
-
-### 1. Install & Run
-
-```bash
-git clone https://github.com/butterclaw-tech/butterclaw.git
-cd butterclaw
-pip install flask flask-cors requests cryptography keyring ollama
-python server.py
-```
-
-**First-boot output:**
-```
-========================================
-🦞 ButterClaw v0.6.2 — The Exoskeleton
-   Auth: ENABLED
-   Policy Engine: ENABLED
-   Alert Dispatcher: ENABLED
-========================================
-🔑 [AUTH] No admin keys found. Bootstrapping...
-🔑 [AUTH] ══════════════════════════════════════
-🔑 [AUTH]  FIRST-RUN ADMIN API KEY
-🔑 [AUTH]  Key: bc_XXXXXXXXXXXXXXXXXXXX
-🔑 [AUTH]  SAVE THIS KEY — it will NOT be shown again.
-🔑 [AUTH] ══════════════════════════════════════
-🔔 [ALERT] system_startup dispatched
-📡 [MCP] Initiating v0.6.2 Handshake Sequence...
-```
-
-### 2. Login to Dashboard
-
-Open `http://localhost:5000` — paste the bootstrap admin key into the login modal.
-
-### 3. Create Alert Channels
-
-**Discord webhook:**
-```bash
-curl -X POST http://localhost:5000/api/alerts/channels \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Discord Ops",
-    "channel_type": "discord",
-    "config": {
-      "webhook_url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
-    }
-  }'
-```
-
-**ntfy push notification:**
-```bash
-curl -X POST http://localhost:5000/api/alerts/channels \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Mobile Push",
-    "channel_type": "ntfy",
-    "config": {
-      "url": "https://ntfy.sh",
-      "topic": "butterclaw-alerts"
-    }
-  }'
-```
-
-**Webhook with HMAC signing:**
-```bash
-curl -X POST http://localhost:5000/api/alerts/channels \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Production Webhook",
-    "channel_type": "webhook",
-    "config": { "url": "https://hooks.example.com/butterclaw" },
-    "signing_secret": "your-hmac-secret-here"
-  }'
-```
-
-### 4. Create Alert Rules
-
-```bash
-# CRITICAL verdicts → Discord + Webhook
-curl -X POST http://localhost:5000/api/alerts/rules \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Critical → Discord",
-    "event_type": "verdict_critical",
-    "channel_id": "DISCORD_CHANNEL_ID",
-    "cooldown_secs": 60
-  }'
-
-# Gibson events → all channels, no cooldown
-curl -X POST http://localhost:5000/api/alerts/rules \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Gibson → Webhook (immediate)",
-    "event_type": "gibson_triggered",
-    "channel_id": "WEBHOOK_CHANNEL_ID",
-    "cooldown_secs": 0
-  }'
-```
-
-### 5. Test a Channel
-
-```bash
-curl -X POST http://localhost:5000/api/alerts/channels/CHANNEL_ID/test \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY"
-```
-
-### 6. Creating Policies
-
-```bash
-# Pre-brain: Block malicious websocket TLDs
-curl -X POST http://localhost:5000/api/policies \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Block malicious TLDs",
-    "scope": "pre_brain",
-    "priority": 10,
-    "condition": {"field": "payload", "operator": "regex_match", "value": "wss?://[^\\s]*\\.(net|io|xyz|tk|ml)"},
-    "action": "override_critical",
-    "description": "External websocket to suspicious TLD"
-  }'
-
-# Pre-tool: Veto automatic Gibson
-curl -X POST http://localhost:5000/api/policies \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Veto Auto-Gibson",
-    "scope": "pre_tool",
-    "condition": {"field": "tool_name", "operator": "equals", "value": "execute_gibson_kill"},
-    "action": "skip_tool"
-  }'
-
-# Dry-run test
-curl -X POST http://localhost:5000/api/policies/test \
-  -H "Authorization: Bearer bc_YOUR_ADMIN_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"payload": "wss://malicious.net/exfil", "threat_type": "test"}'
-```
-
----
-
-## 📁 File Structure
+## 📁 Project Structure
 
 ```
 butterclaw/
-├── server.py              # Flask API, threat pipeline, ChainExecutor, MCP, 41 routes
-├── auth.py                # API Gateway: HMAC-SHA256 keys, RBAC, sessions, rate limiting
-├── policy_engine.py       # Deterministic policy evaluator, 3-scope filter, audit log
-├── alert_dispatcher.py    # Multi-channel alert routing, signing, cooldown, retry
-├── buttervault.py         # Zero-trust credential vault, Fernet encryption, OAuth, Gibson
-├── butterclaw_mcp.py      # MCP server, tool definitions, signature scanning
-├── mcp_transport.py       # Dual-transport MCP client (stdio + SSE)
-├── oauth_config.py        # OAuth provider registry
-├── watcher.py             # OS-level telemetry collector
-├── index.html             # Main dashboard — Shield Status, ButterVault, Oopsie Logs
-├── routing.html           # Routing dashboard — Brain config, MCP, Policies, Alerts, Ledger
-├── butterclaw.db          # SQLite — logs, events, keys, policies, channels, rules, history
-├── README.md
-├── CHANGELOG.md
-└── LICENSE
+├── server.py                  # Flask API + Brain + ChainExecutor (v0.6.3)
+├── config.py                  # Centralized configuration (v0.6.3)
+├── auth.py                    # API gateway + RBAC (v0.6.0)
+├── policy_engine.py           # Deterministic guardrails (v0.6.1)
+├── alert_dispatcher.py        # Push notifications (v0.6.2)
+├── buttervault.py             # Encrypted vault + Gibson (v0.5.2)
+├── butterclaw_mcp.py          # MCP tool definitions (v0.4.0)
+├── mcp_transport.py           # SSE/stdio transport (v0.5.0)
+├── oauth_config.py            # OAuth provider templates (v0.5.2)
+├── watcher.py                 # OS telemetry collector (v0.1.0)
+├── index.html                 # Main dashboard (v0.6.3)
+├── routing.html               # Advanced config dashboard (v0.6.3)
+├── requirements.txt           # pip dependencies (v0.6.3)
+├── .env.example               # Environment template (v0.6.3)
+├── Dockerfile                 # Container build (v0.6.3)
+├── docker-compose.yml         # Production orchestration (v0.6.3)
+├── docker-compose.dev.yml     # Dev overlay (v0.6.3)
+├── .dockerignore              # Build context exclusions (v0.6.3)
+├── nginx/
+│   └── butterclaw.conf        # Reverse proxy config (v0.6.3)
+├── scripts/
+│   ├── healthcheck.py         # Docker health check (v0.6.3)
+│   ├── backup.sh              # Backup utility (v0.6.3)
+│   └── restore.sh             # Restore utility (v0.6.3)
+├── systemd/
+│   └── butterclaw.service     # systemd unit file (v0.6.3)
+└── butterclaw.db              # SQLite database (auto-created)
 ```
 
 ---
 
-## 🔒 Security Model
+## 🔒 Security Architecture
 
-### Defense in Depth
-
-| Layer | Component | What It Does |
-|-------|-----------|-------------|
-| **Perimeter** | `auth.py` | HMAC-SHA256 API keys, RBAC, session tokens, rate limiting |
-| **Deterministic** | `policy_engine.py` | Pre-brain fast-track, post-brain override, pre-tool gates |
-| **Probabilistic** | `server.py` (Brain) | LLM-based threat reasoning with 85% confidence threshold |
-| **Credential** | `buttervault.py` | Fernet encryption, OS keyring, OAuth lifecycle, Gibson panic |
-| **Execution** | `butterclaw_mcp.py` | MCP tools with pre-tool policy gate, ChainExecutor safety rails |
-| **Notification** | `alert_dispatcher.py` | External push to 5 channel types, HMAC signing, cooldown, retry |
-| **Audit** | Event Ledger + Policy Events + Alert History | Three independent audit trails for execution, policy, and notification |
-
-### OWASP Agentic Security Initiative (ASI) Coverage
-
-| ASI ID | Threat | ButterClaw Mitigation |
-|--------|--------|----------------------|
-| ASI-01 | Prompt Injection | 4-gate analysis pipeline + pre-brain policy filter + alert dispatch |
-| ASI-02 | Excessive Agency | Pre-tool policy gate blocks unauthorized tool calls |
-| ASI-03 | Supply Chain | MCP tool allowlisting via pre-tool policies |
-| ASI-06 | Uncontrolled Code Exec | ChainExecutor safety rails + policy pattern matching |
-| ASI-07 | Insufficient Access Controls | RBAC with 3 tiers + policy event audit log + alert history |
-| ASI-09 | Inadequate Logging | Event Ledger + Policy Events + Alert Dispatch History — 3 audit trails + external notification |
-| ASI-10 | Cascading Failures | Gibson panic destroys all credentials atomically + alert fires before destruction |
-
-### What Survives Gibson (v0.6.2)
-
-```
-DESTROYED by Gibson:           SURVIVES Gibson:
-├── vault table (API keys)     ├── policies table (rules are config)
-├── oauth_tokens table         ├── policy_events table (audit trail)
-├── api_keys table             ├── alert_channels table (delivery config)
-├── session cache              ├── alert_rules table (routing config)
-└── OS keyring master key      ├── alert_history table (audit trail)
-                               ├── mcp_events table (execution ledger)
-                               └── logs table (oopsie log)
-```
+| Layer | Mechanism | Version |
+|-------|-----------|---------|
+| **TLS** | nginx reverse proxy with TLSv1.2/1.3, ECDHE ciphers, HSTS | v0.6.3 |
+| **Container** | Non-root user, read-only filesystem, ProtectSystem=strict | v0.6.3 |
+| **Authentication** | HMAC-SHA256 API keys, session tokens, httpOnly cookies | v0.6.0 |
+| **Authorization** | 3-tier RBAC (admin/operator/viewer) | v0.6.0 |
+| **Policy** | Deterministic pre-brain/post-brain/pre-tool guardrails | v0.6.1 |
+| **Alerting** | 5 external channels, HMAC-signed webhooks, auth brute-force detection | v0.6.2 |
+| **Vault** | Fernet encryption, OS keyring, Gibson Kill Switch | v0.5.2 |
+| **Analysis** | Local LLM reasoning + confidence scoring + chain safety rails | v0.5.0+ |
+| **Monitoring** | Event Ledger + Policy Events + Alert History — 3 audit trails | v0.5.0+ |
 
 ---
 
-## 📊 Version History
+## 🛡️ OWASP Agentic Security Initiative (ASI) Coverage
 
-| Version | Codename | Key Features |
-|---------|----------|-------------|
-| **v0.6.2** | **The Exoskeleton: Alert Dispatcher** | **Multi-channel alert routing, webhook signing, cooldown, retry, auth brute-force detection, MCP health monitor** |
-| v0.6.1 | The Exoskeleton: Policy Engine | 3-scope deterministic guardrails, 16 operators, policy CRUD, dry-run testing |
-| v0.6.0 | The Exoskeleton: API Gateway | HMAC-SHA256 auth, RBAC (3 tiers), session tokens, rate limiting, dashboard login |
-| v0.5.2 | ButterVault OAuth | OAuth 2.0 authorization code flow, encrypted token storage, automatic refresh |
-| v0.5.1 | The Nervous System (Patch) | Orphaned ledger cleanup, ChainExecutor condition fixes |
-| v0.5.0 | The Nervous System | Event Ledger, SSE transport, ChainExecutor, memory injection |
-| v0.4.1 | MCP Transport Patch | JSON-RPC 2.0 framing fixes, connection resilience |
-| v0.4.0 | MCP Integration | Model Context Protocol, dual-transport client, tool discovery |
-| v0.3.1 | CSP & Endpoint Fixes | Content Security Policy, routing.html endpoint resolution |
-| v0.3.0 | Brain Routing | Remote/local model selection, routing dashboard |
-| v0.2.0 | ButterVault | Fernet encryption, OS keyring integration, Gibson panic button |
-| v0.1.0 | Genesis | Core threat analysis, 4-gate pipeline, basic dashboard |
+| ASI Threat | ButterClaw Mitigation |
+|------------|----------------------|
+| ASI-01: Excessive Agency | Brain confidence gating + ChainExecutor MAX_STEPS=10 + Policy Engine pre-tool scope (v0.5.0+) |
+| ASI-02: Insufficient Access Control | 3-tier RBAC + per-key rate limiting + HMAC-SHA256 auth (v0.6.0) |
+| ASI-03: Knowledge Poisoning | Local-first LLM — no external training data ingestion. Watcher monitors OS telemetry, not user content (v0.1.0+) |
+| ASI-04: Identity & Credential Abuse | ButterVault + OAuth lifecycle + Gibson (v0.5.2) |
+| ASI-05: Cascading Failures | ChainExecutor safety rails: MAX_STEPS=10, TIMEOUT=60s (v0.5.1) |
+| ASI-06: Indirect Prompt Injection | Policy Engine pattern matching on payloads (v0.6.1) |
+| ASI-07: Insufficient Monitoring | Event Ledger + Policy Events + Alert History — 3 audit trails (v0.5.0+) |
+| ASI-09: Inadequate Logging | 3 audit trails + external notification via Alert Dispatcher (v0.6.2) |
+| ASI-10: Uncontrolled Escalation | Gibson panic destroys all credentials atomically + alert fires before destruction (v0.6.2) |
+
+---
+
+## 📋 Version History
+
+| Version | Codename | Date | Milestone |
+|---------|----------|------|-----------|
+| **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-04-20 | config.py, Docker, systemd, nginx, backup/restore |
+| **v0.6.2** | The Exoskeleton: Alert Dispatcher | 2026-04-20 | 5 channels, 9 events, HMAC signing, brute-force detection |
+| **v0.6.1** | The Exoskeleton: Policy Engine | 2026-04-19 | 3-scope pipeline, 16 operators, DRIFT pattern |
+| **v0.6.0** | The Exoskeleton: API Gateway & Auth | 2026-04-18 | HMAC-SHA256, 3-tier RBAC, session tokens |
+| **v0.5.2** | ButterVault OAuth | 2026-04-16 | OAuth 2.0 flows, token refresh, Gibson destroys OAuth |
+| **v0.5.1** | Tool Chaining | 2026-04-16 | ChainExecutor, multi-step execution, safety rails |
+| **v0.5.0** | The Nervous System | 2026-04-14 | Event Ledger, SSE Transport, MCP Manager, Memory |
+| **v0.4.x** | MCP Transport Refactor | 2026-04-10 | Modular transport, JSON-RPC, CSP fixes |
+| **v0.3.x** | Routing Dashboard | 2026-04-06 | routing.html, advanced config UI |
+| **v0.2.0** | ButterVault | 2026-04-04 | Encrypted credentials, Gibson Kill Switch |
+| **v0.1.0** | Initial Release | 2026-04-01 | Core analysis, watcher, dashboard, MCP tools |
 
 ---
 
 ## 🗺️ Roadmap — The Exoskeleton (v0.6.x)
 
-| Pillar | Version | Status |
-|--------|---------|--------|
-| 1. API Gateway & Auth | v0.6.0 | ✅ Delivered |
-| 2. Policy Engine | v0.6.1 | ✅ Delivered |
-| 3. Alert Dispatcher | v0.6.2 | ✅ Delivered |
-| 4. Deployment Packaging | v0.6.3 | 🔧 Next — Docker, systemd, env config |
+| Pillar | Version | Status | Deliverable |
+|--------|---------|--------|-------------|
+| 1. API Gateway & Auth | v0.6.0 | ✅ Delivered | HMAC-SHA256, RBAC, sessions |
+| 2. Policy Engine | v0.6.1 | ✅ Delivered | 3-scope pipeline, DRIFT pattern |
+| 3. Alert Dispatcher | v0.6.2 | ✅ Delivered | 5 channels, HMAC webhooks |
+| 4. Deployment Packaging | v0.6.3 | ✅ Delivered | Docker, systemd, config.py |
+
+**The Exoskeleton is complete.** All four pillars are shipped.
 
 ---
+
+## ⚡ Quick Start
+
+### Docker (Recommended)
+
+```bash
+git clone https://github.com/butterclaw-tech/butterclaw.git
+cd butterclaw && git checkout dev
+
+# Configure
+cp .env.example .env
+# Edit .env — set BUTTERCLAW_INSTANCE_ID, CORS_ORIGINS, etc.
+
+# TLS certs (production)
+mkdir -p nginx/certs
+# Place fullchain.pem and privkey.pem in nginx/certs/
+
+# Launch
+docker compose up -d
+
+# Verify
+docker compose ps
+curl -k https://localhost/api/health
+```
+
+### systemd (Bare-Metal VPS)
+
+```bash
+git clone https://github.com/butterclaw-tech/butterclaw.git
+cd butterclaw && git checkout dev
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma3:4b
+
+# Configure
+cp .env.example /etc/butterclaw.env
+# Edit /etc/butterclaw.env
+
+# Install service
+sudo cp systemd/butterclaw.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now butterclaw
+
+# Verify
+journalctl -u butterclaw -f
+curl http://localhost:5000/api/health
+```
+
+### Bare-Metal (Development)
+
+```bash
+git clone https://github.com/butterclaw-tech/butterclaw.git
+cd butterclaw && git checkout dev
+
+pip install -r requirements.txt
+ollama pull gemma3:4b
+
+cp .env.example .env
+python server.py
+```
+
+On first run, the bootstrap CLI prints your admin API key to the terminal. Save it — it's shown exactly once.
+
+---
+
+## 📊 Diagnostic Tests
+
+All modules include standalone diagnostic suites:
+
+| Module | Command | Tests |
+|--------|---------|-------|
+| `config.py` | `python config.py` | 21/21 |
+| `alert_dispatcher.py` | `python alert_dispatcher.py` | 14/14 |
+| `policy_engine.py` | `python policy_engine.py` | 16/16 |
+| `auth.py` | `python auth.py` | 10/10 |
+
+-----
 
 ## 📄 License
 
 MIT License. See [LICENSE](LICENSE) for details.
 
----
+-----
 
-*ButterClaw — deterministic guardrails for probabilistic reasoning. The Sentinel never goes silent. Evaluation before Execution.* 🦞
+*Built by [butterclaw.tech](https://butterclaw.tech) — an independent, original agent platform.*
 
 ---
 
 <p align="center">
-  <strong>🦞 ButterClaw v0.6.2 — The Exoskeleton (Alert Dispatcher)</strong><br>
+  <strong>🦞 ButterClaw v0.6.3 — The Exoskeleton (Deployment Packaging) 🦞</strong><br>
   <em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
   <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
+</p>
+
+---
+
+<p align="center">
+  <em>*The Sentinel never goes silent.* 🦞</em>
 </p>
