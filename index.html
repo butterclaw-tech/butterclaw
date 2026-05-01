@@ -44,6 +44,9 @@
         'text-blue-400', 'text-blue-600', 'text-blue-700', 'text-blue-900',
         'bg-emerald-500', 'bg-amber-500', 'bg-red-500',
         'text-emerald-800', 'text-amber-800', 'text-red-800',
+        // [v0.6.1] Policy Engine badge colors
+        'bg-rose-50', 'bg-rose-100', 'border-rose-200', 'text-rose-600', 'text-rose-700',
+        'bg-violet-50', 'bg-violet-100', 'border-violet-200', 'text-violet-500', 'text-violet-600',
       ]
     }
   </script>
@@ -63,9 +66,9 @@
   </div>
 
   <aside id="sidebar"
-    class="w-64 bg-white border-r border-slate-200 flex-col justify-between
+    class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between
            fixed inset-y-0 left-0 z-40 transform -translate-x-full transition-transform duration-300
-           md:relative md:translate-x-0 md:flex">
+           md:relative md:translate-x-0 md:flex overflow-y-auto scrollbar-thin scrollbar-thumb-slate-100">
     <div>
       <div class="p-6 flex items-center justify-between">
         <div class="flex items-center space-x-3">
@@ -98,6 +101,10 @@
         <a href="routing.html#eventLedgerSection"
           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">📋</span><span>Event Ledger</span>
+        </a>
+        <a href="routing.html#policyEngineSection"
+          class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">🛡️</span><span>Policy Engine</span>
         </a>
       </nav>
     </div>
@@ -208,7 +215,8 @@
   <div id="butterVaultModal"
     class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
     <div id="bvContent"
-      class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 relative max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">      <button id="closeVaultBtn"
+      class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 relative max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+      <button id="closeVaultBtn"
         class="absolute top-6 right-6 text-slate-400 hover:text-dark transition bg-slate-100 hover:bg-slate-200 rounded-full p-2">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -281,7 +289,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.0 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.1 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -844,6 +852,35 @@
         chainRow.appendChild(chainBadge);
         chainRow.appendChild(ledgerLink);
         contentDiv.appendChild(chainRow);
+      }
+
+      // [v0.6.1] Policy override badge — shows when Brain verdict was influenced by a policy
+      if (log.action && log.action.indexOf('[Policy') !== -1) {
+        const policyRow = document.createElement('div');
+        policyRow.className = 'flex items-center space-x-2 mt-2';
+
+        const policyBadge = document.createElement('span');
+        policyBadge.className = 'text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase tracking-wider';
+
+        // Determine badge text based on action content
+        if (log.action.indexOf('[Policy Override]') !== -1 || log.action.indexOf('[Policy Escalated') !== -1) {
+          policyBadge.textContent = '🛡️ Policy Override';
+        } else if (log.action.indexOf('[Policy Fast-Track]') !== -1) {
+          policyBadge.textContent = '🛡️ Policy Fast-Track';
+        } else if (log.action.indexOf('[Policy: Confidence') !== -1) {
+          policyBadge.textContent = '🛡️ Confidence Gate';
+        } else {
+          policyBadge.textContent = '🛡️ Policy Applied';
+        }
+
+        const policyLink = document.createElement('a');
+        policyLink.href = 'routing.html#policyEngineSection';
+        policyLink.className = 'text-[10px] text-rose-600 font-bold hover:text-rose-800 hover:underline transition';
+        policyLink.textContent = 'View Policies →';
+
+        policyRow.appendChild(policyBadge);
+        policyRow.appendChild(policyLink);
+        contentDiv.appendChild(policyRow);
       }  
       
       const timeSpan = document.createElement('span'); timeSpan.className = `ml-4 text-xs text-${color}-400 font-bold tracking-wider`; timeSpan.textContent = log.time || '';
@@ -883,7 +920,7 @@
       };
     };
 
-    // [v0.6.0] Check session before loading data
+    // [v0.6.1] Check session before loading data
     checkSession().then(function(valid) {
       if (valid) {
         connectSSE();

@@ -52,7 +52,8 @@
 
   <aside id="sidebar"
          class="fixed md:static z-40 w-64 bg-white border-r border-slate-200 flex flex-col justify-between
-                h-full transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+                h-full transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out
+                overflow-y-auto scrollbar-thin scrollbar-thumb-slate-100">
     <div>
       <div class="p-6 flex items-center justify-between">
         <div class="flex items-center space-x-3">
@@ -78,6 +79,10 @@
         <a href="index.html#oopsieSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">📋</span><span>Oopsie Logs</span>
+        </a>
+        <a href="#policyEngineSection"
+           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">🛡️</span><span>Policy Engine</span>
         </a>
         <a href="routing.html"
            class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
@@ -112,7 +117,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.0</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.1</div>
     </div>
   </aside>
 
@@ -288,8 +293,89 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.0)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.1)</p>
           <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
+        </div>
+      </div>
+
+      <div id="policyEngineSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+        <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-rose-400 to-orange-500 left-0"></div>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="bg-rose-100 text-rose-600 p-3 rounded-xl text-xl shadow-inner">🛡️</div>
+            <div>
+              <h3 class="text-xl font-extrabold text-dark tracking-tight">Policy Engine</h3>
+              <p id="policyTotalCount" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-3">
+            <select id="policyFilterScope" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+              <option value="">All Scopes</option>
+              <option value="pre_brain">Pre-Brain</option>
+              <option value="post_brain">Post-Brain</option>
+              <option value="pre_tool">Pre-Tool</option>
+            </select>
+            <select id="policyFilterStatus" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-slate-50 text-slate-600 font-medium">
+              <option value="">All</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <button id="policyRefreshBtn" class="text-[10px] font-bold text-rose-600 hover:text-rose-800 transition uppercase tracking-wider">Refresh</button>
+            <button id="policyCreateBtn" class="bg-dark hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition flex items-center space-x-1.5">
+              <span>+</span><span>New Policy</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="policyContainer" class="space-y-2 max-h-[400px] overflow-y-auto pr-2 mb-6 scrollbar-thin scrollbar-thumb-slate-200">
+          <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
+            <p class="text-xs text-slate-400">Loading policies...</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-5">
+          <div class="flex items-center space-x-2 mb-3">
+            <span class="text-sm">🧪</span>
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Dry-Run Policy Test</label>
+          </div>
+          <div class="flex gap-3 mb-3">
+            <textarea id="policyTestPayload" rows="3" placeholder="Paste a payload to test against all policies..."
+              class="flex-1 px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition font-mono text-xs bg-white text-slate-700 shadow-sm resize-none"></textarea>
+          </div>
+          <div class="flex items-center gap-3">
+            <select id="policyTestThreatType" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 font-medium">
+              <option value="test">test</option>
+              <option value="prompt_injection">prompt_injection</option>
+              <option value="data_exfiltration">data_exfiltration</option>
+              <option value="privilege_escalation">privilege_escalation</option>
+              <option value="heartbeat_ping">heartbeat_ping</option>
+            </select>
+            <button id="policyTestBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2 rounded-lg font-bold text-xs transition flex items-center space-x-1.5">
+              <span>🧪</span><span>Run Dry Test</span>
+            </button>
+          </div>
+          <div id="policyTestResults" class="mt-3 hidden">
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div id="policyTestPreBrain" class="bg-white border border-slate-100 rounded-lg p-3">
+                <p class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Pre-Brain</p>
+                <p class="text-lg font-extrabold text-dark">-</p>
+              </div>
+              <div id="policyTestPostBrain" class="bg-white border border-slate-100 rounded-lg p-3">
+                <p class="text-[10px] font-bold text-violet-600 uppercase tracking-wider mb-1">Post-Brain</p>
+                <p class="text-lg font-extrabold text-dark">-</p>
+              </div>
+              <div id="policyTestPreTool" class="bg-white border border-slate-100 rounded-lg p-3">
+                <p class="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Pre-Tool</p>
+                <p class="text-lg font-extrabold text-dark">-</p>
+              </div>
+            </div>
+            <div id="policyTestDetails" class="mt-2 text-xs text-slate-500 font-mono bg-white border border-slate-100 rounded-lg p-3 max-h-[150px] overflow-y-auto hidden scrollbar-thin scrollbar-thumb-slate-200"></div>
+          </div>
+        </div>
+
+        <div class="bg-rose-50 border border-rose-100 rounded-xl p-4 text-xs text-rose-700 mt-6">
+          <p class="font-bold mb-1">🛡️ Deterministic Guardrails — Policy Engine (v0.6.1)</p>
+          <p>The Policy Engine constrains the probabilistic Brain with deterministic rules. Pre-brain filters short-circuit known patterns without burning inference time. Post-brain validators can override, escalate, or require higher confidence. Pre-tool gates block specific MCP tool calls in chains. Policies are evaluated in priority order (lowest number first). First non-"allow" match wins.</p>
         </div>
       </div>
 
@@ -318,12 +404,14 @@
               <option value="error">Error</option>
               <option value="timeout">Timeout</option>
               <option value="pending">Pending</option>
+              <option value="skipped">Skipped</option>
+              <option value="policy_blocked">Policy Blocked</option>
             </select>
             <button id="ledgerRefreshBtn" class="text-[10px] font-bold text-cyan-600 hover:text-cyan-800 transition uppercase tracking-wider">Refresh</button>
           </div>
         </div>
 
-        <div id="ledgerContainer" class="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+        <div id="ledgerContainer" class="space-y-2 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
           <div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">
             <p class="text-xs text-slate-400">Loading event ledger...</p>
           </div>
@@ -332,6 +420,114 @@
 
     </div>
   </main>
+
+  <div id="policyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
+    <div id="policyModalContent" class="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-3">
+          <span class="text-2xl">🛡️</span>
+          <h3 id="policyModalTitle" class="text-xl font-extrabold text-dark tracking-tight">New Policy</h3>
+        </div>
+        <button id="policyModalCloseBtn" class="text-slate-400 hover:text-dark transition text-xl">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Name</label>
+          <input id="policyNameInput" type="text" placeholder="Block external websocket exfiltration"
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
+          <input id="policyDescInput" type="text" placeholder="Why this policy exists..."
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Scope</label>
+            <select id="policyScopeSelect"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition bg-slate-50 text-slate-700 font-medium shadow-sm appearance-none">
+              <option value="pre_brain">Pre-Brain</option>
+              <option value="post_brain">Post-Brain</option>
+              <option value="pre_tool">Pre-Tool</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Priority (1-100)</label>
+            <input id="policyPriorityInput" type="number" min="1" max="100" value="50"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm font-mono">
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Condition</p>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Field</label>
+              <select id="policyFieldSelect"
+                class="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 font-medium">
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Operator</label>
+              <select id="policyOperatorSelect"
+                class="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 font-medium">
+                <option value="contains">contains</option>
+                <option value="not_contains">not_contains</option>
+                <option value="equals">equals</option>
+                <option value="not_equals">not_equals</option>
+                <option value="starts_with">starts_with</option>
+                <option value="ends_with">ends_with</option>
+                <option value="regex_match">regex_match</option>
+                <option value="greater_than">greater_than</option>
+                <option value="less_than">less_than</option>
+                <option value="greater_equal">greater_equal</option>
+                <option value="less_equal">less_equal</option>
+                <option value="in_list">in_list</option>
+                <option value="not_in_list">not_in_list</option>
+                <option value="length_gt">length_gt</option>
+                <option value="length_lt">length_lt</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Value</label>
+              <input id="policyValueInput" type="text" placeholder="wss://.*"
+                class="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs bg-white text-slate-700 font-mono">
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Action</label>
+            <select id="policyActionSelect"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition bg-slate-50 text-slate-700 font-medium shadow-sm appearance-none">
+              <option value="override_critical">Override → CRITICAL</option>
+              <option value="override_benign">Override → BENIGN</option>
+              <option value="block">Block Request</option>
+              <option value="skip_tool">Skip Tool</option>
+              <option value="require_confidence">Require Confidence</option>
+              <option value="allow">Allow (log only)</option>
+            </select>
+          </div>
+          <div id="policyConfidenceGroup" class="hidden">
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Confidence (%)</label>
+            <input id="policyConfidenceInput" type="number" min="1" max="100" value="90"
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-rose-400 focus:ring-4 focus:ring-rose-400/10 outline-none transition text-sm bg-slate-50 text-slate-700 shadow-sm font-mono">
+          </div>
+        </div>
+
+        <p id="policyModalError" class="text-xs text-red-500 font-bold hidden"></p>
+
+        <button id="policySaveBtn"
+          class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
+          <span>🛡️</span><span>Create Policy</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div id="authLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
     <div id="authLoginContent" class="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
@@ -354,7 +550,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.0 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.1 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -525,10 +721,486 @@
 
       if (loginBtn) loginBtn.addEventListener('click', handleLogin);
       if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-
+      
       if (keyInput) keyInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') handleLogin();
       });
+    }, 0);
+
+    // =============================================
+    // [v0.6.1] POLICY ENGINE 🛡️
+    // =============================================
+
+    // Scope → available fields mapping (mirrors policy_engine.py)
+    const POLICY_SCOPE_FIELDS = {
+      pre_brain:  ['payload', 'threat_type', 'payload_length', 'source_ip', 'hour_of_day', 'day_of_week'],
+      post_brain: ['payload', 'threat_type', 'payload_length', 'source_ip', 'hour_of_day', 'day_of_week',
+                   'verdict', 'confidence', 'primary_gate', 'reasoning', 'has_chain'],
+      pre_tool:   ['payload', 'threat_type', 'payload_length', 'source_ip', 'hour_of_day', 'day_of_week',
+                   'verdict', 'confidence', 'primary_gate', 'reasoning', 'has_chain',
+                   'tool_name', 'tool_args', 'chain_step']
+    };
+
+    const POLICY_SCOPE_COLORS = {
+      pre_brain:  { bg: 'bg-emerald-50',  text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+      post_brain: { bg: 'bg-violet-50',   text: 'text-violet-700',  border: 'border-violet-200',  dot: 'bg-violet-500'  },
+      pre_tool:   { bg: 'bg-amber-50',    text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-500'   }
+    };
+
+    const POLICY_ACTION_LABELS = {
+      override_critical:  { label: 'CRITICAL',       color: 'text-red-600 bg-red-50 border-red-200' },
+      override_benign:    { label: 'BENIGN',          color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+      block:              { label: 'BLOCK',           color: 'text-red-600 bg-red-50 border-red-200' },
+      skip_tool:          { label: 'SKIP TOOL',       color: 'text-amber-600 bg-amber-50 border-amber-200' },
+      require_confidence: { label: 'REQUIRE CONF.',   color: 'text-violet-600 bg-violet-50 border-violet-200' },
+      allow:              { label: 'ALLOW (LOG)',      color: 'text-slate-500 bg-slate-50 border-slate-200' }
+    };
+
+    let _editingPolicyId = null;  // null = creating, string = editing
+
+    // ---- Fetch & Render Policy List ----
+
+    async function fetchPolicies() {
+      const container = document.getElementById('policyContainer');
+      const countEl = document.getElementById('policyTotalCount');
+      const scopeFilter = document.getElementById('policyFilterScope').value;
+      const statusFilter = document.getElementById('policyFilterStatus').value;
+
+      try {
+        let url = API_BASE + '/api/policies?';
+        if (scopeFilter) url += 'scope=' + scopeFilter + '&';
+        if (statusFilter === 'enabled') url += 'enabled=true&';
+        const res = await authFetch(url);
+        if (!res.ok) throw new Error('Failed to load policies');
+        const policies = await res.json();
+
+        // Client-side filter for disabled (API returns all if enabled not set)
+        let filtered = policies;
+        if (statusFilter === 'disabled') {
+          filtered = policies.filter(p => !p.enabled);
+        }
+
+        countEl.textContent = filtered.length + ' polic' + (filtered.length === 1 ? 'y' : 'ies');
+
+        if (filtered.length === 0) {
+          container.innerHTML = '<div class="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center">'
+            + '<p class="text-sm font-bold text-slate-400 mb-1">No policies found</p>'
+            + '<p class="text-xs text-slate-300">Create your first policy to add deterministic guardrails to the Brain.</p></div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        // Sort by priority (ascending)
+        filtered.sort((a, b) => (a.priority || 50) - (b.priority || 50));
+        filtered.forEach(policy => {
+          container.appendChild(buildPolicyCard(policy));
+        });
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        container.innerHTML = '<div class="bg-red-50 border border-red-100 rounded-xl p-4 text-center">'
+          + '<p class="text-xs text-red-500 font-bold">Failed to load policies. Is the server running?</p></div>';
+      }
+    }
+
+    function buildPolicyCard(policy) {
+      const card = document.createElement('div');
+      const scopeColor = POLICY_SCOPE_COLORS[policy.scope] || POLICY_SCOPE_COLORS.pre_brain;
+      const actionInfo = POLICY_ACTION_LABELS[policy.action] || POLICY_ACTION_LABELS.allow;
+      const isDisabled = !policy.enabled;
+
+      card.className = 'border rounded-xl p-4 transition ' +
+        (isDisabled ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm');
+
+      // Header row: priority + name + scope badge + action badge
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between mb-2';
+
+      const leftHeader = document.createElement('div');
+      leftHeader.className = 'flex items-center space-x-2 min-w-0';
+
+      const priorityBadge = document.createElement('span');
+      priorityBadge.className = 'text-[10px] font-mono text-slate-300 flex-shrink-0';
+      priorityBadge.textContent = '#' + (policy.priority || 50);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'font-bold text-sm text-dark truncate';
+      nameSpan.textContent = policy.name;
+      nameSpan.title = policy.name;
+
+      leftHeader.appendChild(priorityBadge);
+      leftHeader.appendChild(nameSpan);
+
+      const rightHeader = document.createElement('div');
+      rightHeader.className = 'flex items-center space-x-2 flex-shrink-0';
+
+      const scopeBadge = document.createElement('span');
+      scopeBadge.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' +
+        scopeColor.bg + ' ' + scopeColor.text + ' ' + scopeColor.border;
+      scopeBadge.textContent = policy.scope.replace('_', '-');
+
+      const actionBadge = document.createElement('span');
+      actionBadge.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' + actionInfo.color;
+      actionBadge.textContent = actionInfo.label;
+
+      rightHeader.appendChild(scopeBadge);
+      rightHeader.appendChild(actionBadge);
+
+      header.appendChild(leftHeader);
+      header.appendChild(rightHeader);
+      card.appendChild(header);
+
+      // Description row
+      if (policy.description) {
+        const descP = document.createElement('p');
+        descP.className = 'text-xs text-slate-400 mb-2 truncate';
+        descP.textContent = policy.description;
+        descP.title = policy.description;
+        card.appendChild(descP);
+      }
+
+      // Condition preview row
+      const condRow = document.createElement('div');
+      condRow.className = 'bg-slate-50 rounded-lg px-3 py-2 mb-3 font-mono text-[11px] text-slate-500 truncate';
+      const cond = policy.condition || {};
+      condRow.textContent = (cond.field || '?') + ' ' + (cond.operator || '?') + ' "' + (cond.value || '') + '"';
+      condRow.title = condRow.textContent;
+      card.appendChild(condRow);
+
+      // Footer: hits + controls
+      const footer = document.createElement('div');
+      footer.className = 'flex items-center justify-between';
+
+      const hitsSpan = document.createElement('span');
+      hitsSpan.className = 'text-[10px] text-slate-300 font-mono';
+      hitsSpan.textContent = (policy.hit_count || 0) + ' hits · ' + (policy.id || '');
+
+      const controls = document.createElement('div');
+      controls.className = 'flex items-center space-x-2';
+
+      // Toggle button
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = isDisabled
+        ? 'text-[10px] font-bold text-slate-400 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 border border-slate-200 px-2 py-1 rounded-lg transition'
+        : 'text-[10px] font-bold text-emerald-600 hover:text-slate-400 bg-emerald-50 hover:bg-slate-100 border border-emerald-200 px-2 py-1 rounded-lg transition';
+      toggleBtn.textContent = isDisabled ? 'Enable' : 'Disable';
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePolicy(policy.id, isDisabled);
+      });
+
+      // Edit button
+      const editBtn = document.createElement('button');
+      editBtn.className = 'text-[10px] font-bold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-lg transition';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditPolicyModal(policy);
+      });
+
+      // Delete button
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 rounded-lg transition';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deletePolicy(policy.id, policy.name);
+      });
+
+      controls.appendChild(toggleBtn);
+      controls.appendChild(editBtn);
+      controls.appendChild(delBtn);
+
+      footer.appendChild(hitsSpan);
+      footer.appendChild(controls);
+      card.appendChild(footer);
+
+      return card;
+    }
+
+    // ---- CRUD Operations ----
+
+    async function togglePolicy(policyId, enable) {
+      try {
+        await authFetch(API_BASE + '/api/policies/' + policyId + '/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enable })
+        });
+        fetchPolicies();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    async function deletePolicy(policyId, name) {
+      if (!confirm('Delete policy "' + name + '"? This cannot be undone.')) return;
+      try {
+        await authFetch(API_BASE + '/api/policies/' + policyId, { method: 'DELETE' });
+        fetchPolicies();
+      } catch (e) { if (e.message === 'auth_required') return; }
+    }
+
+    // ---- Create/Edit Modal Logic ----
+
+    function updateFieldOptions() {
+      const scope = document.getElementById('policyScopeSelect').value;
+      const fieldSelect = document.getElementById('policyFieldSelect');
+      const fields = POLICY_SCOPE_FIELDS[scope] || [];
+      fieldSelect.innerHTML = '';
+      fields.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        fieldSelect.appendChild(opt);
+      });
+    }
+
+    function updateActionVisibility() {
+      const action = document.getElementById('policyActionSelect').value;
+      const scope = document.getElementById('policyScopeSelect').value;
+      const confGroup = document.getElementById('policyConfidenceGroup');
+      confGroup.classList.toggle('hidden', action !== 'require_confidence');
+
+      // Scope-action compatibility hints (visual only — server validates)
+      const actionSelect = document.getElementById('policyActionSelect');
+      const options = actionSelect.querySelectorAll('option');
+      options.forEach(opt => {
+        opt.disabled = false;
+        if (opt.value === 'skip_tool' && scope !== 'pre_tool') opt.disabled = true;
+        if (opt.value === 'require_confidence' && scope !== 'post_brain') opt.disabled = true;
+      });
+    }
+
+    function openCreatePolicyModal() {
+      _editingPolicyId = null;
+      document.getElementById('policyModalTitle').textContent = 'New Policy';
+      document.getElementById('policySaveBtn').innerHTML = '<span>🛡️</span><span>Create Policy</span>';
+      document.getElementById('policyNameInput').value = '';
+      document.getElementById('policyDescInput').value = '';
+      document.getElementById('policyScopeSelect').value = 'pre_brain';
+      document.getElementById('policyPriorityInput').value = '50';
+      document.getElementById('policyOperatorSelect').value = 'contains';
+      document.getElementById('policyValueInput').value = '';
+      document.getElementById('policyActionSelect').value = 'override_critical';
+      document.getElementById('policyConfidenceInput').value = '90';
+      document.getElementById('policyModalError').classList.add('hidden');
+      updateFieldOptions();
+      updateActionVisibility();
+      showPolicyModal();
+    }
+
+    function openEditPolicyModal(policy) {
+      _editingPolicyId = policy.id;
+      document.getElementById('policyModalTitle').textContent = 'Edit Policy';
+      document.getElementById('policySaveBtn').innerHTML = '<span>💾</span><span>Save Changes</span>';
+      document.getElementById('policyNameInput').value = policy.name || '';
+      document.getElementById('policyDescInput').value = policy.description || '';
+      document.getElementById('policyScopeSelect').value = policy.scope || 'pre_brain';
+      document.getElementById('policyPriorityInput').value = policy.priority || 50;
+      updateFieldOptions();
+      const cond = policy.condition || {};
+      document.getElementById('policyFieldSelect').value = cond.field || '';
+      document.getElementById('policyOperatorSelect').value = cond.operator || 'contains';
+      document.getElementById('policyValueInput').value = cond.value || '';
+      document.getElementById('policyActionSelect').value = policy.action || 'override_critical';
+      if (policy.action_params && policy.action_params.min_confidence) {
+        document.getElementById('policyConfidenceInput').value = policy.action_params.min_confidence;
+      }
+      document.getElementById('policyModalError').classList.add('hidden');
+      updateActionVisibility();
+      showPolicyModal();
+    }
+
+    function showPolicyModal() {
+      const modal = document.getElementById('policyModal');
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        document.getElementById('policyModalContent').classList.remove('scale-95');
+      }, 10);
+    }
+
+    function hidePolicyModal() {
+      const modal = document.getElementById('policyModal');
+      modal.classList.add('opacity-0');
+      document.getElementById('policyModalContent').classList.add('scale-95');
+      setTimeout(() => { modal.classList.add('hidden'); }, 300);
+    }
+
+    async function savePolicy() {
+      const errorEl = document.getElementById('policyModalError');
+      const name = document.getElementById('policyNameInput').value.trim();
+      const description = document.getElementById('policyDescInput').value.trim();
+      const scope = document.getElementById('policyScopeSelect').value;
+      const priority = parseInt(document.getElementById('policyPriorityInput').value) || 50;
+      const field = document.getElementById('policyFieldSelect').value;
+      const operator = document.getElementById('policyOperatorSelect').value;
+      const value = document.getElementById('policyValueInput').value;
+      const action = document.getElementById('policyActionSelect').value;
+      const minConf = parseInt(document.getElementById('policyConfidenceInput').value) || 90;
+
+      if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('hidden'); return; }
+      if (!field) { errorEl.textContent = 'Condition field is required.'; errorEl.classList.remove('hidden'); return; }
+      if (!value && operator !== 'equals') { errorEl.textContent = 'Condition value is required.'; errorEl.classList.remove('hidden'); return; }
+
+      const body = {
+        name: name,
+        description: description || null,
+        scope: scope,
+        priority: priority,
+        condition: { field: field, operator: operator, value: value },
+        action: action,
+        action_params: action === 'require_confidence' ? { min_confidence: minConf } : null
+      };
+
+      errorEl.classList.add('hidden');
+      const saveBtn = document.getElementById('policySaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span>⏳</span><span>Saving...</span>';
+
+      try {
+        let res;
+        if (_editingPolicyId) {
+          res = await authFetch(API_BASE + '/api/policies/' + _editingPolicyId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        } else {
+          res = await authFetch(API_BASE + '/api/policies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        }
+
+        if (res.ok) {
+          hidePolicyModal();
+          fetchPolicies();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errorEl.textContent = data.error || 'Failed to save policy.';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        errorEl.textContent = 'Server unreachable.';
+        errorEl.classList.remove('hidden');
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = _editingPolicyId
+        ? '<span>💾</span><span>Save Changes</span>'
+        : '<span>🛡️</span><span>Create Policy</span>';
+    }
+
+    // ---- Dry-Run Test ----
+
+    async function runPolicyTest() {
+      const payload = document.getElementById('policyTestPayload').value.trim();
+      const threatType = document.getElementById('policyTestThreatType').value;
+      const resultsDiv = document.getElementById('policyTestResults');
+      const detailsDiv = document.getElementById('policyTestDetails');
+
+      if (!payload) { alert('Enter a test payload.'); return; }
+
+      const testBtn = document.getElementById('policyTestBtn');
+      testBtn.disabled = true;
+      testBtn.innerHTML = '<span>⏳</span><span>Testing...</span>';
+
+      try {
+        const res = await authFetch(API_BASE + '/api/policies/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payload: payload, threat_type: threatType })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          resultsDiv.classList.remove('hidden');
+
+          // Update scope result cards
+          ['pre_brain', 'post_brain', 'pre_tool'].forEach(scope => {
+            const el = document.getElementById('policyTest' + scope.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(''));
+            const scopeData = data[scope] || {};
+            
+            // [v0.6.1 PATCH] The engine returns a single winning policy_id, not an array
+            const isMatch = (scopeData.policy_id && scopeData.action !== 'allow') ? 1 : 0;
+            const countP = el.querySelector('p:last-child');
+            countP.textContent = isMatch;
+            countP.className = 'text-lg font-extrabold ' + (isMatch > 0 ? 'text-rose-600' : 'text-dark');
+          });
+
+          // Details panel
+          const hasDetails = Object.values(data).some(s => s.policy_id && s.action !== 'allow');
+          if (hasDetails) {
+            detailsDiv.classList.remove('hidden');
+            let detailText = '';
+            Object.entries(data).forEach(([scope, result]) => {
+              if (result.policy_id && result.action !== 'allow') {
+                detailText += scope + ': action=' + (result.action || 'none') +
+                  ', policy_id=' + result.policy_id +
+                  (result.reason ? ', reason="' + result.reason + '"' : '') + '\n';
+              }
+            });
+            detailsDiv.textContent = detailText.trim();
+          } else {
+            detailsDiv.classList.add('hidden');
+          }
+        }
+      } catch (e) {
+        if (e.message === 'auth_required') return;
+        resultsDiv.classList.remove('hidden');
+      }
+
+      testBtn.disabled = false;
+      testBtn.innerHTML = '<span>🧪</span><span>Run Dry Test</span>';
+    }
+
+    // ---- Policy Event Wiring ----
+
+    setTimeout(() => {
+      // Create button
+      const createBtn = document.getElementById('policyCreateBtn');
+      if (createBtn) createBtn.addEventListener('click', openCreatePolicyModal);
+
+      // Modal close
+      const closeBtn = document.getElementById('policyModalCloseBtn');
+      if (closeBtn) closeBtn.addEventListener('click', hidePolicyModal);
+
+      // Save button
+      const saveBtn = document.getElementById('policySaveBtn');
+      if (saveBtn) saveBtn.addEventListener('click', savePolicy);
+
+      // Scope change → update fields + action compatibility
+      const scopeSelect = document.getElementById('policyScopeSelect');
+      if (scopeSelect) {
+        scopeSelect.addEventListener('change', () => { updateFieldOptions(); updateActionVisibility(); });
+      }
+
+      // Action change → show/hide confidence input
+      const actionSelect = document.getElementById('policyActionSelect');
+      if (actionSelect) actionSelect.addEventListener('change', updateActionVisibility);
+
+      // Filter changes
+      const scopeFilter = document.getElementById('policyFilterScope');
+      const statusFilter = document.getElementById('policyFilterStatus');
+      if (scopeFilter) scopeFilter.addEventListener('change', fetchPolicies);
+      if (statusFilter) statusFilter.addEventListener('change', fetchPolicies);
+
+      // Refresh
+      const refreshBtn = document.getElementById('policyRefreshBtn');
+      if (refreshBtn) refreshBtn.addEventListener('click', fetchPolicies);
+
+      // Test button
+      const testBtn = document.getElementById('policyTestBtn');
+      if (testBtn) testBtn.addEventListener('click', runPolicyTest);
+
+      // Click outside modal to close
+      const modal = document.getElementById('policyModal');
+      if (modal) {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) hidePolicyModal();
+        });
+      }
     }, 0);
 
 
@@ -764,12 +1436,14 @@
     }
 
     async function init() {
-      // [v0.6.0] Check session before loading data
+      // [v0.6.1] Check session before loading data
       const sessionValid = await checkSession();
       if (!sessionValid) return;
 
       renderGates();
       setRoutingMode('local');
+      fetchPolicies();
+      
       try {
         const res = await authFetch(API_BASE + '/api/settings');
         if (res.ok) {
@@ -793,6 +1467,15 @@
       setInterval(mcpCheckStatus, HEALTH_CHECK_INTERVAL);
       ledgerFetch();
       setInterval(ledgerFetch, HEALTH_CHECK_INTERVAL);
+      
+      // Hash-based scroll support
+      if (window.location.hash === '#mcpSection') {
+        setTimeout(() => { document.getElementById('mcpSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
+      } else if (window.location.hash === '#eventLedgerSection') {
+        setTimeout(() => { document.getElementById('eventLedgerSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
+      } else if (window.location.hash === '#policyEngineSection') {
+        setTimeout(() => { document.getElementById('policyEngineSection')?.scrollIntoView({ behavior: 'smooth' }); }, 300);
+      }
     }
 
     // =============================================
@@ -831,13 +1514,6 @@
       closeMobileMenu();
       document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' });
     });
-
-    if (window.location.hash === '#mcpSection') {
-      setTimeout(() => { document.getElementById('mcpSection').scrollIntoView({ behavior: 'smooth' }); }, 300);
-    }
-    if (window.location.hash === '#eventLedgerSection') {
-      setTimeout(() => { document.getElementById('eventLedgerSection').scrollIntoView({ behavior: 'smooth' }); }, 300);
-    }
 
     // [v0.5.0] Transport mode toggle
     function setMcpTransportMode(mode) {
@@ -896,9 +1572,9 @@
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.0 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.0 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.0 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.1 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.1 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.1 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
@@ -1034,11 +1710,12 @@
     const ledgerRefreshBtn   = document.getElementById('ledgerRefreshBtn');
 
     const ledgerStatusColors = {
-      success: { bg: 'bg-emerald-50', border: 'border-emerald-100', dot: 'bg-emerald-500', text: 'text-emerald-700' },
-      error:   { bg: 'bg-red-50',     border: 'border-red-100',     dot: 'bg-red-500',     text: 'text-red-700' },
-      timeout: { bg: 'bg-amber-50',   border: 'border-amber-100',   dot: 'bg-amber-500',   text: 'text-amber-700' },
-      skipped: { bg: 'bg-violet-50',  border: 'border-violet-100',  dot: 'bg-violet-400',  text: 'text-violet-700' },
-      pending: { bg: 'bg-slate-50',   border: 'border-slate-200',   dot: 'bg-slate-400',   text: 'text-slate-500' }
+      success:        { bg: 'bg-emerald-100', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+      error:          { bg: 'bg-red-100',     border: 'border-red-200',     text: 'text-red-700',     dot: 'bg-red-500'     },
+      timeout:        { bg: 'bg-amber-100',   border: 'border-amber-200',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
+      pending:        { bg: 'bg-slate-100',   border: 'border-slate-200',   text: 'text-slate-700',   dot: 'bg-slate-500'   },
+      skipped:        { bg: 'bg-violet-100',  border: 'border-violet-200',  text: 'text-violet-700',  dot: 'bg-violet-500'  },
+      policy_blocked: { bg: 'bg-rose-100',    border: 'border-rose-200',    text: 'text-rose-700',    dot: 'bg-rose-500'    },
     };
 
     function buildLedgerRow(ev) {
@@ -1105,7 +1782,7 @@
         resultToggle.className = 'text-[10px] font-bold text-cyan-600 hover:text-cyan-800 transition mt-1';
         resultToggle.textContent = '▶ Show result';
         const resultBlock = document.createElement('pre');
-        resultBlock.className = 'text-[10px] font-mono text-slate-500 mt-1 p-2 bg-white/50 rounded-lg overflow-x-auto hidden max-h-32 overflow-y-auto';
+        resultBlock.className = 'text-[10px] font-mono text-slate-500 mt-1 p-2 bg-white/50 rounded-lg overflow-x-auto hidden max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200';
         try {
           const parsed = JSON.parse(ev.result);
           resultBlock.textContent = JSON.stringify(parsed, null, 2);
