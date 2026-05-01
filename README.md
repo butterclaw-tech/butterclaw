@@ -93,19 +93,19 @@ Policies survive Gibson. This is correct behavior — if the Gibson fires, you w
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    ButterClaw v0.6.1                      │
+│                    ButterClaw v0.6.1                     │
 │                                                          │
-│  ┌─────────┐    ┌──────────┐    ┌───────────────────┐   │
-│  │ Watcher  │───▶│  Flask   │───▶│  Policy Engine    │   │
-│  │ (OS Tel) │    │  API     │    │  (Pre-Brain)      │   │
-│  └─────────┘    │  Gateway  │    └───────┬───────────┘   │
-│                  │  + Auth   │            │               │
+│  ┌──────────┐    ┌───────────┐   ┌───────────────────┐   │
+│  │ Watcher  │───▶│  Flask   │───▶│  Policy Engine   │   │
+│  │ (OS Tel) │    │  API     │    │   (Pre-Brain)     │   │
+│  └──────────┘    │  Gateway │    └───────┬───────────┘   │
+│                  │  + Auth  │            │               │
 │                  └────┬─────┘    ┌───────▼───────────┐   │
-│                       │          │   Brain (Ollama)   │   │
-│                  ┌────▼─────┐    │   Gemma 4 e2b     │   │
-│                  │ Dashboard │    └───────┬───────────┘   │
-│                  │ (Auth'd) │            │               │
-│                  └──────────┘    ┌───────▼───────────┐   │
+│                       │          │   Brain (Ollama)  │   │
+│                  ┌────▼──────┐   │   Gemma 4 e2b     │   │
+│                  │ Dashboard │   └───────┬───────────┘   │
+│                  │ (Auth'd)  │           │               │
+│                  └───────────┘   ┌───────▼───────────┐   │
 │                                  │  Policy Engine    │   │
 │                                  │  (Post-Brain)     │   │
 │                                  └───────┬───────────┘   │
@@ -415,7 +415,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>🦞 ButterClaw v0.6.1 — The Exoskeleton</strong><br>
+  <strong>🦞 ButterClaw v0.6.1 — The Exoskeleton (Policy Engine)</strong><br>
   <em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
   <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
