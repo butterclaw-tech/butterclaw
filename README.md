@@ -421,11 +421,11 @@ butterclaw/
 | **v0.6.0** | The Exoskeleton: API Gateway & Auth | 2026-04-18 | HMAC-SHA256, 3-tier RBAC, session tokens |
 | **v0.5.2** | ButterVault OAuth | 2026-04-16 | OAuth 2.0 flows, token refresh, Gibson destroys OAuth |
 | **v0.5.1** | Tool Chaining | 2026-04-16 | ChainExecutor, multi-step execution, safety rails |
-| **v0.5.0** | The Nervous System | 2026-04-14 | Event Ledger, SSE Transport, MCP Manager, Memory |
-| **v0.4.x** | MCP Transport Refactor | 2026-04-10 | Modular transport, JSON-RPC, CSP fixes |
-| **v0.3.x** | Routing Dashboard | 2026-04-06 | routing.html, advanced config UI |
-| **v0.2.0** | ButterVault | 2026-04-04 | Encrypted credentials, Gibson Kill Switch |
-| **v0.1.0** | Initial Release | 2026-04-01 | Core analysis, watcher, dashboard, MCP tools |
+| **v0.5.0** | The Nervous System | 2026-04-13 | Event Ledger, SSE Transport, MCP Manager, Memory |
+| **v0.4.x** | MCP Transport Refactor | 2026-04-9 | Modular transport, JSON-RPC, CSP fixes |
+| **v0.3.x** | Routing Dashboard | 2026-04-01 | routing.html, advanced config UI |
+| **v0.2.0** | ButterVault | 2026-03-18 | Encrypted credentials, Gibson Kill Switch |
+| **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
 
 ---
 
@@ -536,10 +536,6 @@ MIT License. See [LICENSE](LICENSE) for details.
 <p align="center">
   <strong>🦞 ButterClaw v0.6.3 — The Exoskeleton (Deployment Packaging) 🦞</strong><br>
   <em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
+  <em>The Sentinel never goes silent.</em><br>
   <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
-
----
-
-<p align="center">
-<em>The Sentinel never goes silent.</em>
