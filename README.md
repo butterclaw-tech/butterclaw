@@ -562,16 +562,9 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 -----
 
-*Built by [butterclaw.tech](https://butterclaw.tech) — an independent, original agent platform.*
-
------
-
-*ButterClaw  —  The Sentinel never goes silent.* 🦞
-
------
-
 <p align="center">
 <strong>🦞 ButterClaw v0.6.3.1 — The Exoskeleton — Full Docker</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
-<a href="https://butterclaw.tech">butterclaw.tech\</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
+<em>The Sentinel never goes silent. We watch the room.</em><br>
+<a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
