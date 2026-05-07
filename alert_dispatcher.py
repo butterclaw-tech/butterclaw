@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.2 — Alert Dispatcher
+ButterClaw v0.6.3.1 — Alert Dispatcher - Full Docker
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -644,7 +644,22 @@ def _format_payload(event_type, context, channel_type):
     severity = SEVERITY_MAP.get(event_type, "info")
     timestamp = datetime.datetime.utcnow().isoformat() + "Z"
     title = f"🦞 ButterClaw Alert: {event_type.replace('_', ' ').title()}"
-    description = context.get("description", context.get("summary", json.dumps(context, default=str)))
+
+    # description = context.get("description", context.get("summary", json.dumps(context, default=str)))
+
+    # --- THE HUMAN POLISH PATCH ---
+    if "description" in context:
+        description = context["description"]
+    elif "summary" in context:
+        description = context["summary"]
+    else:
+        # Turn raw JSON context into a clean, multi-line summary
+        parts = []
+        for key, val in context.items():
+            clean_key = str(key).replace("_", " ").title()
+            parts.append(f"{clean_key}:\n{val}")
+        description = "\n\n".join(parts)
+    # ------------------------------
 
     if channel_type == "webhook":
         payload = {
@@ -760,17 +775,30 @@ def _deliver_discord(config, payload):
     return resp.status
 
 
+
 def _deliver_ntfy(config, payload):
-    """Deliver alert via ntfy push notification."""
+    """Deliver alert via ntfy push notification using HTTP Headers."""
+    import base64
+    
     base_url = config["url"].rstrip("/")
     topic = config["topic"]
     url = f"{base_url}/{topic}"
 
-    payload_bytes = json.dumps(payload, default=str).encode("utf-8")
+    # 1. The body is ONLY the beautifully formatted text
+    message_text = payload.get("message", "Empty Alert")
+    payload_bytes = message_text.encode("utf-8")
 
+    # 2. RFC 2047 encode the title to bypass Python's strict latin-1 header rule
+    raw_title = payload.get("title", "ButterClaw Alert")
+    b64_title = base64.b64encode(raw_title.encode('utf-8')).decode('ascii')
+    safe_title = f"=?UTF-8?B?{b64_title}?="
+
+    # 3. All the fancy stuff moves to the HTTP Headers
     headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "ButterClaw-Alert/0.6.2",
+        "Title": safe_title,
+        "Priority": str(payload.get("priority", 3)),
+        "Tags": ",".join(payload.get("tags", [])),
+        "User-Agent": "ButterClaw-Alert/0.6.3.1",
     }
 
     # ntfy supports auth token
@@ -780,6 +808,57 @@ def _deliver_ntfy(config, payload):
     req = Request(url, data=payload_bytes, headers=headers, method="POST")
     resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
     return resp.status
+
+
+
+# -------------------------------------------------
+#def _deliver_ntfy(config, payload):
+#    """Deliver alert via ntfy push notification using HTTP Headers."""
+#    base_url = config["url"].rstrip("/")
+#    topic = config["topic"]
+#    url = f"{base_url}/{topic}"
+#
+#    # 1. The body is ONLY the beautifully formatted text now
+#    message_text = payload.get("message", "Empty Alert")
+#    payload_bytes = message_text.encode("utf-8")
+#
+#    # 2. All the fancy stuff moves to the HTTP Headers
+#    headers = {
+#        "Title": payload.get("title", "ButterClaw Alert"),
+#        "Priority": str(payload.get("priority", 3)),
+#        "Tags": ",".join(payload.get("tags", [])),
+#        "User-Agent": "ButterClaw-Alert/0.6.3.1",
+#    }
+#
+#    # ntfy supports auth token
+#    if config.get("token"):
+#        headers["Authorization"] = f"Bearer {config['token']}"
+#
+#    req = Request(url, data=payload_bytes, headers=headers, method="POST")
+#    resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
+#    return resp.status
+#------------------------------------------
+
+#def _deliver_ntfy(config, payload):
+#    """Deliver alert via ntfy push notification."""
+#    base_url = config["url"].rstrip("/")
+#    topic = config["topic"]
+#    url = f"{base_url}/{topic}"
+#
+#    payload_bytes = json.dumps(payload, default=str).encode("utf-8")
+#
+#    headers = {
+#        "Content-Type": "application/json",
+#        "User-Agent": "ButterClaw-Alert/0.6.2",
+#    }
+#
+#    # ntfy supports auth token
+#    if config.get("token"):
+#        headers["Authorization"] = f"Bearer {config['token']}"
+#
+#    req = Request(url, data=payload_bytes, headers=headers, method="POST")
+#    resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
+#    return resp.status
 
 
 def _deliver_smtp(config, payload):
@@ -1126,6 +1205,40 @@ def send_test_alert(channel_id):
 # =============================================
 # API ROUTE REGISTRATION
 # =============================================
+
+def bootstrap_infrastructure_alerts():
+    """
+    Auto-heals internal alert channels from the environment.
+    If BUTTERCLAW_ALERT_NTFY_TOPIC is set, it ensures an ntfy channel
+    and baseline critical routing rules exist in the database.
+    """
+    ntfy_topic = os.environ.get("BUTTERCLAW_ALERT_NTFY_TOPIC")
+    if not ntfy_topic:
+        return None
+
+    # Check if we already have an ntfy channel
+    channels = list_channels()
+    if any(c["channel_type"] == "ntfy" for c in channels):
+        return None  # Everything is humming perfectly
+
+    logger.info("⚙️ [AUTO-HEAL] Injecting ntfy push notification channel...")
+    
+    # 1. Create the Channel (Internal Docker DNS points to the ntfy container)
+    channel_res = create_channel(
+        name="Local Push Notifications",
+        channel_type="ntfy",
+        config={"url": "http://ntfy:80", "topic": ntfy_topic}
+    )
+
+    # 2. Wire up the Megaphone (Create Rules)
+    if "channel_id" in channel_res:
+        ch_id = channel_res["channel_id"]
+        # Rule: Text me if the Gibson fires (0 cooldown, immediate)
+        create_rule("Gibson Panic", "gibson_triggered", ch_id, cooldown_secs=0)
+        # Rule: Text me if a Critical Threat is found (60s cooldown to prevent spam)
+        create_rule("Critical Threat", "verdict_critical", ch_id, cooldown_secs=60)
+        
+    return True
 
 def register_alert_routes(app):
     """

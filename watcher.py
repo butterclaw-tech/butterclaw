@@ -1,6 +1,12 @@
 """
-ButterClaw v0.3.1 — Log Watcher (Expanded Context)
+ButterClaw v0.6.3.1 — Log Watcher
 =================================================
+[v0.6.3.1] - Full Docker Updated
+| `watcher.py` | ~5 | ~5 | Auth compliance (Bearer tokens), boot warning logic fix. |
+- monitors bridged 'openclaw_gateway.log' in base directory
+
+ButterClaw v0.3.1 — Log Watcher (Expanded Context)
+
 Changelog from v0.1.1:
   [v0.3] CONTEXT EXPANSION: Increased log truncation from 500 to 4096 chars.
          (Crucial for passing massive Indirect Prompt Injections to the Brain).
@@ -34,6 +40,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
 VPS_ENDPOINT = "http://127.0.0.1:5000/api/analyze"
 PID_FILE = os.path.join(BASE_DIR, "watcher.pid")
+
+# [v0.6.0] API Auth Key
+API_KEY = os.environ.get("BUTTERCLAW_API_KEY")
 
 # [C3] Retry queue for failed POSTs
 RETRY_QUEUE_MAX = 100
@@ -85,16 +94,26 @@ def sanitize_log_line(raw_line):
     return safe_line
 
 # =============================================
-# [C3] RETRY QUEUE
+# [C3] RETRY QUEUE (v0.6.0 patch)
 # =============================================
 
 def send_to_server(payload):
-    """POST a payload to the ButterClaw server."""
+    """POST a payload to the ButterClaw server with Auth Headers."""
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
+        headers["Authorization"] = f"Bearer {API_KEY}"
+
     try:
-        resp = requests.post(VPS_ENDPOINT, json=payload, timeout=POST_TIMEOUT)
+        resp = requests.post(VPS_ENDPOINT, json=payload, headers=headers, timeout=POST_TIMEOUT)
+        
+        if resp.status_code == 401:
+            logger.error("🚫 HTTP 401 Unauthorized: API Badge rejected! Check your BUTTERCLAW_API_KEY.")
+            return False
+            
         if resp.status_code == 429:
             logger.warning("⚠️ Rate limited by server. Queuing for retry.")
             return False
+            
         return True
     except requests.RequestException as e:
         logger.warning("⚠️ Brain offline. Queuing log for retry.")
@@ -204,7 +223,10 @@ def main():
     check_pid_file()
     atexit.register(cleanup_pid_file)
 
-    logger.info("🦞 ButterClaw Watcher v0.3.1 online. Staring intensely at %s...", LOG_FILE)
+    logger.info("🦞 ButterClaw Watcher v0.6.3.1 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    
+    if not API_KEY:
+        logger.warning("⚠️ BUTTERCLAW_API_KEY environment variable not found. Server will likely reject payloads (401).")
 
     if retry_queue:
         logger.info("Retry queue initialized (max %d entries).", RETRY_QUEUE_MAX)

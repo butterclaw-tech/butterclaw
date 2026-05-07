@@ -1,93 +1,58 @@
-# =============================================
-# ButterClaw v0.6.3 — Production Deployment
-# =============================================
+# =======================================================
+# ButterClaw v0.6.3.1 - Full Docker
+# Local Ollama (Local GPU) - ButterClaw in the Container
+# =======================================================
 # Usage:
 #   cp .env.example .env    (customize values)
-#   docker compose up -d    (start all services)
-#   docker compose logs -f  (follow logs)
+#   docker-compose up -d    (start the Exoskeleton)
 #
-# Services:
-#   butterclaw  — Main application (Flask + all modules)
-#   ollama      — Local LLM inference engine
-#   nginx       — TLS termination + reverse proxy
-
-version: '3.8'
+# Note: This lightweight architecture assumes you are running 
+# your own local Ollama instance on your host machine.
+# 
+# Use Modelfile.example to pull the custom butterclaw-optimized:latest 
+# version of Gemma4:e4b
 
 services:
   butterclaw:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: butterclaw
+    container_name: butterclaw-server
     restart: unless-stopped
     env_file: .env
-    environment:
-      - BUTTERCLAW_OLLAMA_URL=http://ollama:11434
-      - BUTTERCLAW_DB_PATH=/data/butterclaw.db
+    ports:
+      - "5000:5000"
     volumes:
       - butterclaw-data:/data          # SQLite DB persistence
-      - ./index.html:/app/index.html   # Live dashboard updates
+      # Mount the UI so you can edit HTML without rebuilding
+      - ./index.html:/app/index.html   
       - ./routing.html:/app/routing.html
-    ports:
-      - "127.0.0.1:5000:5000"         # Only localhost — nginx fronts it
-    depends_on:
-      ollama:
-        condition: service_healthy
+      # bridge log file out to your host machine(paste + save to test):
+      - ./openclaw_gateway.log:/app/openclaw_gateway.log    
+    # bridge to host machine's native Ollama  
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
-      - butterclaw-net
+      - butterclaw-net                 # <-- Added to match ntfy
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: butterclaw-ollama
-    restart: unless-stopped
-    volumes:
-      - ollama-models:/root/.ollama    # Model persistence
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: butterclaw-ntfy
+    command: serve
     ports:
-      - "127.0.0.1:11434:11434"       # Only localhost
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]      # GPU passthrough if available
+      - "2586:80"  
     networks:
-      - butterclaw-net
-
-  nginx:
-    image: nginx:alpine
-    container_name: butterclaw-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/butterclaw.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro      # TLS certs
-      - ./index.html:/usr/share/nginx/html/index.html:ro
-      - ./routing.html:/usr/share/nginx/html/routing.html:ro
-    depends_on:
-      - butterclaw
-    networks:
-      - butterclaw-net
+      - butterclaw-net                 # <-- Bridges to butterclaw
 
 volumes:
   butterclaw-data:
     name: butterclaw-data
-  ollama-models:
-    name: butterclaw-ollama-models
 
 networks:
-  butterclaw-net:
+  butterclaw-net:                      # <-- Officially declares the network
     name: butterclaw-net

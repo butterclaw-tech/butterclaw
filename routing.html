@@ -37,6 +37,228 @@
       ]
     }
   </script>
+
+<style>
+    /* ButterClaw Dark Mode v2 — The Night Shift 🌙 */
+    html { transition: background-color 0.3s ease; }
+    
+    html.dark body { background-color: #0f172a; color: #e2e8f0; }
+    
+    /* Sidebar */
+    html.dark aside,
+    html.dark #sidebar { background-color: #1e293b !important; border-color: #334155 !important; }
+    
+    /* Cards & panels */
+    html.dark .bg-white { background-color: #1e293b !important; }
+    
+    /* Nested backgrounds — bg-slate-50 used inside cards for sub-panels, table rows, etc.
+       Must contrast against card surface (#1e293b), not match body bg */
+    html.dark .bg-slate-50 { background-color: #0f172a !important; }
+    
+    /* bg-slate-100 used for active nav, input fills, code blocks */
+    html.dark .bg-slate-100 { background-color: #334155 !important; }
+    
+    /* bg-slate-200 used for dividers, separators, skeleton loaders */
+    html.dark .bg-slate-200 { background-color: #475569 !important; }
+    
+    /* bg-slate-400 used for status dots — brighten so they pop on dark */
+    html.dark .bg-slate-400 { background-color: #94a3b8 !important; }
+    
+    /* Border overrides */
+    html.dark [class*="border-slate-200"] { border-color: #334155 !important; }
+    html.dark [class*="border-slate-100"] { border-color: #1e293b !important; }
+    
+    /* ============================================================
+       TEXT — full cascade
+       ============================================================ */
+    html.dark .text-slate-800,
+    html.dark .text-dark { color: #e2e8f0 !important; }
+    html.dark .text-slate-700 { color: #cbd5e1 !important; }
+    html.dark .text-slate-600 { color: #94a3b8 !important; }
+    html.dark .text-slate-500 { color: #94a3b8 !important; }
+    html.dark .text-slate-400 { color: #64748b !important; }
+    html.dark .text-slate-300 { color: #64748b !important; }
+    
+    /* ============================================================
+       COLORED BADGE PASTELS — dark-friendly versions
+       Keep the hue, shift to dark bg with brighter text
+       ============================================================ */
+    
+    /* Red/Rose family — alerts, errors, critical */
+    html.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.12) !important; }
+    html.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.18) !important; }
+    html.dark [class*="bg-red-100\/50"] { background-color: rgba(239, 68, 68, 0.08) !important; }
+    html.dark [class*="border-red-100"],
+    html.dark [class*="border-red-200"] { border-color: rgba(239, 68, 68, 0.25) !important; }
+    html.dark .text-red-600 { color: #fca5a5 !important; }
+    html.dark .text-red-700 { color: #fca5a5 !important; }
+    html.dark .text-red-900 { color: #fecaca !important; }
+    html.dark .text-red-400 { color: #f87171 !important; }
+    
+    html.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.12) !important; }
+    html.dark .bg-rose-100 { background-color: rgba(244, 63, 94, 0.18) !important; }
+    html.dark [class*="border-rose-200"] { border-color: rgba(244, 63, 94, 0.25) !important; }
+    html.dark .text-rose-600 { color: #fda4af !important; }
+    html.dark .text-rose-700 { color: #fecdd3 !important; }
+    
+    /* Amber/Yellow family — warnings, butter accents */
+    html.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.12) !important; }
+    html.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.18) !important; }
+    html.dark [class*="bg-amber-100\/50"] { background-color: rgba(245, 158, 11, 0.08) !important; }
+    html.dark [class*="border-amber-100"],
+    html.dark [class*="border-amber-200"] { border-color: rgba(245, 158, 11, 0.25) !important; }
+    html.dark .text-amber-600 { color: #fcd34d !important; }
+    html.dark .text-amber-700 { color: #fcd34d !important; }
+    html.dark .text-amber-900 { color: #fef3c7 !important; }
+    html.dark .text-amber-400 { color: #fbbf24 !important; }
+    
+    html.dark .bg-butter-100 { background-color: rgba(234, 179, 8, 0.15) !important; }
+    
+    /* Emerald/Green family — success, active, healthy */
+    html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.12) !important; }
+    html.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.18) !important; }
+    html.dark [class*="bg-emerald-100\/50"] { background-color: rgba(16, 185, 129, 0.08) !important; }
+    html.dark [class*="border-emerald-100"],
+    html.dark [class*="border-emerald-200"] { border-color: rgba(16, 185, 129, 0.25) !important; }
+    html.dark .text-emerald-600 { color: #6ee7b7 !important; }
+    html.dark .text-emerald-700 { color: #6ee7b7 !important; }
+    html.dark .text-emerald-900 { color: #a7f3d0 !important; }
+    html.dark .text-emerald-400 { color: #34d399 !important; }
+    html.dark .text-emerald-800 { color: #6ee7b7 !important; }
+    
+    /* Blue family — info, links, MCP */
+    html.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.12) !important; }
+    html.dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.18) !important; }
+    html.dark [class*="bg-blue-100\/50"] { background-color: rgba(59, 130, 246, 0.08) !important; }
+    html.dark [class*="border-blue-100"],
+    html.dark [class*="border-blue-200"] { border-color: rgba(59, 130, 246, 0.25) !important; }
+    html.dark .text-blue-600 { color: #93c5fd !important; }
+    html.dark .text-blue-700 { color: #93c5fd !important; }
+    html.dark .text-blue-900 { color: #bfdbfe !important; }
+    html.dark .text-blue-400 { color: #60a5fa !important; }
+    
+    /* Violet/Purple family — policy engine */
+    html.dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.12) !important; }
+    html.dark .bg-violet-100 { background-color: rgba(139, 92, 246, 0.18) !important; }
+    html.dark [class*="border-violet-200"] { border-color: rgba(139, 92, 246, 0.25) !important; }
+    html.dark .text-violet-500 { color: #a78bfa !important; }
+    html.dark .text-violet-600 { color: #c4b5fd !important; }
+    
+    /* Indigo family — alert dispatcher channels */
+    html.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.12) !important; }
+    html.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.18) !important; }
+    html.dark [class*="border-indigo-200"] { border-color: rgba(99, 102, 241, 0.25) !important; }
+    html.dark .text-indigo-600 { color: #a5b4fc !important; }
+    
+    /* Cyan/Teal family — routing */
+    html.dark .bg-cyan-100 { background-color: rgba(6, 182, 212, 0.18) !important; }
+    
+    /* ============================================================
+       FORM ELEMENTS — inputs, selects, textareas
+       ============================================================ */
+    html.dark select,
+    html.dark input[type="text"],
+    html.dark input[type="url"],
+    html.dark input[type="number"],
+    html.dark input[type="password"],
+    html.dark input[type="email"],
+    html.dark textarea {
+      background-color: #0f172a !important;
+      border-color: #334155 !important;
+      color: #e2e8f0 !important;
+    }
+    html.dark select:focus,
+    html.dark input:focus,
+    html.dark textarea:focus {
+      border-color: #facc15 !important;
+      box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.15) !important;
+    }
+    html.dark ::placeholder { color: #64748b !important; }
+    
+    /* ============================================================
+       ACTIVE NAV / HOVER STATES
+       ============================================================ */
+    html.dark a.bg-slate-100,
+    html.dark [class*="bg-slate-100"].text-dark {
+      background-color: #334155 !important;
+    }
+    html.dark [class*="hover\:bg-slate-50"]:hover { background-color: #334155 !important; }
+    html.dark [class*="hover\:bg-slate-100"]:hover { background-color: #334155 !important; }
+    html.dark [class*="hover\:text-dark"]:hover { color: #f1f5f9 !important; }
+    html.dark [class*="hover\:bg-white"]:hover { background-color: #1e293b !important; }
+    
+    /* ============================================================
+       MODALS & OVERLAYS
+       ============================================================ */
+    html.dark [class*="bg-white"][class*="rounded-2xl"],
+    html.dark [class*="bg-white"][class*="rounded-3xl"] {
+      background-color: #1e293b !important;
+    }
+    html.dark [class*="bg-slate-900/"] { background-color: rgba(0, 0, 0, 0.7) !important; }
+    html.dark [class*="bg-black/"] { background-color: rgba(0, 0, 0, 0.6) !important; }
+    
+    /* ============================================================
+       TABLES
+       ============================================================ */
+    html.dark table th { background-color: #0f172a !important; color: #94a3b8 !important; border-color: #334155 !important; }
+    html.dark table td { border-color: #334155 !important; color: #cbd5e1 !important; }
+    html.dark table tr:hover td { background-color: #1a2744 !important; }
+    html.dark table tr { border-color: #334155 !important; }
+    html.dark thead { border-color: #334155 !important; }
+    
+    /* ============================================================
+       SHADOWS — softer on dark backgrounds
+       ============================================================ */
+    html.dark [class*="shadow-sm"] { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important; }
+    html.dark [class*="shadow-md"] { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5) !important; }
+    html.dark [class*="shadow-lg"] { box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5) !important; }
+    html.dark [class*="shadow-inner"] { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important; }
+    
+    /* ============================================================
+       SCROLLBAR
+       ============================================================ */
+    html.dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+    html.dark ::-webkit-scrollbar-track { background: #0f172a; }
+    html.dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    html.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    
+    /* ============================================================
+       GRADIENT BARS — keep vibrant, just reduce opacity slightly
+       ============================================================ */
+    html.dark [class*="bg-gradient"] { opacity: 0.85; }
+    
+    /* Butter accents stay golden */
+    html.dark .text-butter-500 { color: #facc15 !important; }
+    html.dark .text-butter-400 { color: #facc15 !important; }
+    
+    /* Solid color buttons stay as-is (bg-dark, bg-emerald-500, etc.) */
+    /* They already work on dark backgrounds */
+    
+    /* ============================================================
+       DARK MODE TOGGLE — pill switch
+       ============================================================ */
+    .dark-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 1rem; border-radius: 0.75rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .dark-toggle:hover { background-color: #f1f5f9; }
+    html.dark .dark-toggle:hover { background-color: #334155 !important; }
+    .dark-toggle-track {
+      width: 44px; height: 24px; border-radius: 12px;
+      background: #cbd5e1; position: relative;
+      transition: background 0.3s;
+    }
+    html.dark .dark-toggle-track { background: #facc15; }
+    .dark-toggle-thumb {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: white; position: absolute;
+      top: 3px; left: 3px; transition: transform 0.3s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    html.dark .dark-toggle-thumb { transform: translateX(20px); }
+  </style>
+
 </head>
 
 <body class="bg-slate-50 text-slate-800 font-sans h-screen flex overflow-hidden selection:bg-butter-400 selection:text-dark">
@@ -77,27 +299,43 @@
         </a>
         <a href="index.html"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
-          <span class="group-hover:scale-110 transition-transform">🧈</span><span>ButterVault (Keys)</span>
+          <span class="group-hover:scale-110 transition-transform">🔐</span><span>ButterVault (Keys)</span>
         </a>
         <a href="index.html#oopsieSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
-          <span class="group-hover:scale-110 transition-transform">📋</span><span>Oopsie Logs</span>
+          <span class="group-hover:scale-110 transition-transform">📝</span><span>Oopsie Logs</span>
+        </a>
+        <a href="routing.html"
+           class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
+          <span>⚙️</span><span>VPS Brain Routing</span>
+        </a>
+        <a href="#eventLedgerSection"
+           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">📊</span><span>Event Ledger</span>
         </a>
         <a href="#policyEngineSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
-          <span class="group-hover:scale-110 transition-transform">🛡️</span><span>Policy Engine</span>
+          <span class="group-hover:scale-110 transition-transform">⚖️</span><span>Policy Engine</span>
         </a>
         <a href="#alertDispatcherSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">🔔</span><span>Alert Dispatcher</span>
         </a>
-        <a href="routing.html"
-           class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
-          <span class="animate-[spin_4s_linear_infinite]">⚙️</span><span>VPS Brain Routing</span>
-        </a>
       </nav>
     </div>
 
+
+      <div class="px-4 mb-3">
+        <div id="darkModeToggle" class="dark-toggle">
+          <div class="flex items-center space-x-2">
+            <span id="themeIcon">☀️</span>
+            <span id="themeLabel" class="text-xs font-bold uppercase tracking-wide text-slate-500">Light Mode</span>
+          </div>
+          <div class="dark-toggle-track">
+            <div class="dark-toggle-thumb"></div>
+          </div>
+        </div>
+      </div>
     <div class="p-6">
       <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm mb-3">
         <div class="flex items-center space-x-2">
@@ -124,7 +362,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.3</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.6.3.1</div>
     </div>
   </aside>
 
@@ -142,10 +380,10 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-      <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <div class="bg-white rounded-3xl p-8 shadow-md border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-emerald-400 to-blue-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
-          <div class="bg-slate-100 text-dark p-3 rounded-xl text-xl shadow-inner">🔀</div>
+          <div class="bg-slate-100 text-dark p-2 rounded-xl text-base shadow-inner">🔀</div>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">Routing Mode</h3>
         </div>
         <div class="flex flex-col sm:flex-row gap-4">
@@ -168,10 +406,10 @@
         </div>
       </div>
 
-      <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
+      <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-butter-400 to-butter-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
-          <div class="bg-slate-100 text-dark p-3 rounded-xl text-xl shadow-inner">🔌</div>
+          <div class="bg-slate-100 text-dark p-2 rounded-xl text-base shadow-inner">🔌</div>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">Endpoint Setup</h3>
         </div>
         <div class="space-y-6">
@@ -186,7 +424,11 @@
             <div class="relative">
               <select id="modelSelect"
                       class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-butter-500 focus:ring-4 focus:ring-butter-500/10 outline-none transition bg-slate-50 text-slate-700 cursor-pointer font-medium shadow-sm appearance-none pr-10">
-                <option value="butterclaw-optimized:latest">ButterClaw Optimized (Tuned Gemma 4)</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Cloud Speed)</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Cloud Speed)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Cloud Deep Reasoner)</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Lite (Flash Lite)</option>
+                <option value="butterclaw-optimized:latest">ButterClaw Optimized (Local Fallback)</option>
                 <option value="gemma4:e4b">Gemma 4 E4B (128K Agentic Brain)</option>
                 <option value="gemma4:26b">Gemma 4 26B MoE (VPS Heavy)</option>
                 <option value="phi3:latest">Phi-3 Mini (Legacy 4K Context)</option>
@@ -206,19 +448,19 @@
         </div>
       </div>
 
-      <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden">
+      <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative overflow-hidden">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-dark to-slate-600 left-0"></div>
         <div class="flex items-center space-x-3 mb-8">
-          <div class="bg-butter-100 text-butter-600 p-3 rounded-xl text-xl shadow-inner">🧠</div>
+          <div class="bg-butter-100 text-butter-600 p-2 rounded-xl text-base shadow-inner">🧠</div>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">Active Logic Gates</h3>
         </div>
         <div id="gatesContainer" class="space-y-3"></div>
       </div>
 
-      <div id="mcpSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <div id="mcpSection" class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-violet-400 to-fuchsia-500 left-0"></div>
         <div class="flex items-center space-x-3 mb-6">
-          <div class="bg-violet-100 text-violet-600 p-3 rounded-xl text-xl shadow-inner">🔗</div>
+          <div class="bg-violet-100 text-violet-600 p-2 rounded-xl text-base shadow-inner">🔗</div>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">MCP Execution Layer</h3>
           <span id="mcpVersionBadge" class="text-[10px] font-extrabold tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md uppercase">Checking...</span>
         </div>
@@ -300,16 +542,16 @@
         </div>
 
         <div class="bg-violet-50 border border-violet-100 rounded-xl p-4 text-xs text-violet-700">
-          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.3)</p>
+          <p class="font-bold mb-1">🔫 The Claws — MCP Execution Layer (v0.6.3.1)</p>
           <p>Model Context Protocol server with dual transport: stdio (local child process) or SSE (remote HTTP). The reasoning engine manages lifecycle, response correlation, and automatic restart. Tools are discovered dynamically during the handshake sequence. All tool invocations are logged to the Event Ledger. The Brain can now compose multi-step tool chains with conditional execution.</p>
         </div>
       </div>
 
-      <div id="policyEngineSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <div id="policyEngineSection" class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-rose-400 to-orange-500 left-0"></div>
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center space-x-3">
-            <div class="bg-rose-100 text-rose-600 p-3 rounded-xl text-xl shadow-inner">🛡️</div>
+            <div class="bg-rose-100 text-rose-600 p-2 rounded-xl text-base shadow-inner">🛡️</div>
             <div>
               <h3 class="text-xl font-extrabold text-dark tracking-tight">Policy Engine</h3>
               <p id="policyTotalCount" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
@@ -381,16 +623,16 @@
         </div>
 
         <div class="bg-rose-50 border border-rose-100 rounded-xl p-4 text-xs text-rose-700 mt-6">
-          <p class="font-bold mb-1">🛡️ Deterministic Guardrails — Policy Engine (v0.6.1)</p>
+          <p class="font-bold mb-1">⚖️ Deterministic Guardrails — Policy Engine (v0.6.1)</p>
           <p>The Policy Engine constrains the probabilistic Brain with deterministic rules. Pre-brain filters short-circuit known patterns without burning inference time. Post-brain validators can override, escalate, or require higher confidence. Pre-tool gates block specific MCP tool calls in chains. Policies are evaluated in priority order (lowest number first). First non-"allow" match wins.</p>
         </div>
       </div>
 
-      <div id="eventLedgerSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <div id="eventLedgerSection" class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-teal-500 left-0"></div>
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center space-x-3">
-            <div class="bg-cyan-100 text-cyan-600 p-3 rounded-xl text-xl shadow-inner">📋</div>
+            <div class="bg-cyan-100 text-cyan-600 p-2 rounded-xl text-base shadow-inner">📊</div>
             <div>
               <h3 class="text-xl font-extrabold text-dark tracking-tight">Event Ledger</h3>
               <p id="ledgerTotalCount" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
@@ -425,11 +667,11 @@
         </div>
       </div>
 
-      <div id="alertDispatcherSection" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
+      <div id="alertDispatcherSection" class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden lg:col-span-2">
         <div class="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500 left-0"></div>
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center space-x-3">
-            <div class="bg-blue-100 text-blue-600 p-3 rounded-xl text-xl shadow-inner">🔔</div>
+            <div class="bg-blue-100 text-blue-600 p-2 rounded-xl text-base shadow-inner">🔔</div>
             <div>
               <h3 class="text-xl font-extrabold text-dark tracking-tight">Alert Dispatcher</h3>
               <p id="alertStatusSummary" class="text-[10px] text-slate-400 font-mono mt-0.5">Loading...</p>
@@ -478,7 +720,7 @@
                 <option value="verdict_warning">🟡 WARNING</option>
                 <option value="gibson_triggered">☢️ Gibson Auto</option>
                 <option value="gibson_manual">☢️ Gibson Manual</option>
-                <option value="policy_override">🛡️ Policy Override</option>
+                <option value="policy_override">⚖️ Policy Override</option>
                 <option value="policy_blocked">🚫 Policy Blocked</option>
                 <option value="auth_brute_force">🔐 Brute-Force</option>
                 <option value="mcp_offline">⚠️ MCP Offline</option>
@@ -504,7 +746,7 @@
         </div>
 
         <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700">
-          <p class="font-bold mb-1">🔔 Alert Dispatcher — External Notification Engine (v0.6.3)</p>
+          <p class="font-bold mb-1">🔔 Alert Dispatcher — External Notification Engine (v0.6.3.1)</p>
           <p>Pushes notifications to external channels (webhook, Discord, ntfy, email, Gotify) when critical events occur. Rules map event types to channels with configurable cooldowns. Webhooks are HMAC-SHA256 signed. Gibson alerts fire BEFORE vault destruction — the notification always escapes. Channel secrets are stored outside the ButterVault by design.</p>
         </div>
       </div>
@@ -565,7 +807,7 @@
     <div id="ruleModalContent" class="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center space-x-3">
-          <span class="text-2xl">📋</span>
+          <span class="text-2xl">📊</span>
           <h3 class="text-xl font-extrabold text-dark tracking-tight">New Alert Rule</h3>
         </div>
         <button id="ruleModalCloseBtn" class="text-slate-400 hover:text-dark transition text-xl">✕</button>
@@ -580,7 +822,7 @@
             <option value="verdict_warning">🟡 Verdict: WARNING</option>
             <option value="gibson_triggered">☢️ Gibson: Auto-Triggered</option>
             <option value="gibson_manual">☢️ Gibson: Manual</option>
-            <option value="policy_override">🛡️ Policy Override</option>
+            <option value="policy_override">⚖️ Policy Override</option>
             <option value="policy_blocked">🚫 Policy Blocked</option>
             <option value="auth_brute_force">🔐 Brute-Force Detected</option>
             <option value="mcp_offline">⚠️ MCP Offline</option>
@@ -714,7 +956,7 @@
 
         <button id="policySaveBtn"
           class="w-full bg-dark hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all duration-300 flex items-center justify-center space-x-2">
-          <span>🛡️</span><span>Create Policy</span>
+          <span>⚖️</span><span>Create Policy</span>
         </button>
       </div>
     </div>
@@ -741,7 +983,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.3 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.3.1 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -876,7 +1118,7 @@
         roleEl.className = 'text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md border ' + (colors[role] || colors.viewer);
         roleEl.textContent = role;
       }
-      if (labelEl) labelEl.textContent = label || 'Autclated';
+      if (labelEl) labelEl.textContent = label || 'Authenticated';
       if (logoutBtn) logoutBtn.classList.remove('hidden');
     }
 
@@ -1163,7 +1405,7 @@
     function openCreatePolicyModal() {
       _editingPolicyId = null;
       document.getElementById('policyModalTitle').textContent = 'New Policy';
-      document.getElementById('policySaveBtn').innerHTML = '<span>🛡️</span><span>Create Policy</span>';
+      document.getElementById('policySaveBtn').innerHTML = '<span>⚖️</span><span>Create Policy</span>';
       document.getElementById('policyNameInput').value = '';
       document.getElementById('policyDescInput').value = '';
       document.getElementById('policyScopeSelect').value = 'pre_brain';
@@ -1280,7 +1522,7 @@
       saveBtn.disabled = false;
       saveBtn.innerHTML = _editingPolicyId
         ? '<span>💾</span><span>Save Changes</span>'
-        : '<span>🛡️</span><span>Create Policy</span>';
+        : '<span>⚖️</span><span>Create Policy</span>';
     }
 
     // ---- Dry-Run Test ----
@@ -1411,7 +1653,7 @@
       verdict_warning:   '🟡 WARNING',
       gibson_triggered:  '☢️ Gibson Auto',
       gibson_manual:     '☢️ Gibson Manual',
-      policy_override:   '🛡️ Policy Override',
+      policy_override:   '⚖️ Policy Override',
       policy_blocked:    '🚫 Policy Blocked',
       auth_brute_force:  '🔐 Brute-Force',
       mcp_offline:       '⚠️ MCP Offline',
@@ -2503,9 +2745,9 @@
 
     function setMcpVisualState(state, toolCount, pid) {
       const states = {
-        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.3 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
-        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.3 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
-        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.3 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
+        armed:    { dot: 'bg-emerald-500', label: 'Armed',       card: 'bg-emerald-50 border-emerald-100', badge: 'text-emerald-600 bg-emerald-100 border-emerald-200', badgeText: 'v0.6.3.1 Armed',    sDot: 'bg-emerald-500', sText: 'MCP: Armed',       sSub: toolCount + ' tools loaded' },
+        degraded: { dot: 'bg-amber-400',   label: 'Degraded',    card: 'bg-amber-50 border-amber-100',     badge: 'text-amber-600 bg-amber-100 border-amber-200',     badgeText: 'v0.6.3.1 Degraded', sDot: 'bg-amber-400',   sText: 'MCP: Degraded',    sSub: 'Handshake failed' },
+        offline:  { dot: 'bg-red-500',     label: 'Offline',     card: 'bg-red-50 border-red-100',         badge: 'text-red-600 bg-red-100 border-red-200',           badgeText: 'v0.6.3.1 Offline',  sDot: 'bg-red-500',     sText: 'MCP: Offline',     sSub: 'Process not running' },
         checking: { dot: 'bg-slate-400',   label: 'Checking...', card: 'bg-slate-50 border-slate-200',     badge: 'text-slate-500 bg-slate-100 border-slate-200',     badgeText: 'Checking...',     sDot: 'bg-slate-400',   sText: 'MCP: Checking...', sSub: '' }
       };
       const s = states[state];
@@ -2886,5 +3128,30 @@
   });
   </script>
 
+<script>
+    // ButterClaw Dark Mode Toggle
+    (function() {
+      const toggle = document.getElementById('darkModeToggle');
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+      
+      function applyTheme(dark) {
+        document.documentElement.classList.toggle('dark', dark);
+        if (icon) icon.textContent = dark ? '🌙' : '☀️';
+        if (label) label.textContent = dark ? 'Dark Mode' : 'Light Mode';
+        localStorage.setItem('butterclaw-theme', dark ? 'dark' : 'light');
+      }
+      
+      // Load saved preference, default to light
+      const saved = localStorage.getItem('butterclaw-theme');
+      if (saved === 'dark') applyTheme(true);
+      
+      if (toggle) {
+        toggle.addEventListener('click', function() {
+          applyTheme(!document.documentElement.classList.contains('dark'));
+        });
+      }
+    })();
+</script>
 </body>
 </html>

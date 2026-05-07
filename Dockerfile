@@ -38,18 +38,24 @@ COPY mcp_transport.py .
 COPY oauth_config.py .
 COPY index.html .
 COPY routing.html .
+COPY watcher.py .
 
 # Copy health check script
 COPY scripts/healthcheck.py /app/scripts/healthcheck.py
 
 # Create data directory for DB volume mount
-RUN mkdir -p /data && chown butterclaw:butterclaw /data
+#RUN mkdir -p /data && chown butterclaw:butterclaw /data <- changed to add watcher.py
+
+# Create data directory for DB volume mount and grant access to /app
+RUN mkdir -p /data && chown -R butterclaw:butterclaw /data /app
 
 # Default env vars (can be overridden by .env / docker-compose)
 ENV BUTTERCLAW_HOST=0.0.0.0
 ENV BUTTERCLAW_PORT=5000
 ENV BUTTERCLAW_DB_PATH=/data/butterclaw.db
-ENV BUTTERCLAW_OLLAMA_URL=http://ollama:11434
+# Force keyring credentials to save inside the persistent volume
+ENV XDG_DATA_HOME=/data
+# ENV BUTTERCLAW_OLLAMA_URL=http://ollama:11434
 ENV BUTTERCLAW_INSTANCE_ID=butterclaw-docker
 
 # Health check
@@ -61,4 +67,7 @@ USER butterclaw
 
 EXPOSE 5000
 
-CMD ["python", "server.py"]
+# CMD ["python", "server.py"]
+
+# Start server + watcher
+CMD ["sh", "-c", "python server.py & python watcher.py && wait"]

@@ -1,6 +1,6 @@
-# 🦞 ButterClaw v0.6.3: The Exoskeleton (Deployment Packaging)
+# 🦞 ButterClaw v0.6.3.1: The Exoskeleton (Full Docker)
 
-Version 0.6.3 — May 1, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.6.3.1 — May 7, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
@@ -10,11 +10,43 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 
 ---
 
-## 🚀 What's New in v0.6.3?
+### 🦞 Disambiguation
 
-**Deployment Packaging** — The Exoskeleton is battle-tested. Now it needs to leave the lab. v0.6.3 adds everything required to deploy ButterClaw to production: centralized configuration, Docker containerization, systemd service management, nginx TLS termination, and automated backup/restore — all without adding a single new pip dependency.
+**ButterClaw Tech (butterclaw.tech)** is an independent, from‑the‑ground‑up local‑first Agentic SOC and kinetic security layer for autonomous AI systems. 
 
-### ⚙️ Centralized Configuration (`config.py`)
+It is **not** affiliated with:
+* `butterclaw.ai` — a managed hosting service built on top of OpenClaw.
+* OpenClaw or any OpenClaw forks (including `ai‑nhancement/ButterClaw`).
+* Any other “ButterClaw” projects in the ecosystem.
+
+ButterClaw Tech has its own architecture, runtime, memory model, and execution semantics. It exists to watch, audit, and protect agentic systems — not to be another agent runtime.
+
+**If you’re looking for:**
+* **A hosted OpenClaw experience?** → Use `butterclaw.ai` or Hostinger's 1-click solution.
+* **A general autonomous agent framework?** → Use OpenClaw or Hermes Agent.
+* **A local‑first kinetic security layer with behavioral drift tracking, dual‑hemisphere reasoning, and a vault that actually shreds keys?** → You’re in the right place ([ButterClaw.tech](https://butterclaw.tech)).
+
+---
+
+## 🚀 What's New in v0.6.3.1 (Full Docker)?
+
+**Full Docker Edition** hardens the deployment package for seamless cross-platform orchestration (specifically Windows/WSL environments) and breaks several complex containerization deadlocks.
+
+* **Infrastructure Auto-Healing:** Solves the "Cold Start Paradox." If the database is wiped, the server automatically generates and injects its own secure API keys and Watcher badges on boot.
+* **Air-Gapped Push Notifications (`ntfy`):** Integrated the official `ntfy` container into the deployment stack. ButterClaw can now push native OS notifications directly to your phone or browser entirely locally, without leaking telemetry to third-party cloud services like Discord or Slack. 
+* **Alert Dispatcher Auto-Boot:** The Exoskeleton dynamically reads your `.env` topic and builds its own notification routing rules in the database automatically on startup.
+
+* **The Vault Initialization Deadlock Fix:** Forces the Master Vault Key to generate during the server boot sequence, ensuring the session-cookie signer is ready *before* the first user login attempt.
+* **Split-Brain Database Cure:** Unified `try/except` imports for `config.py` across all modules prevent Docker volume mounts from accidentally splitting SQLite writes across different directories.
+* **Windows Host Bridging (`host.docker.internal`):** Secures GPU-accelerated local Ollama inference by cleanly bridging the isolated Linux container back to the host machine's native Windows Ollama instance.
+* **Visible Keyrings (`XDG_DATA_HOME`):** Bypasses Docker's root-permission traps by mapping the alternate Keyring storage directly into the visible `/app/data` directory.
+* **Frontend Routing Aliases:** Native Flask `@app.route` decorators added for standard HTML paths, allowing seamless dev-mode browsing without Nginx.
+
+### 📦 Features Introduced in v0.6.3
+
+**Deployment Packaging** — The Exoskeleton is battle-tested. v0.6.3 adds everything required to deploy ButterClaw to production: centralized configuration, Docker containerization, systemd service management, nginx TLS termination, and automated backup/restore — all without adding a single new pip dependency.
+
+#### ⚙️ Centralized Configuration (`config.py`)
 
 Single source of truth for all runtime configuration across all 5 modules. No more patching 5 files to change a database path.
 
@@ -33,9 +65,8 @@ Single source of truth for all runtime configuration across all 5 modules. No mo
 | **Identity** | 1 | `INSTANCE_ID` |
 
 **Priority chain:**
-```
-Environment Variables (highest) → .env File → Hardcoded Defaults (lowest)
-```
+
+> Environment Variables (highest) → .env File → Hardcoded Defaults (lowest)
 
 ```python
 # Usage — identical across all 5 modules:
@@ -47,13 +78,14 @@ confidence = cfg.CONFIDENCE_THRESHOLD  # was hardcoded 0.6
 ```
 
 **Key features:**
-- `BUTTERCLAW_` prefix on all env vars — no collision with system vars
-- `_validate()` at import time — fail-fast on bad config
-- `to_dict(redact_secrets=True)` — API-safe config export
-- `.env` parser built on stdlib — no python-dotenv dependency
-- Env vars never overridden by `.env` (12-factor compliance)
 
-### 🐳 Docker Deployment
+  - `BUTTERCLAW_` prefix on all env vars — no collision with system vars
+  - `_validate()` at import time — fail-fast on bad config
+  - `to_dict(redact_secrets=True)` — API-safe config export
+  - `.env` parser built on stdlib — no python-dotenv dependency
+  - Env vars never overridden by `.env` (12-factor compliance)
+
+#### 🐳 Docker Deployment
 
 Three-container production stack:
 
@@ -63,25 +95,15 @@ Three-container production stack:
 | **ollama** | Local LLM inference | `/api/tags` endpoint |
 | **nginx** | TLS termination + reverse proxy + static files | Upstream health |
 
-```bash
-# Production deployment
-docker compose up -d
-
-# Development (hot-reload, no nginx)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# View logs
-docker compose logs -f butterclaw
-```
-
 **Key features:**
-- Non-root `butterclaw` user inside container
-- GPU passthrough via `nvidia-container-toolkit` (CPU fallback automatic)
-- Named volumes for SQLite persistence and Ollama model cache
-- JSON-file logging with 10MB rotation
-- `HEALTHCHECK` directive for orchestrator integration
 
-### 🖥️ systemd Deployment (Bare-Metal VPS)
+  - Non-root `butterclaw` user inside container
+  - GPU passthrough via `nvidia-container-toolkit` (CPU fallback automatic)
+  - Named volumes for SQLite persistence and Ollama model cache
+  - JSON-file logging with 10MB rotation
+  - `HEALTHCHECK` directive for orchestrator integration
+
+#### 🖥️ systemd Deployment (Bare-Metal VPS)
 
 ```bash
 # Install service
@@ -95,12 +117,13 @@ journalctl -u butterclaw -f
 ```
 
 **Security hardening:**
-- `ProtectSystem=strict` — filesystem read-only except working directory
-- `NoNewPrivileges=true` — prevent privilege escalation
-- `PrivateTmp=true` — isolated temp directory
-- `Restart=on-failure` with 5s delay
 
-### 💾 Backup & Restore
+  - `ProtectSystem=strict` — filesystem read-only except working directory
+  - `NoNewPrivileges=true` — prevent privilege escalation
+  - `PrivateTmp=true` — isolated temp directory
+  - `Restart=on-failure` with 5s delay
+
+#### 💾 Backup & Restore
 
 ```bash
 # Create timestamped backup (SQLite .backup + .env)
@@ -113,20 +136,20 @@ journalctl -u butterclaw -f
 ./scripts/restore.sh backups/butterclaw-backup-20260420-1200.tar.gz
 ```
 
-- SQLite `.backup` command (atomic — never `cp` on a live DB)
-- Auto-prunes old backups (keeps last 7)
-- Includes `.env` configuration in archive
+  - SQLite `.backup` command (atomic — never `cp` on a live DB)
+  - Auto-prunes old backups (keeps last 7)
+  - Includes `.env` configuration in archive
 
-### 🔒 Nginx TLS Termination
+#### 🔒 Nginx TLS Termination
 
-- HTTP → HTTPS redirect
-- TLSv1.2/1.3 with ECDHE cipher suites
-- HSTS (1 year), X-Content-Type-Options, X-Frame-Options
-- SSE-specific proxy: `proxy_buffering off` + 24h timeout
-- Static file serving for dashboard HTML
-- 300s read timeout for Brain inference
+  - HTTP → HTTPS redirect
+  - TLSv1.2/1.3 with ECDHE cipher suites
+  - HSTS (1 year), X-Content-Type-Options, X-Frame-Options
+  - SSE-specific proxy: `proxy_buffering off` + 24h timeout
+  - Static file serving for dashboard HTML
+  - 300s read timeout for Brain inference
 
----
+-----
 
 ## 🔔 Alert Dispatcher (v0.6.2)
 
@@ -138,18 +161,24 @@ A security monitoring system that can't *reach* its operator is just a log file 
 
 | Channel | Transport | Payload Format |
 |---------|-----------|----------------|
-| **Webhook** | HTTP POST + HMAC-SHA256 signature | JSON with event_type, severity, context |
+| **Webhook** | HTTP POST + HMAC-SHA256 signature | JSON with event\_type, severity, context |
 | **Discord** | Discord webhook API | Rich embed with color-coded severity sidebar |
 | **ntfy** | ntfy.sh or self-hosted | Push with title, body, priority, tags |
 | **SMTP** | smtplib | Email with structured plain-text body |
 | **Gotify** | Self-hosted push API | Title + message + priority (1-10) |
+
+### 📱 Air-Gapped Push Notifications (ntfy)
+ButterClaw v0.6.3.1 ships with a completely private, self-hosted push notification server (`ntfy`) built directly into the Docker stack. 
+1. Set `BUTTERCLAW_ALERT_NTFY_TOPIC=your-secret-topic` in your `.env` file.
+2. Open `http://localhost:2586` (or your server's IP) in your browser, or download the free `ntfy` iOS/Android app.
+3. Subscribe to your secret topic. You will receive native, beautifully formatted push notifications the millisecond a threat is detected—zero bytes leave your local network.
 
 ### 9 Alert Event Types
 
 | Event | When It Fires | Severity |
 |-------|--------------|----------|
 | `verdict_critical` | Brain or Policy returned CRITICAL | 🔴 Critical |
-| `verdict_warning` | Brain returned WARNING (>= 50% confidence) | 🟡 Warning |
+| `verdict_warning` | Brain returned WARNING (\>= 50% confidence) | 🟡 Warning |
 | `gibson_triggered` | Automatic Gibson from ChainExecutor | 🔴 Critical |
 | `gibson_manual` | Manual Gibson via `/api/rotate-keys` | 🔴 Critical |
 | `policy_override` | Policy Engine overrode Brain verdict | 🟡 Warning |
@@ -158,7 +187,7 @@ A security monitoring system that can't *reach* its operator is just a log file 
 | `mcp_offline` | MCP process alive→dead transition | 🔴 Critical |
 | `system_startup` | Server started successfully | 🟢 Info |
 
----
+-----
 
 ## 🛡️ Policy Engine (v0.6.1)
 
@@ -175,7 +204,7 @@ Deterministic guardrails for the probabilistic Brain. Implements the DRIFT frame
 **16 safe condition operators** — all use whitelist dispatch, no `eval()`:
 `contains`, `not_contains`, `equals`, `not_equals`, `starts_with`, `ends_with`, `regex_match`, `greater_than`, `less_than`, `greater_equal`, `less_equal`, `in_list`, `not_in_list`, `length_gt`, `length_lt`
 
----
+-----
 
 ## 🔐 API Gateway & Authentication (v0.6.0)
 
@@ -187,13 +216,13 @@ Every endpoint protected by role-based access control with HMAC-SHA256 API keys 
 | **Operator** | Analyze threats, read settings, start OAuth | Active operators |
 | **Viewer** | Read-only — logs, events, status, SSE stream | Monitoring dashboards |
 
----
+-----
 
 ## 💀 Gibson Kill Switch
 
 The nuclear option. When triggered, ButterVault physically shreds all credentials into cryptographic garbage. In v0.6.2+, the Alert Dispatcher fires notifications BEFORE vault destruction — alert-then-burn.
 
-```
+```text
 Gibson Triggered:
   1. dispatch_alert("gibson_triggered")    ← alert fires
   2. _dispatch_worker → all channels       ← notifications sent
@@ -203,7 +232,8 @@ Gibson Triggered:
 ```
 
 **What Survives Gibson:**
-```
+
+```text
 DESTROYED by Gibson:           SURVIVES Gibson:
 ├── vault table (API keys)     ├── policies table
 ├── oauth_tokens table         ├── policy_events table
@@ -215,14 +245,15 @@ DESTROYED by Gibson:           SURVIVES Gibson:
                                └── config.py / .env (filesystem)
 ```
 
----
+-----
 
 ## 🏗️ Architecture
 
 **The Exoskeleton — Layered Defense:**
-```
+
+```text
 ┌─────────────────────────────────────────────────┐
-│  Deployment Layer (v0.6.3)                      │
+│  Deployment Layer (v0.6.3.1)                    │
 │  Docker, systemd, nginx, config.py, backup      │
 ├─────────────────────────────────────────────────┤
 │  Alert Layer (v0.6.2)                           │
@@ -246,18 +277,18 @@ DESTROYED by Gibson:           SURVIVES Gibson:
 
 | Component | File | Lines | Version | Role |
 |-----------|------|-------|---------|------|
-| Config | `config.py` | ~480 | v0.6.3 | Centralized env-driven configuration |
-| Server | `server.py` | ~1,200 | v0.6.3 | Flask API, Brain, ChainExecutor |
-| Auth | `auth.py` | ~890 | v0.6.0 | API gateway, RBAC, session tokens |
-| Policy Engine | `policy_engine.py` | ~350 | v0.6.1 | Deterministic guardrails |
-| Alert Dispatcher | `alert_dispatcher.py` | ~1,566 | v0.6.2 | Push notifications |
-| ButterVault | `buttervault.py` | ~400 | v0.5.2 | Encrypted credentials, Gibson |
-| MCP Client | `butterclaw_mcp.py` | ~300 | v0.4.0 | Tool definitions |
-| MCP Transport | `mcp_transport.py` | ~250 | v0.5.0 | SSE/stdio transport |
-| OAuth Config | `oauth_config.py` | ~60 | v0.5.2 | OAuth provider templates |
-| Watcher | `watcher.py` | ~150 | v0.1.0 | OS telemetry collection |
+| Config | `config.py` | \~480 | v0.6.3 | Centralized env-driven configuration |
+| Server | `server.py` | \~1,200 | v0.6.3.1| Flask API, Brain, ChainExecutor |
+| Auth | `auth.py` | \~890 | v0.6.0 | API gateway, RBAC, session tokens |
+| Policy Engine | `policy_engine.py` | \~350 | v0.6.1 | Deterministic guardrails |
+| Alert Dispatcher | `alert_dispatcher.py` | \~1,566 | v0.6.2 | Push notifications |
+| ButterVault | `buttervault.py` | \~400 | v0.5.2 | Encrypted credentials, Gibson |
+| MCP Client | `butterclaw_mcp.py` | \~300 | v0.4.0 | Tool definitions |
+| MCP Transport | `mcp_transport.py` | \~250 | v0.5.0 | SSE/stdio transport |
+| OAuth Config | `oauth_config.py` | \~60 | v0.5.2 | OAuth provider templates |
+| Watcher | `watcher.py` | \~150 | v0.1.0 | OS telemetry collector |
 
----
+-----
 
 ## 📡 API Reference
 
@@ -342,13 +373,13 @@ DESTROYED by Gibson:           SURVIVES Gibson:
 
 **Total: 43 API routes** (7 Auth + 8 Policy + 13 Alert + 5 Core + 6 MCP + 10 Vault, reduced from 49 to account for shared endpoints — some endpoints registered across modules)
 
----
+-----
 
 ## 📁 Project Structure
 
-```
+```text
 butterclaw/
-├── server.py                  # Flask API + Brain + ChainExecutor (v0.6.3)
+├── server.py                  # Flask API + Brain + ChainExecutor (v0.6.3.1)
 ├── config.py                  # Centralized configuration (v0.6.3)
 ├── auth.py                    # API gateway + RBAC (v0.6.0)
 ├── policy_engine.py           # Deterministic guardrails (v0.6.1)
@@ -374,10 +405,11 @@ butterclaw/
 │   └── restore.sh             # Restore utility (v0.6.3)
 ├── systemd/
 │   └── butterclaw.service     # systemd unit file (v0.6.3)
-└── butterclaw.db              # SQLite database (auto-created)
+├── data/
+│   └── butterclaw.db              # SQLite database (auto-created)
 ```
 
----
+-----
 
 ## 🔒 Security Architecture
 
@@ -393,41 +425,42 @@ butterclaw/
 | **Analysis** | Local LLM reasoning + confidence scoring + chain safety rails | v0.5.0+ |
 | **Monitoring** | Event Ledger + Policy Events + Alert History — 3 audit trails | v0.5.0+ |
 
----
+-----
 
 ## 🛡️ OWASP Agentic Security Initiative (ASI) Coverage
 
 | ASI Threat | ButterClaw Mitigation |
 |------------|----------------------|
-| ASI-01: Excessive Agency | Brain confidence gating + ChainExecutor MAX_STEPS=10 + Policy Engine pre-tool scope (v0.5.0+) |
+| ASI-01: Excessive Agency | Brain confidence gating + ChainExecutor MAX\_STEPS=10 + Policy Engine pre-tool scope (v0.5.0+) |
 | ASI-02: Insufficient Access Control | 3-tier RBAC + per-key rate limiting + HMAC-SHA256 auth (v0.6.0) |
 | ASI-03: Knowledge Poisoning | Local-first LLM — no external training data ingestion. Watcher monitors OS telemetry, not user content (v0.1.0+) |
 | ASI-04: Identity & Credential Abuse | ButterVault + OAuth lifecycle + Gibson (v0.5.2) |
-| ASI-05: Cascading Failures | ChainExecutor safety rails: MAX_STEPS=10, TIMEOUT=60s (v0.5.1) |
+| ASI-05: Cascading Failures | ChainExecutor safety rails: MAX\_STEPS=10, TIMEOUT=60s (v0.5.1) |
 | ASI-06: Indirect Prompt Injection | Policy Engine pattern matching on payloads (v0.6.1) |
 | ASI-07: Insufficient Monitoring | Event Ledger + Policy Events + Alert History — 3 audit trails (v0.5.0+) |
 | ASI-09: Inadequate Logging | 3 audit trails + external notification via Alert Dispatcher (v0.6.2) |
 | ASI-10: Uncontrolled Escalation | Gibson panic destroys all credentials atomically + alert fires before destruction (v0.6.2) |
 
----
+-----
 
 ## 📋 Version History
 
 | Version | Codename | Date | Milestone |
 |---------|----------|------|-----------|
+| **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-04-30 | Docker bridge, Vault deadlock fix, Windows volume fixes |
 | **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-04-20 | config.py, Docker, systemd, nginx, backup/restore |
 | **v0.6.2** | The Exoskeleton: Alert Dispatcher | 2026-04-20 | 5 channels, 9 events, HMAC signing, brute-force detection |
 | **v0.6.1** | The Exoskeleton: Policy Engine | 2026-04-19 | 3-scope pipeline, 16 operators, DRIFT pattern |
 | **v0.6.0** | The Exoskeleton: API Gateway & Auth | 2026-04-18 | HMAC-SHA256, 3-tier RBAC, session tokens |
 | **v0.5.2** | ButterVault OAuth | 2026-04-16 | OAuth 2.0 flows, token refresh, Gibson destroys OAuth |
 | **v0.5.1** | Tool Chaining | 2026-04-16 | ChainExecutor, multi-step execution, safety rails |
-| **v0.5.0** | The Nervous System | 2026-04-13 | Event Ledger, SSE Transport, MCP Manager, Memory |
-| **v0.4.x** | MCP Transport Refactor | 2026-04-9 | Modular transport, JSON-RPC, CSP fixes |
-| **v0.3.x** | Routing Dashboard | 2026-04-01 | routing.html, advanced config UI |
-| **v0.2.0** | ButterVault | 2026-03-18 | Encrypted credentials, Gibson Kill Switch |
-| **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+| **v0.5.0** | The Nervous System | 2026-04-14 | Event Ledger, SSE Transport, MCP Manager, Memory |
+| **v0.4.x** | MCP Transport Refactor | 2026-04-10 | Modular transport, JSON-RPC, CSP fixes |
+| **v0.3.x** | Routing Dashboard | 2026-04-06 | routing.html, advanced config UI |
+| **v0.2.0** | ButterVault | 2026-04-04 | Encrypted credentials, Gibson Kill Switch |
+| **v0.1.0** | Initial Release | 2026-04-01 | Core analysis, watcher, dashboard, MCP tools |
 
----
+-----
 
 ## 🗺️ Roadmap — The Exoskeleton (v0.6.x)
 
@@ -440,43 +473,42 @@ butterclaw/
 
 **The Exoskeleton is complete.** All four pillars are shipped.
 
----
+-----
 
 ## ⚡ Quick Start
 
-### Docker (Recommended)
+### Docker (Recommended Full-Stack Boot)
+
+ButterClaw's auto-healing architecture allows it to build its database, generate secure keys, and wire up its alert networks from a completely blank slate. Assuming local ollama is running with a local model. Suggestion: ollama pull Modelfile.example, will get you a 'butterclaw-optimized:latest' version of the Gemma 4:e4b open-sourced model.
 
 ```bash
-git clone https://github.com/butterclaw-tech/butterclaw.git
+git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw && git checkout dev
 
-# Configure
+# 1. Configure your environment
 cp .env.example .env
-# Edit .env — set BUTTERCLAW_INSTANCE_ID, CORS_ORIGINS, etc.
+# Edit .env — set BUTTERCLAW_INSTANCE_ID, BUTTERCLAW_ALERT_NTFY_TOPIC, etc.
 
-# TLS certs (production)
-mkdir -p nginx/certs
-# Place fullchain.pem and privkey.pem in nginx/certs/
+# 2. Ignite the Exoskeleton (Builds and boots the entire stack)
+docker compose up -d --build
 
-# Launch
-docker compose up -d
-
-# Verify
-docker compose ps
-curl -k https://localhost/api/health
+# 3. Grab your Bootstrap Admin API Key! (Look for the 🔐 [AUTH] line)
+docker compose logs -f butterclaw
 ```
+
+Once you grab your API key from the terminal, access the dashboard at http://localhost:5000 and subscribe to your ntfy topic at http://localhost:2586!
 
 ### systemd (Bare-Metal VPS)
 
 ```bash
-git clone https://github.com/butterclaw-tech/butterclaw.git
+git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw && git checkout dev
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
+curl -fsSL [https://ollama.com/install.sh](https://ollama.com/install.sh) | sh
 ollama pull gemma3:4b
 
 # Configure
@@ -496,11 +528,12 @@ curl http://localhost:5000/api/health
 ### Bare-Metal (Development)
 
 ```bash
-git clone https://github.com/butterclaw-tech/butterclaw.git
+git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw && git checkout dev
 
 pip install -r requirements.txt
-ollama pull gemma3:4b
+ollama pull gemma4:e4b
+# ollama pull Modelfile.example     <- To get the 'butterclaw-optimized:latest' model
 
 cp .env.example .env
 python server.py
@@ -508,7 +541,7 @@ python server.py
 
 On first run, the bootstrap CLI prints your admin API key to the terminal. Save it — it's shown exactly once.
 
----
+-----
 
 ## 📊 Diagnostic Tests
 
@@ -531,11 +564,14 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 *Built by [butterclaw.tech](https://butterclaw.tech) — an independent, original agent platform.*
 
----
+-----
 
-<p align="center">
-  <strong>🦞 ButterClaw v0.6.3 — The Exoskeleton (Deployment Packaging) 🦞</strong><br>
-  <em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
-  <em>The Sentinel never goes silent.</em><br>
-  <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
-</p>
+*ButterClaw  —  The Sentinel never goes silent.* 🦞
+
+-----
+
+\<p align="center"\>
+\<strong\>🦞 ButterClaw v0.6.3.1 — The Exoskeleton — Full Docker\</strong\><br>
+\<em\>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.\</em\><br>
+\<a href="https://butterclaw.tech"\>butterclaw.tech\</a\> · \<a href="https://github.com/butterclaw-tech/butterclaw"\>GitHub\</a\>
+\</p\>

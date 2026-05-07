@@ -6,6 +6,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.3.1] - ButterClaw - The Exoskeleton: Full Docker - 2026-05-07
+
+### Added
+- **Dark Mode System (`index.html`, `routing.html`):** Added a full class-based dark mode to the Exoskeleton dashboard. Toggled via an `html.dark` CSS override layer (219 lines) covering the full UI surface hierarchy: body (`#0f172a`) → cards/sidebar (`#1e293b`) → sub-panels and inputs (`#0f172a`) → borders (`#334155`). Butter-gold accents (`#facc15`) remain vibrant in both modes. All colored badge pastels (red, amber, emerald, blue, rose, violet, indigo, cyan) converted to `rgba()` tinted variants that preserve hue identity on dark surfaces. Form focus states emit a butter-gold glow ring. Scrollbar, shadow, table, overlay, and placeholder text all fully covered.
+- **Theme Persistence (`index.html`, `routing.html`):** `localStorage` key `butterclaw-theme` stores the user's light/dark preference and applies it on page load before first paint, preventing flash-of-wrong-theme when navigating between dashboard views.
+- **Infrastructure Auto-Healing (`auth.py`, `server.py`):** Added `bootstrap_infrastructure_keys()` to the server boot sequence. If the database is wiped, the server now automatically reads `BUTTERCLAW_API_KEY` from the `.env` file and permanently injects it into the new database. Solves the "Cold Start Paradox" and allows the container to achieve true idempotency.
+- **Alert Dispatcher Auto-Healing (`alert_dispatcher.py`, `server.py`):** Injected `bootstrap_infrastructure_alerts()` into the main server boot sequence. The Exoskeleton now reads the `BUTTERCLAW_ALERT_NTFY_TOPIC` variable from the `.env` file on startup and automatically injects the channel configuration and critical routing rules into the database, eliminating manual UI setup.
+- **Air-Gapped Push Notification Server (`docker-compose.yml`):** Integrated the official `ntfy` container into the deployment stack. Explicitly defined the `butterclaw-net` network bridge, allowing the containerized Alert Dispatcher to securely push native OS notifications to local browsers and mobile devices without transmitting telemetry to third-party cloud services.
+- **Log Bridge Volume Mapping (`docker-compose.yml`):** Mapped the host machine's `./openclaw_gateway.log` directly to `/app/openclaw_gateway.log` inside the container. Allows host-based text editors (VS Code, Notepad) to pipe telemetry directly to the containerized Watcher daemon without attached shells.
+- **Alternate Keyring Backend:** Added `keyrings.alt` to dependencies to provide a secure, file-based fallback for the ButterVault when running in headless Linux containers.
+- **Frontend Routing Aliases (`server.py`):** Added explicit Flask decorators using `send_from_directory` so the Exoskeleton can natively serve its own dashboard in dev mode without Nginx throwing 404s.
+- **Vault Boot Initialization (`server.py`):** Injected `buttervault._get_cipher()` into the main boot sequence to break a Catch-22 deadlock where secure sessions couldn't be created upon login.
+
+### Changed
+- **Sidebar Dark Mode Toggle (`index.html`, `routing.html`):** Added a pill-shaped light/dark toggle control in the sidebar above the Auth/MCP/Connection badges. Displays ☀️ Light Mode / 🌙 Dark Mode with a slider track that turns butter-gold when dark mode is active. Smooth 300ms transitions on all state changes.
+- **Security Hardening (`.gitignore`, `.dockerignore`):** Explicitly isolated the container's active ./data/ directory from version control and Docker builds. This guarantees that local, live butterclaw.db files and ButterVault ciphers can never be accidentally committed to GitHub or baked into static image layers.
+- **3-Tier UI Hierarchy (`index.html`, `routing.html`):** Overhauled the dashboard layout before the dark mode patch. Established a clean Hero/Standard/Compact card hierarchy, synced the navigation order, deduplicated section emojis, and unified the sidebar status badges for a cohesive SOC experience.
+- **Unified Sidebar Navigation (`index.html`, `routing.html`):** Locked nav item order to a canonical sequence across both pages: Shield Status → ButterVault → Oopsie Logs → VPS Brain Routing → Event Ledger → Policy Engine → Alert Dispatcher. Added missing Alert Dispatcher nav link to `index.html`. Eliminates disorienting order mismatch when switching between dashboard views.
+- **Deduplicated Navigation Icons (`index.html`, `routing.html`):** Replaced reused emoji icons that mapped to multiple unrelated sections. 🧈→🔐 (ButterVault), 📋→📝 (Oopsie Logs), 📋→📊 (Event Ledger), 🛡️→⚖️ (Policy Engine). Applied across both sidebar nav links and section card headers.
+- **3-Tier Card Visual Hierarchy (`index.html`, `routing.html`):** Differentiated section cards into Hero (Shield Status, Routing Mode — `shadow-md`, `h-2` gradient bar), Standard (Endpoints, Logic Gates, MCP — `p-6`, `h-1` gradient bar), and Compact (Event Ledger, Policy Engine, Alert Dispatcher — `rounded-2xl p-5`, no gradient bar). Replaces uniform card styling that flattened visual priority.
+- **Section Header Icon Sizing (`index.html`, `routing.html`):** Shrunk icon containers from `p-3 text-xl` (~48px) to `p-2 text-base` (~36px) to reduce visual weight competing with section content.
+- **Unified Nav Active/Hover States (`index.html`, `routing.html`):** Removed distracting `animate-[spin_4s_linear_infinite]` CSS animation from the active VPS Brain Routing nav icon on `routing.html`. Added `group-hover:scale-110` to all non-active nav items on both pages for consistent hover feedback.
+- **Sidebar Badge Style Sync (`index.html`):** Unified Auth/MCP/Connection badge labels from `text-sm font-medium` to `text-xs font-bold uppercase tracking-wide`, matching the `routing.html` treatment.
+- **Sidebar Version Footer (`index.html`):** Added `ButterClaw v0.6.3.1` version badge to sidebar bottom, matching `routing.html`.
+- **Version Bumps (`index.html`, `routing.html`):** All version strings updated from `v0.6.3` to `v0.6.3.1` (login modal, sidebar footer, MCP badges).
+- **Watcher Auth Compliance (`watcher.py`):** Upgraded `send_to_server()` to pull the `BUTTERCLAW_API_KEY` from the OS environment (`os.environ`) and pass it as a Bearer token, fully complying with v0.6.0 Gateway Zero-Trust routing.
+- **Container Environment Pipeline (`.env`):** Streamlined `.env` to act as the single source of truth for internal service accounts (`BUTTERCLAW_API_KEY`), cloud inference (`GOOGLE_API_KEY`), and Python container behavior (`PYTHONUNBUFFERED=1`).
+- **Docker Network Bridge (`docker-compose.dev.yml`):** Implemented the `host.docker.internal` DNS bridge to allow the isolated container to securely reach the Windows host's native Ollama instance.
+- **Environment Variable Priority (`docker-compose.yml`):** Stripped out the hardcoded `BUTTERCLAW_OLLAMA_URL` environment variable to prevent it from overriding the `.env` file via Docker's config hierarchy.
+
+### Fixed
+- **The Invisible Python Net (`.env`):** Solidified the `PYTHONUNBUFFERED=1` environment variable requirement to stop Docker from buffering `print()` statements, restoring live real-time LLM inference logs to the terminal.
+- **Watcher Boot Warning Indentation (`watcher.py`):** Fixed an issue where the missing API key warning was placed outside the infinite `while True:` loop, causing it to only fire upon script termination rather than boot.
+- **Split-Brain Database Bug (`buttervault.py`, `policy_engine.py`, `alert_dispatcher.py`):** Replaced hardcoded `DB_PATH` variables with a unified `try/except` block importing `cfg.DB_PATH`. Resolves an issue where different modules wrote to different SQLite files when mounted inside Docker volumes.
+- **LLM Error Handling (`server.py`):** Hardened the `ask_guardian_agent()` JSON parsing block. Explicitly injects a `primary_gate: "None"` fallback if a model fails to output valid JSON, preventing `KeyError` crashes in the main event loop.
+- **The 1999 HTTP Header Trap (`alert_dispatcher.py`):** Engineered a custom RFC 2047 Base64 encoding bypass for ntfy push notifications. Fixes a critical UnicodeEncodeError where Python's urllib strictly enforced Latin-1 encoding, allowing ButterClaw to seamlessly push 🦞 and 🚨 emojis in native OS alerts without crashing the dispatcher thread.
+- **Template Scrubbing (`.env.example`):** Scrubbed the environment template of all legacy test credentials and internal routing topics to ensure the repository remains perfectly sterile for open-source cloning.
+- **Typo Fix (`routing.html`):** Corrected `Autclated` → `Authenticated` in the routing dashboard UI.
+
+---
+
 ## [0.6.3] - The Exoskeleton: Deployment Packaging - 2026-05-01
 
 ### Added
