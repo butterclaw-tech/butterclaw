@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.0 — MCP Transport Abstraction Layer
+ButterClaw v0.6.3.2 — MCP Transport Abstraction Layer
 =====================================================================
 Provides transport-agnostic I/O for the MCP server. The protocol
 handler (ButterClawMCPServer) doesn't care how bytes arrive — it
@@ -31,9 +31,11 @@ import threading
 from abc import ABC, abstractmethod
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+from config import cfg
 
 logger = logging.getLogger("butterclaw.transport")
 
+_CORS_ORIGIN = getattr(cfg, "BASE_URL", "http://127.0.0.1:5000")
 
 # =====================================================================
 # BASE TRANSPORT — Abstract interface
@@ -102,22 +104,22 @@ class StdioTransport(BaseTransport):
         logger.info("📡 [Transport] stdio transport stopped.")
 
     def read(self):
-        if not self._running:
-            return None
-        try:
-            line = sys.stdin.readline()
-            if not line:
-                return None  # stdin closed
-            line = line.strip()
-            if not line:
-                return self.read()  # skip empty lines, recurse
-            return json.loads(line)
-        except json.JSONDecodeError as e:
-            # Return a parse error response directly — caller handles it
-            logger.error(f"❌ [Transport] JSON parse error on stdin: {e}")
-            raise
-        except Exception:
-            return None
+        while True:
+            if not self._running:
+                return None
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    return None  # stdin closed
+                line = line.strip()
+                if line:
+                    return json.loads(line)
+            except json.JSONDecodeError as e:
+                # Return a parse error response directly — caller handles it
+                logger.error(f"❌ [Transport] JSON parse error on stdin: {e}")
+                raise
+            except Exception:
+                return None
 
     def write(self, response):
         try:
@@ -196,6 +198,11 @@ class SSETransport(BaseTransport):
                 return True
 
             def do_GET(self):
+                # 1. Auth check (if token is configured)
+                if transport_ref.token:
+                    if not self._check_auth():
+                        return  # 401 already sent by _check_auth()
+
                 path = urlparse(self.path).path
 
                 if path == "/health":
@@ -209,14 +216,11 @@ class SSETransport(BaseTransport):
                     return
 
                 if path == "/sse":
-                    if not self._check_auth():
-                        return
-
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Cache-Control", "no-cache")
                     self.send_header("Connection", "keep-alive")
-                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Access-Control-Allow-Origin", _CORS_ORIGIN)
                     self.end_headers()
 
                     # Send the endpoint URL as the first SSE event
@@ -312,7 +316,7 @@ class SSETransport(BaseTransport):
             def do_OPTIONS(self):
                 """Handle CORS preflight."""
                 self.send_response(200)
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Origin", _CORS_ORIGIN)
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
                 self.end_headers()
@@ -366,15 +370,13 @@ class SSETransport(BaseTransport):
             logger.info("📡 [Transport] SSE transport stopped.")
 
     def read(self):
-        if not self._running:
-            return None
-        try:
-            request = self._request_queue.get(timeout=1)
-            return request  # None is the poison pill
-        except queue.Empty:
-            if self._running:
-                return self.read()  # keep waiting
-            return None
+        while self._running:
+            try:
+                request = self._request_queue.get(timeout=1)
+                return request  # None is the poison pill
+            except queue.Empty:
+                continue
+        return None
 
     def write(self, response):
         """Push a response to all connected SSE clients."""

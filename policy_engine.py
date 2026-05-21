@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.1 — Policy Engine
+ButterClaw v0.6.3.2 — Policy Engine
 ===================================
 Deterministic guardrails for the probabilistic Brain.
 
@@ -72,20 +72,6 @@ DEFAULT_PRIORITY = 50
 # DATABASE
 # =============================================
 
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# FIND:
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# REPLACE WITH:
-#try:
-#    from config import cfg
-#    DB_PATH = cfg.DB_PATH
-#except ImportError:
-#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
-
 # Keep this line so the diagnostic tests still know where they are!
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -107,44 +93,42 @@ def _get_db():
 
 def init_policy_db():
     """Create the policies and policy_events tables if they don't exist."""
-    conn = _get_db()
+    with _get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS policies (
+                id            TEXT PRIMARY KEY,
+                name          TEXT NOT NULL,
+                description   TEXT,
+                priority      INTEGER NOT NULL DEFAULT 50,
+                enabled       INTEGER NOT NULL DEFAULT 1,
+                scope         TEXT NOT NULL,
+                condition     TEXT NOT NULL,
+                action        TEXT NOT NULL,
+                action_params TEXT,
+                created_by    TEXT,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT,
+                hit_count     INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
 
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS policies (
-            id            TEXT PRIMARY KEY,
-            name          TEXT NOT NULL,
-            description   TEXT,
-            priority      INTEGER NOT NULL DEFAULT 50,
-            enabled       INTEGER NOT NULL DEFAULT 1,
-            scope         TEXT NOT NULL,
-            condition     TEXT NOT NULL,
-            action        TEXT NOT NULL,
-            action_params TEXT,
-            created_by    TEXT,
-            created_at    TEXT NOT NULL,
-            updated_at    TEXT,
-            hit_count     INTEGER NOT NULL DEFAULT 0
-        )
-    ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS policy_events (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp        TEXT NOT NULL,
+                policy_id        TEXT NOT NULL,
+                policy_name      TEXT NOT NULL,
+                scope            TEXT NOT NULL,
+                action_taken     TEXT NOT NULL,
+                original_verdict TEXT,
+                final_verdict    TEXT,
+                payload_preview  TEXT,
+                tool_name        TEXT,
+                chain_id         TEXT
+            )
+        ''')
 
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS policy_events (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp        TEXT NOT NULL,
-            policy_id        TEXT NOT NULL,
-            policy_name      TEXT NOT NULL,
-            scope            TEXT NOT NULL,
-            action_taken     TEXT NOT NULL,
-            original_verdict TEXT,
-            final_verdict    TEXT,
-            payload_preview  TEXT,
-            tool_name        TEXT,
-            chain_id         TEXT
-        )
-    ''')
-
-    conn.commit()
-    conn.close()
+        conn.commit()
     logger.info("🛡️ [POLICY] Database tables initialized.")
 
 
@@ -247,10 +231,9 @@ def _increment_hit_count(policy_id):
     def _do_increment():
         try:
             with _db_lock:
-                conn = _get_db()
-                conn.execute("UPDATE policies SET hit_count = hit_count + 1 WHERE id = ?", (policy_id,))
-                conn.commit()
-                conn.close()
+                with _get_db() as conn:
+                    conn.execute("UPDATE policies SET hit_count = hit_count + 1 WHERE id = ?", (policy_id,))
+                    conn.commit()
         except sqlite3.Error as e:
             logger.warning(f"⚠️ [POLICY] Hit count increment failed for {policy_id}: {e}")
 
@@ -267,18 +250,17 @@ def _log_policy_event(policy_id, policy_name, scope, action_taken,
             payload_preview = payload_preview[:197] + "..."
 
         with _db_lock:
-            conn = _get_db()
-            conn.execute('''
-                INSERT INTO policy_events
-                    (timestamp, policy_id, policy_name, scope, action_taken,
-                     original_verdict, final_verdict, payload_preview, tool_name, chain_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                _now_iso(), policy_id, policy_name, scope, action_taken,
-                original_verdict, final_verdict, payload_preview, tool_name, chain_id
-            ))
-            conn.commit()
-            conn.close()
+            with _get_db() as conn:
+                conn.execute('''
+                    INSERT INTO policy_events
+                        (timestamp, policy_id, policy_name, scope, action_taken,
+                         original_verdict, final_verdict, payload_preview, tool_name, chain_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    _now_iso(), policy_id, policy_name, scope, action_taken,
+                    original_verdict, final_verdict, payload_preview, tool_name, chain_id
+                ))
+                conn.commit()
     except sqlite3.Error as e:
         logger.warning(f"⚠️ [POLICY] Event logging failed: {e}")
 
@@ -387,20 +369,19 @@ def create_policy(name, scope, condition, action, action_params=None,
     now = _now_iso()
 
     with _db_lock:
-        conn = _get_db()
-        conn.execute('''
-            INSERT INTO policies
-                (id, name, description, priority, enabled, scope,
-                 condition, action, action_params, created_by, created_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
-        ''', (
-            policy_id, name.strip(), description, priority, scope,
-            json.dumps(condition), action,
-            json.dumps(action_params) if action_params else None,
-            created_by, now
-        ))
-        conn.commit()
-        conn.close()
+        with _get_db() as conn:
+            conn.execute('''
+                INSERT INTO policies
+                    (id, name, description, priority, enabled, scope,
+                     condition, action, action_params, created_by, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+            ''', (
+                policy_id, name.strip(), description, priority, scope,
+                json.dumps(condition), action,
+                json.dumps(action_params) if action_params else None,
+                created_by, now
+            ))
+            conn.commit()
 
     logger.info(f"🛡️ [POLICY] Created: '{name}' [{policy_id}] scope={scope} action={action} priority={priority}")
 
@@ -422,8 +403,10 @@ def get_policy(policy_id):
         dict with all policy fields, or None if not found.
     """
     conn = _get_db()
-    row = conn.execute("SELECT * FROM policies WHERE id = ?", (policy_id,)).fetchone()
-    conn.close()
+    try:
+        row = conn.execute("SELECT * FROM policies WHERE id = ?", (policy_id,)).fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -463,8 +446,10 @@ def list_policies(scope=None, enabled_only=False):
     query += " ORDER BY priority ASC, created_at ASC"
 
     conn = _get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(query, params).fetchall()
+    finally:
+        conn.close()
 
     policies = []
     for row in rows:
@@ -552,10 +537,9 @@ def update_policy(policy_id, **kwargs):
     values = list(updatable.values()) + [policy_id]
 
     with _db_lock:
-        conn = _get_db()
-        conn.execute(f"UPDATE policies SET {set_clause} WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        with _get_db() as conn:
+            conn.execute(f"UPDATE policies SET {set_clause} WHERE id = ?", values)
+            conn.commit()
 
     logger.info(f"🛡️ [POLICY] Updated: [{policy_id}] fields={list(updatable.keys())}")
 
@@ -569,11 +553,10 @@ def delete_policy(policy_id):
     Returns:
         True if deleted, False if not found.
     """
-    conn = _get_db()
-    cursor = conn.execute("DELETE FROM policies WHERE id = ?", (policy_id,))
-    deleted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+    with _get_db() as conn:
+        cursor = conn.execute("DELETE FROM policies WHERE id = ?", (policy_id,))
+        deleted = cursor.rowcount > 0
+        conn.commit()
 
     if deleted:
         logger.info(f"🗑️ [POLICY] Deleted: [{policy_id}]")
@@ -594,14 +577,13 @@ def toggle_policy(policy_id, enabled):
     enabled_int = 1 if enabled else 0
 
     with _db_lock:
-        conn = _get_db()
-        cursor = conn.execute(
-            "UPDATE policies SET enabled = ?, updated_at = ? WHERE id = ?",
-            (enabled_int, _now_iso(), policy_id)
-        )
-        toggled = cursor.rowcount > 0
-        conn.commit()
-        conn.close()
+        with _get_db() as conn:
+            cursor = conn.execute(
+                "UPDATE policies SET enabled = ?, updated_at = ? WHERE id = ?",
+                (enabled_int, _now_iso(), policy_id)
+            )
+            toggled = cursor.rowcount > 0
+            conn.commit()
 
     if toggled:
         state = "enabled" if enabled else "disabled"
@@ -645,8 +627,10 @@ def get_policy_events(limit=50, policy_id=None, scope=None, since=None):
     params.append(min(limit, 200))
 
     conn = _get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(query, params).fetchall()
+    finally:
+        conn.close()
 
     return [dict(row) for row in rows]
 
@@ -655,8 +639,10 @@ def get_policy_event_count():
     """Return total policy event count."""
     try:
         conn = _get_db()
-        count = conn.execute("SELECT COUNT(*) FROM policy_events").fetchone()[0]
-        conn.close()
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM policy_events").fetchone()[0]
+        finally:
+            conn.close()
         return count
     except sqlite3.Error:
         return 0
@@ -696,11 +682,13 @@ def evaluate_policies(scope, context):
 
     # Fetch all enabled policies for this scope, ordered by priority
     conn = _get_db()
-    rows = conn.execute(
-        "SELECT * FROM policies WHERE scope = ? AND enabled = 1 ORDER BY priority ASC",
-        (scope,)
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM policies WHERE scope = ? AND enabled = 1 ORDER BY priority ASC",
+            (scope,)
+        ).fetchall()
+    finally:
+        conn.close()
 
     fields = SCOPE_FIELDS.get(scope, {})
 
@@ -860,11 +848,13 @@ def _evaluate_dry_run(scope, context):
         return {"policies_checked": 0, "matches": []}
 
     conn = _get_db()
-    rows = conn.execute(
-        "SELECT * FROM policies WHERE scope = ? AND enabled = 1 ORDER BY priority ASC",
-        (scope,)
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM policies WHERE scope = ? AND enabled = 1 ORDER BY priority ASC",
+            (scope,)
+        ).fetchall()
+    finally:
+        conn.close()
 
     fields = SCOPE_FIELDS.get(scope, {})
 
@@ -1129,16 +1119,15 @@ if __name__ == "__main__":
     # ──────────────────────────────────────
     try:
         # Manually insert a policy with a bogus operator
-        conn = _get_db()
-        bogus_id = _generate_policy_id()
-        conn.execute('''
-            INSERT INTO policies (id, name, priority, enabled, scope, condition, action, created_at)
-            VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-        ''', (bogus_id, "Bogus operator", 1, "pre_brain",
-              json.dumps({"field": "payload", "operator": "quantum_entangle", "value": "test"}),
-              "override_critical", _now_iso()))
-        conn.commit()
-        conn.close()
+        with _get_db() as conn:
+            bogus_id = _generate_policy_id()
+            conn.execute('''
+                INSERT INTO policies (id, name, priority, enabled, scope, condition, action, created_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+            ''', (bogus_id, "Bogus operator", 1, "pre_brain",
+                  json.dumps({"field": "payload", "operator": "quantum_entangle", "value": "test"}),
+                  "override_critical", _now_iso()))
+            conn.commit()
         test_ids.append(bogus_id)
 
         result = evaluate_policies("pre_brain", {
@@ -1288,10 +1277,9 @@ if __name__ == "__main__":
 
     # Also clean any leftover test events
     try:
-        conn = _get_db()
-        conn.execute("DELETE FROM policy_events WHERE policy_id LIKE 'pol_%'")
-        conn.commit()
-        conn.close()
+        with _get_db() as conn:
+            conn.execute("DELETE FROM policy_events WHERE policy_id LIKE 'pol_%'")
+            conn.commit()
     except Exception:
         pass
 

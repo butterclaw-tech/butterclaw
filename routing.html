@@ -6,11 +6,11 @@
   <title>VPS Routing | ButterClaw 🦞</title>
 
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self';
-               script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
-               style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
-               connect-src 'self' http://localhost:5000 http://127.0.0.1:5000;
-               img-src 'self' data:;">
+    content="default-src 'self';
+             script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
+             style-src 'self' 'unsafe-inline';
+             connect-src 'self';
+             img-src 'self' data:;">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -990,7 +990,7 @@
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
-    const API_BASE = 'http://127.0.0.1:5000';
+    const API_BASE = '';
     const HEALTH_CHECK_INTERVAL = 30000;
 
     // =============================================

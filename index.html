@@ -9,7 +9,7 @@
     content="default-src 'self';
              script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
              style-src 'self' 'unsafe-inline';
-             connect-src 'self' http://127.0.0.1:5000 http://localhost:5000;
+             connect-src 'self';
              img-src 'self' data:;">
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -536,7 +536,7 @@
   <script>
   document.addEventListener('DOMContentLoaded', () => {
 
-    const API_BASE = 'http://127.0.0.1:5000';
+    const API_BASE = '';
 
     // =============================================
     // [v0.6.0] AUTH SESSION MANAGEMENT 🔐

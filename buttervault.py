@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.0 — The ButterVault
+ButterClaw v0.6.3.2 — The ButterVault
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
@@ -18,20 +18,6 @@ import datetime
 
 # Set up Vault-specific logging
 logger = logging.getLogger("butterclaw.vault")
-
-# Absolute path to the existing ButterClaw SQLite database
-#DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
-
-# FIND:
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# REPLACE WITH:
-#try:
-#    from config import cfg
-#    DB_PATH = cfg.DB_PATH
-#except ImportError:
-#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
 
 # Keep this line so the diagnostic tests still know where they are!
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -267,6 +253,70 @@ def butter_keys(provider=None):
     """
     # Generating a random Fernet key ensures decryption will never be successful
     garbage = Fernet.generate_key() 
+    
+    # --- REVOCATION PATH (v0.6.3.2) ---
+    try:
+        import requests as http_req
+        import base64
+        from oauth_config import OAUTH_PROVIDERS
+        
+        tokens_to_revoke = []
+        with _get_db() as conn:
+            if provider:
+                cursor = conn.execute("SELECT provider, ciphertext FROM oauth_tokens WHERE provider = ?", (provider,))
+            else:
+                cursor = conn.execute("SELECT provider, ciphertext FROM oauth_tokens")
+            tokens_to_revoke = cursor.fetchall()
+            
+        cipher = _get_cipher()
+        for prov_name, ct in tokens_to_revoke:
+            try:
+                token_dict = json.loads(cipher.decrypt(ct).decode('utf-8'))
+                access_token = token_dict.get("access_token")
+                if not access_token:
+                    continue
+                
+                # GitHub-specific revocation branch
+                if prov_name == "github":
+                    # Attempt to pull credentials from oauth_config, fallback to ButterVault
+                    prov_cfg = OAUTH_PROVIDERS.get("github", {})
+                    client_id = prov_cfg.get("client_id") or get_key("github_client_id")
+                    client_secret = prov_cfg.get("client_secret") or get_key("github_client_secret")
+                    
+                    if client_id and client_secret:
+                        revoke_url = prov_cfg.get("revoke_url", "https://api.github.com/applications/{client_id}/token").format(client_id=client_id)
+                        
+                        auth_str = f"{client_id}:{client_secret}"
+                        b64_auth = base64.b64encode(auth_str.encode()).decode('utf-8')
+                        headers = {
+                            "Authorization": f"Basic {b64_auth}",
+                            "Content-Type": "application/json"
+                        }
+                        try:
+                            resp = http_req.delete(revoke_url, headers=headers, json={"access_token": access_token}, timeout=10)
+                            if resp.status_code == 204:
+                                logger.info(f"✅ GitHub OAuth token successfully revoked.")
+                            else:
+                                logger.warning(f"⚠️ GitHub OAuth token revocation failed: HTTP {resp.status_code}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ GitHub OAuth token revocation failed: {e}")
+                    else:
+                        logger.warning("⚠️ Cannot revoke GitHub token: Missing client_id or client_secret.")
+                else:
+                    # existing generic revoke_url POST path (unchanged)
+                    prov_cfg = OAUTH_PROVIDERS.get(prov_name, {})
+                    generic_revoke_url = prov_cfg.get("revoke_url")
+                    if generic_revoke_url:
+                        try:
+                            http_req.post(generic_revoke_url, data={"token": access_token}, timeout=10)
+                            logger.info(f"✅ OAuth token revoked for '{prov_name}'.")
+                        except Exception as e:
+                            logger.warning(f"⚠️ OAuth token revocation failed for '{prov_name}': {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to parse token for revocation: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ Revocation execution encountered an error: {e}")
+    # ---------------------------------
     
     with _get_db() as conn:
         if provider:

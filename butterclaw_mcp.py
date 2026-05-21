@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.0 — The Claws (MCP Execution Layer)
+ButterClaw v0.6.3.2 — The Claws (MCP Execution Layer)
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.
@@ -55,9 +55,14 @@ logger = logging.getLogger("butterclaw.mcp")
 # CONFIGURATION
 # =====================================================================
 
-VERSION = "0.5.0"
+VERSION = "0.6.3.2"
 PROTOCOL_VERSION = "2024-11-05"  # MCP spec version this server speaks
-DRY_RUN = True                  # SAFETY HARNESS — kinetic actions are simulated
+# Set BUTTERCLAW_MCP_DRY_RUN=false to enable live kinetic actions
+DRY_RUN = os.environ.get("BUTTERCLAW_MCP_DRY_RUN", "true").lower() != "false"
+
+# Strict allowlists for SSRF prevention [M9]
+SCAN_PORT_HOST_ALLOWLIST = {"127.0.0.1", "localhost", "host.docker.internal"}
+SCAN_PORT_ALLOWLIST = {11434}  # Ollama default
 
 
 # =====================================================================
@@ -105,15 +110,18 @@ def system_status():
         "version": VERSION,
         "dry_run": DRY_RUN,
         "platform": platform.system(),
-        "hostname": platform.node(),
         "python": platform.python_version(),
-        "pid": os.getpid(),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }, indent=2)
 
 
 def scan_port(host="127.0.0.1", port=11434):
     """Quick TCP connect check — is a service alive at host:port?"""
+    if str(host) not in SCAN_PORT_HOST_ALLOWLIST:
+        return f"Error: Host '{host}' not permitted by security policy."
+    if int(port) not in SCAN_PORT_ALLOWLIST:
+        return f"Error: Port {port} not permitted by security policy."
+
     try:
         with socket.create_connection((host, int(port)), timeout=2):
             return f"Port {host}:{port} is OPEN."
@@ -166,7 +174,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "system_status",
-        "description": "Returns current ButterClaw system health: version, platform, DRY_RUN state, PID.",
+        "description": "Returns current ButterClaw system health: version, platform, DRY_RUN state.",
         "inputSchema": {
             "type": "object",
             "properties": {},

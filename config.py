@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3 — Configuration Module
+ButterClaw v0.6.3.2 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -229,6 +229,8 @@ class ButterClawConfig:
         self.HOST = _env_str("HOST", "0.0.0.0")
         self.PORT = _env_int("PORT", 5000)
         self.DEBUG = _env_bool("DEBUG", False)
+        self.BASE_URL = _env_str("BASE_URL", "http://127.0.0.1:5000")
+        self.COOKIE_SECURE = _env_bool("COOKIE_SECURE", True)
 
         # ── CORS ──
         default_origins = [
@@ -244,6 +246,7 @@ class ButterClawConfig:
         # ── Brain / Ollama ──
         self.OLLAMA_BASE_URL = _env_str("OLLAMA_URL", "http://localhost:11434")
         self.OLLAMA_CHAT_PATH = _env_str("OLLAMA_PATH", "/api/chat")
+        self.GOOGLE_API_KEY = _env_str("GOOGLE_API_KEY", "")
         self.MODEL_NAME = _env_str("MODEL", "butterclaw-optimized:latest")
         self.CONFIDENCE_THRESHOLD = _env_int("CONFIDENCE_THRESHOLD", 85)
         self.DRY_RUN = _env_bool("DRY_RUN", False)
@@ -261,10 +264,13 @@ class ButterClawConfig:
 
         # ── Alert Dispatcher ──
         self.ALERT_DELIVERY_TIMEOUT = _env_int("ALERT_TIMEOUT", 10)
+        self.ALERT_TIMEOUT = _env_int("ALERT_TIMEOUT", 10)
         self.ALERT_MAX_RETRIES = _env_int("ALERT_RETRIES", 3)
         self.ALERT_RETRY_BACKOFF = _env_int("ALERT_BACKOFF", 1)
         self.AUTH_FAILURE_THRESHOLD = _env_int("AUTH_FAIL_THRESHOLD", 5)
+        self.AUTH_FAIL_THRESHOLD = _env_int("AUTH_FAIL_THRESHOLD", 5)
         self.AUTH_FAILURE_WINDOW = _env_int("AUTH_FAIL_WINDOW", 60)
+        self.AUTH_FAIL_WINDOW = _env_int("AUTH_FAIL_WINDOW", 60)
 
         # ── OAuth ──
         self.OAUTH_STATE_TTL = _env_int("OAUTH_TTL", 600)

@@ -1,5 +1,5 @@
 # =======================================================
-# ButterClaw v0.6.3.1 - Full Docker
+# ButterClaw v0.6.3.2
 # Local Ollama (Local GPU) - ButterClaw in the Container
 # =======================================================
 # Usage:
@@ -20,13 +20,12 @@ services:
     container_name: butterclaw-server
     restart: unless-stopped
     env_file: .env
-    ports:
-      - "5000:5000"
     volumes:
       - butterclaw-data:/data          # SQLite DB persistence
       # Mount the UI so you can edit HTML without rebuilding
       - ./index.html:/app/index.html   
       - ./routing.html:/app/routing.html
+      #- ./data:/data
       # bridge log file out to your host machine(paste + save to test):
       - ./openclaw_gateway.log:/app/openclaw_gateway.log    
     # bridge to host machine's native Ollama  
@@ -39,6 +38,34 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+        reservations:
+          memory: 128m
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      butterclaw:
+        condition: service_healthy
+    networks:
+      - butterclaw-net
+    restart: unless-stopped
 
   ntfy:
     image: binwiederhier/ntfy
@@ -48,10 +75,24 @@ services:
       - "2586:80"  
     networks:
       - butterclaw-net                 # <-- Bridges to butterclaw
+    volumes:
+      - ntfy-data:/var/lib/ntfy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
 
 volumes:
   butterclaw-data:
     name: butterclaw-data
+  ntfy-data:
 
 networks:
   butterclaw-net:                      # <-- Officially declares the network

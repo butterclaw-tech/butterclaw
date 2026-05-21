@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.1 — Log Watcher
+ButterClaw v0.6.3.2 — Log Watcher
 =================================================
 [v0.6.3.1] - Full Docker Updated
 | `watcher.py` | ~5 | ~5 | Auth compliance (Bearer tokens), boot warning logic fix. |
@@ -24,6 +24,8 @@ import sys
 import logging
 import argparse
 import atexit
+import json
+import signal
 from collections import deque
 
 # =============================================
@@ -41,8 +43,11 @@ LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
 VPS_ENDPOINT = "http://127.0.0.1:5000/api/analyze"
 PID_FILE = os.path.join(BASE_DIR, "watcher.pid")
 
-# [v0.6.0] API Auth Key
-API_KEY = os.environ.get("BUTTERCLAW_API_KEY")
+# [L1] Retry queue persistent storage path
+RETRY_QUEUE_PATH = os.path.join(
+    os.environ.get("BUTTERCLAW_DATA_DIR", "/data"),
+    "retry_queue.json"
+)
 
 # [C3] Retry queue for failed POSTs
 RETRY_QUEUE_MAX = 100
@@ -94,14 +99,43 @@ def sanitize_log_line(raw_line):
     return safe_line
 
 # =============================================
-# [C3] RETRY QUEUE (v0.6.0 patch)
+# [L1] PERSISTENT RETRY QUEUE
+# =============================================
+
+def load_retry_queue():
+    if os.path.exists(RETRY_QUEUE_PATH):
+        try:
+            with open(RETRY_QUEUE_PATH, "r") as f:
+                data = json.load(f)
+                for item in data:
+                    retry_queue.append(item)
+            os.remove(RETRY_QUEUE_PATH)
+            logger.info("📦 Loaded %d items from persistent retry queue.", len(data))
+        except Exception as e:
+            logger.error("❌ Failed to load retry queue: %s", e)
+
+def save_retry_queue():
+    if retry_queue:
+        try:
+            os.makedirs(os.path.dirname(RETRY_QUEUE_PATH), exist_ok=True)
+            with open(RETRY_QUEUE_PATH, "w") as f:
+                json.dump(list(retry_queue), f)
+            logger.info("💾 Saved %d items to persistent retry queue.", len(retry_queue))
+        except Exception as e:
+            logger.error("❌ Failed to save retry queue: %s", e)
+
+# =============================================
+# [C3] SERVER DISPATCH
 # =============================================
 
 def send_to_server(payload):
     """POST a payload to the ButterClaw server with Auth Headers."""
     headers = {"Content-Type": "application/json"}
-    if API_KEY:
-        headers["Authorization"] = f"Bearer {API_KEY}"
+    
+    # [L2] Dynamic per-request API_KEY read
+    api_key = os.environ.get("BUTTERCLAW_API_KEY", "")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     try:
         resp = requests.post(VPS_ENDPOINT, json=payload, headers=headers, timeout=POST_TIMEOUT)
@@ -115,7 +149,7 @@ def send_to_server(payload):
             return False
             
         return True
-    except requests.RequestException as e:
+    except requests.RequestException:
         logger.warning("⚠️ Brain offline. Queuing log for retry.")
         return False
 
@@ -152,58 +186,63 @@ def watch_log(replay=False):
 
     file = open(LOG_FILE, 'r')
 
-    if replay:
-        logger.info("⏪ REPLAY MODE: Processing entire log file from start.")
-        file.seek(0)
-    else:
-        file.seek(0, 2)  # Jump to EOF — tail mode
+    try:
+        if replay:
+            logger.info("⏪ REPLAY MODE: Processing entire log file from start.")
+            file.seek(0)
+        else:
+            file.seek(0, 2)  # Jump to EOF — tail mode
 
-    current_inode, _ = get_file_identity(LOG_FILE)
+        current_inode, _ = get_file_identity(LOG_FILE)
 
-    while True:
-        if retry_queue:
-            flush_retry_queue()
+        while True:
+            if retry_queue:
+                flush_retry_queue()
 
-        line = file.readline()
+            line = file.readline()
 
-        if not line:
-            time.sleep(0.5)
+            if not line:
+                time.sleep(0.5)
 
-            current_pos = file.tell()
-            _, current_size = get_file_identity(LOG_FILE)
-            if current_size is not None and current_pos > current_size:
-                logger.warning("🔄 Log file truncated. Reopening from start.")
-                file.close()
-                file = open(LOG_FILE, 'r')
-                file.seek(0)
-                current_inode, _ = get_file_identity(LOG_FILE)
+                current_pos = file.tell()
+                _, current_size = get_file_identity(LOG_FILE)
+                if current_size is not None and current_pos > current_size:
+                    logger.warning("🔄 Log file truncated. Reopening from start.")
+                    file.close()
+                    file = open(LOG_FILE, 'r')
+                    file.seek(0)
+                    current_inode, _ = get_file_identity(LOG_FILE)
+                    continue
+
+                new_inode, _ = get_file_identity(LOG_FILE)
+                if new_inode is not None and new_inode != current_inode:
+                    logger.warning("🔄 Log file replaced (new inode). Reopening.")
+                    file.close()
+                    file = open(LOG_FILE, 'r')
+                    file.seek(0)
+                    current_inode = new_inode
+                    continue
                 continue
 
-            new_inode, _ = get_file_identity(LOG_FILE)
-            if new_inode is not None and new_inode != current_inode:
-                logger.warning("🔄 Log file replaced (new inode). Reopening.")
-                file.close()
-                file = open(LOG_FILE, 'r')
-                file.seek(0)
-                current_inode = new_inode
+            clean_log = line.strip()
+            if not clean_log:
                 continue
-            continue
 
-        clean_log = line.strip()
-        if not clean_log:
-            continue
+            safe_line = sanitize_log_line(clean_log)
 
-        safe_line = sanitize_log_line(clean_log)
+            logger.info("📡 New log detected: %.80s%s", safe_line, "..." if len(safe_line) > 80 else "")
 
-        logger.info("📡 New log detected: %.80s%s", safe_line, "..." if len(safe_line) > 80 else "")
+            payload = {
+                "threat_type": "Live Gateway Log",
+                "raw_data": safe_line
+            }
 
-        payload = {
-            "threat_type": "Live Gateway Log",
-            "raw_data": safe_line
-        }
-
-        if not send_to_server(payload):
-            retry_queue.append(payload)
+            if not send_to_server(payload):
+                retry_queue.append(payload)
+                
+    finally:
+        # [M5] Ensure file handle is released even if exception breaks the loop
+        file.close()
 
 # =============================================
 # BOOT
@@ -216,27 +255,32 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO
     )
-    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.3.1")  # PATCHED I3
+    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.6.3.2")
     parser.add_argument("--replay", action="store_true", help="Process entire log file from start")
     args = parser.parse_args()
 
     check_pid_file()
     atexit.register(cleanup_pid_file)
-
-    logger.info("🦞 ButterClaw Watcher v0.6.3.1 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    atexit.register(save_retry_queue)
     
-    if not API_KEY:
+    # Graceful Docker shutdown support
+    def _sigterm_handler(signum, frame):
+        save_retry_queue()
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    logger.info("🦞 ButterClaw Watcher v0.6.3.2 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    
+    if not os.environ.get("BUTTERCLAW_API_KEY"):
         logger.warning("⚠️ BUTTERCLAW_API_KEY environment variable not found. Server will likely reject payloads (401).")
 
-    if retry_queue:
-        logger.info("Retry queue initialized (max %d entries).", RETRY_QUEUE_MAX)
+    load_retry_queue()
 
     try:
         watch_log(replay=args.replay)
     except KeyboardInterrupt:
         logger.info("🛑 SHUTDOWN: Watcher received SIGINT. Automator going dark.")
-        if retry_queue:
-            logger.warning("%d unsent log(s) in retry queue — will be lost.", len(retry_queue))
+        save_retry_queue()
 
 if __name__ == "__main__":
     main()

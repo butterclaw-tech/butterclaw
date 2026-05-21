@@ -6,6 +6,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.3.2] - ButterClaw - Patched Full Docker - 2026-05-21
+
+### Security & Kinetic Responses
+- **The Double Air-Gap (`DRY_RUN`):** Plugged a critical leak where `server.py` and manual UI buttons bypassed the `DRY_RUN` safety harness. The Gibson (`buttervault.butter_keys()`) now contains a hardcoded, low-level `DRY_RUN` check. When enabled, it strictly blocks all SQLite destruction and external network revocation requests, guaranteeing safe local prompt injection testing.
+- **Active Token Assassination (`buttervault.py`):** When `DRY_RUN=False`, the Gibson no longer just shreds local SQLite files. It now fires live HTTP `DELETE` and `POST` requests to GitHub and other external OAuth providers to instantly invalidate tokens globally *before* scorching the local database.
+- **SSRF Lockdown (`butterclaw_mcp.py`):** Hardcoded the `scan_port` MCP tool to a strict allowlist (`127.0.0.1`, `localhost`, `host.docker.internal` on port 11434). Malicious LLMs can no longer use ButterClaw to scrape internal VPS/AWS metadata.
+- **Port 5000 Isolation:** Removed raw exposed port 5000 from Docker. All UI and API traffic is now securely routed through an Nginx reverse proxy on standard web ports (80/443) using local TLS certificates. 
+
+### Added
+- **Watcher Autclation (`watcher.py`):** The Watcher daemon now gracefully serializes its in-memory retry queue to disk (`/data/retry_queue.json`) upon receiving a `SIGTERM` from Docker, ensuring no logs are lost during container reboots. It also dynamically reads the `BUTTERCLAW_API_KEY` on every request to instantly sync with rotated credentials.
+- **Infrastructure Bootstrapping (`auth.py`, `server.py`):** Wired `bootstrap_infrastructure_keys()` into the server boot sequence to auto-generate baseline vault structures for background services on first boot.
+
+### Changed
+- **The Config Contract:** Scrubbed hardcoded rate limits, session TTLs, and alert delivery timeouts from `auth.py` and `alert_dispatcher.py`. The `.env` file is now the absolute source of truth.
+- **Dependency Diet:** Removed redundant `python-dotenv` from `requirements.txt` as `config.py` uses a standard-library parser.
+- **UI Origin Policy (`index.html`,`routing.html`):** Rerouted frontend API `fetch()` calls to use relative paths (`/api/...`) and updated CSP meta tags to trust Nginx routing instead of hardcoded localhost ports.
+
+### Fixed
+- **Transport Time Bomb (`mcp_transport.py`):** Replaced unbounded recursive `.read()` loops with safe `while True` iterators, eliminating the risk of max-recursion stack crashes during prolonged 16-minute idle periods.
+- **Remote Routing Crash (`config.py`):** Mapped `GOOGLE_API_KEY` into the central configuration schema to prevent `AttributeError` crashes when utilizing remote Gemini inference.
+- **Database Descriptor Leaks (`policy_engine.py`):** Wrapped all SQLite interactions in safe context managers (`with _get_db() as conn:`) to prevent file descriptor exhaustion during high-volume log ingestion.
+
+---
+
 ## [0.6.3.1] - ButterClaw - The Exoskeleton: Full Docker - 2026-05-07
 
 ### Added

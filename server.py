@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.1 — The Exoskeleton (Deployment Packaging) - Full Docker
+ButterClaw v0.6.3.2 — The Exoskeleton (Deployment Packaging) - Full Docker
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -94,6 +94,7 @@ def track_auth_failures(response):
 
 _state_lock = threading.Lock()
 total_logs_processed = 0
+_logs_counter_lock = threading.Lock()
 current_level = "3"
 shield_enabled = True
 model_name = cfg.MODEL_NAME
@@ -761,16 +762,6 @@ def ask_guardian_agent(threat_type, raw_data):
             if isinstance(parsed, list):
                 parsed = parsed[0] if parsed else {}
 
-      #  print(f"\n🧠 RAW LLM OUTPUT:\n{raw_content}\n")
-      #  
-      #  try:
-      #      parsed = json.loads(raw_content)
-
-            # --- THE GEMINI LIST PATCH ---
-      #      if isinstance(parsed, list):
-      #          parsed = parsed[0] if parsed else {}
-      #      # -----------------------------
-
             raw_conf = float(parsed.get("confidence", 0.0))
             return {
                 "verdict": str(parsed.get("verdict", "UNKNOWN")).upper(),
@@ -843,7 +834,7 @@ def run_self_audit(original_threat):
             conn.execute('INSERT INTO logs (title, desc, action, time, icon, color) VALUES (?, ?, ?, ?, ?, ?)', (f"Self-Audit: {original_threat}", f"[Likely False Positive] Auditor Review: {parsed.get('reasoning', 'No reasoning provided.')}", "Audit Flagged", datetime.datetime.now().strftime("%H:%M:%S"), "🧐", "amber"))
             conn.commit()
             conn.close()
-            with _state_lock:
+            with _logs_counter_lock:
                 global total_logs_processed; total_logs_processed += 1
         else: print(f"👍 [AUDITOR] Actions verified. Agreement with primary Instinct.")
     except Exception as e: print(f"❌ [AUDITOR] Self-audit API failure: {e}")
@@ -1052,10 +1043,13 @@ def analyze_threat():
                 
                 executed_tools = [s['tool'] for s in executor.executed if s.get('status') == 'executed']
                 if "execute_gibson_kill" in executed_tools or "rotate_keys" in executed_tools:
-                    print("☢️ [SERVER] Chain executed a critical tool. Triggering ButterVault...")
-                    if ALERT_DISPATCHER_ENABLED:
-                        alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "chain"})
-                    buttervault.butter_keys()
+                    if DRY_RUN:
+                        print("🧪 [DRY RUN] Critical chain tool executed. Skipping ButterVault destruction (DRY_RUN=True).")
+                    else:
+                        print("☢️ [SERVER] Chain executed a critical tool. Triggering ButterVault...")
+                        if ALERT_DISPATCHER_ENABLED:
+                            alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "chain"})
+                        buttervault.butter_keys()
                 else:
                     print("🛡️ [SERVER] Critical tools were skipped/blocked. Vault remains sealed.")
                     
@@ -1083,10 +1077,13 @@ def analyze_threat():
                     if "error" in rotate_resp: mcp_failures.append("rotate_keys"); print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
 
                 if not gibson_blocked or not rotate_blocked:
-                    print("☢️ [SERVER] Hardcoded critical tool allowed. Triggering ButterVault...")
-                    if ALERT_DISPATCHER_ENABLED:
-                        alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "fallback"})
-                    buttervault.butter_keys()
+                    if DRY_RUN:
+                        print("🧪 [DRY RUN] Hardcoded critical tool allowed. Skipping ButterVault destruction (DRY_RUN=True).")
+                    else:
+                        print("☢️ [SERVER] Hardcoded critical tool allowed. Triggering ButterVault...")
+                        if ALERT_DISPATCHER_ENABLED:
+                            alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "fallback"})
+                        buttervault.butter_keys()
                 else:
                     print("🛡️ [SERVER] All critical hardcoded tools blocked. Vault remains sealed.")
                     
@@ -1104,7 +1101,7 @@ def analyze_threat():
         conn.close()
     except sqlite3.Error as e: print(f"❌ [DB ERROR] Failed to write log: {e}"); return jsonify({"error": f"Database write failed: {e}"}), 500
 
-    with _state_lock:
+    with _logs_counter_lock:
         global total_logs_processed; total_logs_processed += 1
 
     return jsonify({"status": "success", "verdict": verdict_text}), 200
@@ -1146,7 +1143,7 @@ def manual_key_rotation():
         conn.close()
     except sqlite3.Error as e: return jsonify({"error": f"Database write failed: {e}"}), 500
 
-    with _state_lock:
+    with _logs_counter_lock:
         global total_logs_processed; total_logs_processed += 1
 
     return jsonify({"status": "success"}), 200
@@ -1170,7 +1167,7 @@ def oauth_start(provider_name):
     if not client_id: return jsonify({"error": f"No client_id found in ButterVault for '{provider_name}'."}), 400
     
     state = secrets.token_urlsafe(32)
-    redirect_uri = f"http://127.0.0.1:5000/api/vault/oauth/callback"
+    redirect_uri = f"{cfg.BASE_URL}/api/vault/oauth/callback"
     _cleanup_expired_oauth_states()
     with _oauth_states_lock: _oauth_states[state] = {"provider": provider_name, "created_at": time.time(), "redirect_uri": redirect_uri}
     
@@ -1324,7 +1321,7 @@ def shield():
         conn.commit()
         conn.close()
     except sqlite3.Error as e: print(f"❌ [DB ERROR] Failed to log shield change: {e}")
-    with _state_lock:
+    with _logs_counter_lock:
         global total_logs_processed; total_logs_processed += 1
     return jsonify({"status": "ok", "shield_enabled": shield_enabled})
 
@@ -1483,9 +1480,9 @@ def policy_events_endpoint():
 def stream():
     def event_stream():
         global total_logs_processed
-        with _state_lock: last_processed = total_logs_processed
+        with _logs_counter_lock: last_processed = total_logs_processed
         while True:
-            with _state_lock: current = total_logs_processed
+            with _logs_counter_lock: current = total_logs_processed
             if current > last_processed: yield f"data: update_ready\n\n"; last_processed = current
             time.sleep(0.5)
     response = Response(event_stream(), mimetype="text/event-stream")
@@ -1519,8 +1516,15 @@ if __name__ == '__main__':
     
     #if ALERT_DISPATCHER_ENABLED:
     print("\n🔐 [AUTH] Checking API key bootstrap...")
-    bootstrap_admin_key()    
+    #bootstrap_admin_key()   
+    #auth.bootstrap_infrastructure_keys()
+
+    # Existing boot sequence
+    bootstrap_admin_key()
     auth.bootstrap_infrastructure_keys()
+    
+    # THE MISSING WIRE: Actually call the auto-heal feature!
+    auth.bootstrap_infrastructure_keys_auto_heal()
     
     print("\n🚨 [ALERTS] Checking infrastructure channels...")
     import alert_dispatcher
