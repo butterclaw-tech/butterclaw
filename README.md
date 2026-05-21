@@ -466,7 +466,7 @@ butterclaw/
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.3.2** | The Exoskeleton: Active Assassination | 2026-05-18 | TLS routing, SSRF lockdown, active token revocation |
+| **v0.6.3.2** | The Exoskeleton: Active Assassination | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
 | **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-05-07 | Docker bridge, Vault deadlock fix, Windows volume fixes |
 | **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-05-01 | config.py, Docker, systemd, nginx, backup/restore |
 | **v0.6.2** | The Exoskeleton: Alert Dispatcher | 2026-05-01 | 5 channels, 9 events, HMAC signing, brute-force detection |
@@ -592,9 +592,9 @@ MIT License. See [LICENSE](LICENSE) for details.
 -----
 
 <p align="center">
-<strong>🦞 ButterClaw v0.6.3.1 — The Exoskeleton — Full Docker</strong><br>
-<em>Deterministic guardrails for probabilistic reasoning. Evaluation before Execution.</em><br>
+<strong>🦞 ButterClaw v0.6.3.2 — The Exoskeleton (Active Tools)</strong><br>
+<em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
-<em>Built with Unautclated Telemetry. yes, unautclated. 🦞</em><br>
+<em>Built with unautclated telemetry. Yes, unautclated. 🦞</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
