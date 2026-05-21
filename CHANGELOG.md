@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 ### Added
 - **Watcher Autclation (`watcher.py`):** The Watcher daemon now gracefully serializes its in-memory retry queue to disk (`/data/retry_queue.json`) upon receiving a `SIGTERM` from Docker, ensuring no logs are lost during container reboots. It also dynamically reads the `BUTTERCLAW_API_KEY` on every request to instantly sync with rotated credentials.
 - **Infrastructure Bootstrapping (`auth.py`, `server.py`):** Wired `bootstrap_infrastructure_keys()` into the server boot sequence to auto-generate baseline vault structures for background services on first boot.
+- **Infrastructure Routing (`nginx/default.conf`):** Added to handle TLS termination and enforce secure, unbuffered routing for the /api/stream endpoint, fully replacing direct access to port 5000.
 
 ### Changed
 - **The Config Contract:** Scrubbed hardcoded rate limits, session TTLs, and alert delivery timeouts from `auth.py` and `alert_dispatcher.py`. The `.env` file is now the absolute source of truth.
