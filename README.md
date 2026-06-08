@@ -480,7 +480,7 @@ butterclaw/
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.4** | The Exoskeleton: Active Tools & Autonomous Deployment | 2026-06-03 | One-Click Install Script |
+| **v0.6.4** | The Exoskeleton: Active Tools & Autonomous Deployment | 2026-06-08 | One-Click Install Script |
 | **v0.6.3.2** | The Exoskeleton: Active Tools | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
 | **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-05-07 | Docker bridge, Vault deadlock fix, Windows volume fixes |
 | **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-05-01 | config.py, Docker, systemd, nginx, backup/restore |
