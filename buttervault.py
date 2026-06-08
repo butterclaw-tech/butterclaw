@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — The ButterVault
+ButterClaw v0.6.4 — The ButterVault
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.

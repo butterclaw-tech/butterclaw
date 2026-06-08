@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.6.3 — Production Container
+# ButterClaw v0.6.4 — Production Container
 # =============================================
 # Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
@@ -43,11 +43,33 @@ COPY watcher.py .
 # Copy health check script
 COPY scripts/healthcheck.py /app/scripts/healthcheck.py
 
-# Create data directory for DB volume mount
-#RUN mkdir -p /data && chown butterclaw:butterclaw /data <- changed to add watcher.py
-
 # Create data directory for DB volume mount and grant access to /app
 RUN mkdir -p /data && chown -R butterclaw:butterclaw /data /app
+
+# Install supervisor and create configuration file
+RUN pip install --no-cache-dir supervisor && \
+    mkdir -p /etc/supervisor/conf.d && \
+    echo "[supervisord]" > /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "nodaemon=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "user=butterclaw" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "[program:server]" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python /app/server.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "[program:watcher]" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python /app/watcher.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf
 
 # Default env vars (can be overridden by .env / docker-compose)
 ENV BUTTERCLAW_HOST=0.0.0.0
@@ -67,7 +89,5 @@ USER butterclaw
 
 EXPOSE 5000
 
-# CMD ["python", "server.py"]
-
-# Start server + watcher
-CMD ["sh", "-c", "python server.py & python watcher.py && wait"]
+# Start server + watcher via supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/butterclaw.conf"]

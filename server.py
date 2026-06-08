@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — The Exoskeleton (Deployment Packaging) - Full Docker
+ButterClaw v0.6.4 — The Exoskeleton (Deployment Packaging) - Full Docker
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -61,7 +61,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.3.1"
+VERSION = "0.6.4"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 

@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — Configuration Module
+ButterClaw v0.6.4 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -53,7 +53,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.6.3"
+CONFIG_VERSION = "0.6.4"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.

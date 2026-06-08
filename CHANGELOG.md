@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.4] - ButterClaw - Exoskeleton - Autonomous Deployment - 2026-06-08
+
+### Added
+- **One-Click Install Script (`install.sh`):** Added a single file install script.
+
+### Changed
+- **Chore: bump version to v0.6.4 and unify patch fixes** Updates several files hardcoded version numbers to reflect current version.
+
+---
+
 ## [0.6.3.2] - ButterClaw - Patched Full Docker - 2026-05-21
 
 ### Security & Kinetic Responses

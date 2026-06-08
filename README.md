@@ -1,6 +1,6 @@
-# 🦞 ButterClaw v0.6.3.2: The Exoskeleton (Active Tools)
+# 🦞 ButterClaw v0.6.4: The Exoskeleton (Active Tools & Autonomous Deployment)
 
-Version 0.6.3.2 — May 21, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+Version 0.6.4 — June 8, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
@@ -25,6 +25,20 @@ ButterClaw Tech has its own architecture, runtime, memory model, and execution s
 * **A hosted OpenClaw experience?** → Use `butterclaw.ai` or Hostinger's 1-click solution.
 * **A general autonomous agent framework?** → Use OpenClaw or Hermes Agent.
 * **A local‑first kinetic security layer with behavioral drift tracking, dual‑hemisphere reasoning, and a vault that actually shreds keys?** → You’re in the right place ([ButterClaw.tech](https://butterclaw.tech)).
+
+---
+
+🤝 Seeking AAIF / MCP Co-Maintainers
+ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are actively seeking security-focused co-maintainers and contributors—specifically those working with the Model Context Protocol (MCP)—to help scale our v0.7 stdio transport layer. Check out our CONTRIBUTING.md and our GOVERNANCE.md to get involved, or grab one of the "good first issues" on our tracker!
+
+---
+
+## 🚀 What's New in v0.6.4 (Autonomous Deployment)?
+
+**Version 0.6.4** combines the patches of the last two bug fix releases for the previous feature version (0.6.3). And adds a One-Click Autonomous Install Script now offered for less friction in the install process.
+
+* **One-Click Deployment** Added an autonomous install.sh script to drop time-to-value to under 60 seconds.
+* **The Exoskeleton Hardening** Unified the v0.6.3 patch cycle, finalizing the Nginx TLS routing, Docker bridge fixes, and the active token assassination network layer.
 
 ---
 
@@ -466,7 +480,8 @@ butterclaw/
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.3.2** | The Exoskeleton: Active Assassination | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
+| **v0.6.4** | The Exoskeleton: Active Tools & Autonomous Deployment | 2026-06-03 | One-Click Install Script |
+| **v0.6.3.2** | The Exoskeleton: Active Tools | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
 | **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-05-07 | Docker bridge, Vault deadlock fix, Windows volume fixes |
 | **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-05-01 | config.py, Docker, systemd, nginx, backup/restore |
 | **v0.6.2** | The Exoskeleton: Alert Dispatcher | 2026-05-01 | 5 channels, 9 events, HMAC signing, brute-force detection |
@@ -496,6 +511,14 @@ butterclaw/
 ---
 
 ## ⚡ Quick Start
+
+### Autonomous Deployment
+
+One-Click Install:
+
+```bash
+curl -sSL [https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh](https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh) | bash
+```
 
 ### Docker (Recommended Full-Stack Boot)
 
@@ -592,7 +615,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 -----
 
 <p align="center">
-<strong>🦞 ButterClaw v0.6.3.2 — The Exoskeleton (Active Tools)</strong><br>
+<strong>🦞 ButterClaw v0.6.4 — The Exoskeleton (Active Tools & Autonomous Deployment)</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <em>Built with unautclated telemetry. Yes, unautclated. 🦞</em><br>

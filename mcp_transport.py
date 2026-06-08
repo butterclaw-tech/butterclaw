@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — MCP Transport Abstraction Layer
+ButterClaw v0.6.4 — MCP Transport Abstraction Layer
 =====================================================================
 Provides transport-agnostic I/O for the MCP server. The protocol
 handler (ButterClawMCPServer) doesn't care how bytes arrive — it

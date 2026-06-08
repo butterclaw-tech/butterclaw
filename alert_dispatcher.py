@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.1 — Alert Dispatcher - Full Docker
+ButterClaw v0.6.4 — Alert Dispatcher
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -76,6 +76,7 @@ import smtplib
 from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+from config import cfg
 
 logger = logging.getLogger("butterclaw.alert")
 
@@ -141,29 +142,15 @@ GOTIFY_PRIORITY = {
 }
 
 DEFAULT_COOLDOWN = 60           # seconds
-MAX_RETRY_ATTEMPTS = 3
+MAX_RETRY_ATTEMPTS = cfg.ALERT_MAX_RETRIES
 RETRY_BACKOFF_BASE = 1          # exponential: 1s, 2s, 4s
-DELIVERY_TIMEOUT = 10           # seconds
-AUTH_FAILURE_THRESHOLD = 5
-AUTH_FAILURE_WINDOW = 60        # seconds
+DELIVERY_TIMEOUT = cfg.ALERT_TIMEOUT
+AUTH_FAILURE_THRESHOLD = cfg.AUTH_FAIL_THRESHOLD
+AUTH_FAILURE_WINDOW = cfg.AUTH_FAIL_WINDOW
 
 # =============================================
 # DATABASE
 # =============================================
-
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# FIND:
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# REPLACE WITH:
-#try:
-#    from config import cfg
-#    DB_PATH = cfg.DB_PATH
-#except ImportError:
-#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
 
 # Keep this line so the diagnostic tests still know where they are!
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -645,8 +632,6 @@ def _format_payload(event_type, context, channel_type):
     timestamp = datetime.datetime.utcnow().isoformat() + "Z"
     title = f"🦞 ButterClaw Alert: {event_type.replace('_', ' ').title()}"
 
-    # description = context.get("description", context.get("summary", json.dumps(context, default=str)))
-
     # --- THE HUMAN POLISH PATCH ---
     if "description" in context:
         description = context["description"]
@@ -808,57 +793,6 @@ def _deliver_ntfy(config, payload):
     req = Request(url, data=payload_bytes, headers=headers, method="POST")
     resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
     return resp.status
-
-
-
-# -------------------------------------------------
-#def _deliver_ntfy(config, payload):
-#    """Deliver alert via ntfy push notification using HTTP Headers."""
-#    base_url = config["url"].rstrip("/")
-#    topic = config["topic"]
-#    url = f"{base_url}/{topic}"
-#
-#    # 1. The body is ONLY the beautifully formatted text now
-#    message_text = payload.get("message", "Empty Alert")
-#    payload_bytes = message_text.encode("utf-8")
-#
-#    # 2. All the fancy stuff moves to the HTTP Headers
-#    headers = {
-#        "Title": payload.get("title", "ButterClaw Alert"),
-#        "Priority": str(payload.get("priority", 3)),
-#        "Tags": ",".join(payload.get("tags", [])),
-#        "User-Agent": "ButterClaw-Alert/0.6.3.1",
-#    }
-#
-#    # ntfy supports auth token
-#    if config.get("token"):
-#        headers["Authorization"] = f"Bearer {config['token']}"
-#
-#    req = Request(url, data=payload_bytes, headers=headers, method="POST")
-#    resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
-#    return resp.status
-#------------------------------------------
-
-#def _deliver_ntfy(config, payload):
-#    """Deliver alert via ntfy push notification."""
-#    base_url = config["url"].rstrip("/")
-#    topic = config["topic"]
-#    url = f"{base_url}/{topic}"
-#
-#    payload_bytes = json.dumps(payload, default=str).encode("utf-8")
-#
-#    headers = {
-#        "Content-Type": "application/json",
-#        "User-Agent": "ButterClaw-Alert/0.6.2",
-#    }
-#
-#    # ntfy supports auth token
-#    if config.get("token"):
-#        headers["Authorization"] = f"Bearer {config['token']}"
-#
-#    req = Request(url, data=payload_bytes, headers=headers, method="POST")
-#    resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
-#    return resp.status
 
 
 def _deliver_smtp(config, payload):
@@ -1462,10 +1396,12 @@ if __name__ == "__main__":
     try:
         init_alert_db()
         conn = _get_db()
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('alert_channels','alert_rules','alert_history')"
-        ).fetchall()
-        conn.close()
+        try:
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('alert_channels','alert_rules','alert_history')"
+            ).fetchall()
+        finally:
+            conn.close()
         if len(tables) == 3:
             test_pass(1, "All 3 tables created")
         else:

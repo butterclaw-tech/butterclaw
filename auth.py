@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.0 — Authentication & Authorization Module
+ButterClaw v0.6.4 — Authentication & Authorization Module
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
@@ -37,6 +37,15 @@ from flask import request, jsonify, Response
 
 logger = logging.getLogger("butterclaw.auth")
 
+# Keep this line so the diagnostic tests still know where they are!
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+try:
+    from config import cfg
+    DB_PATH = cfg.DB_PATH
+except ImportError:
+    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
 # =============================================
 # CONSTANTS
 # =============================================
@@ -49,16 +58,16 @@ ROLE_HIERARCHY = {
 }
 
 # Session token TTL (seconds)
-SESSION_TTL = 3600  # 1 hour
+SESSION_TTL = cfg.SESSION_TTL
 
 # API key prefix for identification (not security — just UX)
 KEY_PREFIX = "bc_"
 
 # Per-role rate limits (requests per minute on /api/analyze)
 ROLE_RATE_LIMITS = {
-    "admin": 30,
-    "operator": 15,
-    "viewer": 5,
+    "admin": cfg.AUTH_RATE_ADMIN,
+    "operator": cfg.AUTH_RATE_OPERATOR,
+    "viewer": cfg.AUTH_RATE_VIEWER,
 }
 
 # Default rate limit for unauthenticated (shouldn't happen if auth is enforced)
@@ -70,30 +79,6 @@ RATE_LIMIT_WINDOW = 60
 # =============================================
 # DATABASE
 # =============================================
-
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# FIND:
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# REPLACE WITH:
-#try:
-#    from config import cfg
-#    DB_PATH = cfg.DB_PATH
-#except ImportError:
-#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
-
-# Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
 
 def _get_auth_db():
     """Thread-safe connection to the ButterClaw database."""
@@ -206,7 +191,7 @@ def hash_api_key(plaintext_key, salt=None):
     return key_hash, salt
 
 
-def create_api_key(role="viewer", label=None):
+def create_api_key(role="viewer", label=None, predefined_key=None):
     """
     Generate, hash, and store a new API key.
     Returns the plaintext key (shown once) and the key_id.
@@ -221,7 +206,8 @@ def create_api_key(role="viewer", label=None):
     if role not in ROLE_HIERARCHY:
         raise ValueError(f"Invalid role: {role}. Must be one of: {', '.join(ROLE_HIERARCHY.keys())}")
 
-    plaintext = generate_api_key()
+    # <-- Use the predefined key if passed, otherwise generate a random one
+    plaintext = predefined_key if predefined_key else generate_api_key() 
     key_id = f"key_{secrets.token_hex(8)}"  # 16-char hex ID
     key_hash, salt = hash_api_key(plaintext)
 
@@ -345,12 +331,14 @@ def _update_last_used(key_id):
     def _do_update():
         try:
             conn = _get_auth_db()
-            conn.execute(
-                "UPDATE api_keys SET last_used = ? WHERE key_id = ?",
-                (_iso_now(), key_id)
-            )
-            conn.commit()
-            conn.close()
+            try:
+                conn.execute(
+                    "UPDATE api_keys SET last_used = ? WHERE key_id = ?",
+                    (_iso_now(), key_id)
+                )
+                conn.commit()
+            finally:
+                conn.close()
         except Exception:
             pass  # Non-critical — don't block auth for a timestamp update
 
@@ -631,7 +619,7 @@ def register_auth_routes(app):
             max_age=SESSION_TTL,
             httponly=True,
             samesite="Strict",
-            secure=False,  # Set True when behind TLS reverse proxy (v0.6.3)
+            secure=getattr(cfg, "COOKIE_SECURE", True),
             path="/",
         )
 
@@ -759,6 +747,59 @@ def bootstrap_admin_key():
     return result["key"]
 
 
+def bootstrap_infrastructure_keys():
+    """
+    Initialize infrastructure-tier API keys for internal routing.
+    """
+    existing = list_api_keys()
+    infra_keys = [k for k in existing if k["role"] == "infrastructure" and k["enabled"]]
+
+    if infra_keys:
+        logger.info(f"🔑 {len(infra_keys)} infrastructure key(s) already exist. Skipping bootstrap.")
+        return None
+
+    # Generate a new random hex key (32 bytes) -> 64 chars hex string
+    new_key = secrets.token_hex(32)
+
+    key_id = f"key_{secrets.token_hex(8)}"
+    key_hash, salt = hash_api_key(new_key)
+    now = _iso_now()
+
+    conn = _get_auth_db()
+    try:
+        conn.execute(
+            "INSERT INTO api_keys (key_id, key_hash, salt, role, label, created_at, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+            (key_id, key_hash, salt, "infrastructure", "infrastructure-bootstrap", now)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(f"🔑 Infrastructure API key created: {key_id}")
+    return new_key
+
+
+# The Auto-Heal Function
+def bootstrap_infrastructure_keys_auto_heal():
+    """
+    Auto-heals internal microservice keys from the environment.
+    If BUTTERCLAW_API_KEY is in the .env but missing from the database
+    (e.g., after a DB wipe), it automatically injects it as an operator.
+    """
+    env_key = os.environ.get("BUTTERCLAW_API_KEY")
+    if not env_key:
+        return None
+
+    # Check if this exact key is already active in the DB
+    if verify_api_key(env_key):
+        return None # Everything is humming perfectly
+
+    # The key is in .env but NOT in the DB. The DB must have been wiped!
+    # Auto-heal by injecting it quietly.
+    create_api_key(role="operator", label="Infrastructure Watcher (.env)", predefined_key=env_key)
+    logger.info("⚙️ [AUTO-HEAL] Infrastructure API Key restored from environment.")
+    return True
+
 # =============================================
 # ROUTE CLASSIFICATION MAP
 # =============================================
@@ -813,7 +854,7 @@ ROUTE_CLASSIFICATION = {
 def _iso_now():
     """Current UTC timestamp in ISO 8601 format."""
     import datetime
-    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # =============================================

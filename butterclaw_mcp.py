@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — The Claws (MCP Execution Layer)
+ButterClaw v0.6.4 — The Claws (MCP Execution Layer)
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.

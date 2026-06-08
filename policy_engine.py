@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.3.2 — Policy Engine
+ButterClaw v0.6.4 — Policy Engine
 ===================================
 Deterministic guardrails for the probabilistic Brain.
 

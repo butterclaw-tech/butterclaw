@@ -1,7 +1,7 @@
 """
-ButterClaw v0.6.3.2 — Log Watcher
+ButterClaw v0.6.4 — Log Watcher
 =================================================
-[v0.6.3.1] - Full Docker Updated
+[v0.6.3.1] - Full Docker Updated v0.6.3 version with minor logic flow bug fixes.
 | `watcher.py` | ~5 | ~5 | Auth compliance (Bearer tokens), boot warning logic fix. |
 - monitors bridged 'openclaw_gateway.log' in base directory
 
@@ -255,7 +255,7 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO
     )
-    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.6.3.2")
+    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.6.4")
     parser.add_argument("--replay", action="store_true", help="Process entire log file from start")
     args = parser.parse_args()
 
@@ -269,7 +269,7 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    logger.info("🦞 ButterClaw Watcher v0.6.3.2 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    logger.info("🦞 ButterClaw Watcher v0.6.4 online. 👁️ Staring intensely at %s...", LOG_FILE)
     
     if not os.environ.get("BUTTERCLAW_API_KEY"):
         logger.warning("⚠️ BUTTERCLAW_API_KEY environment variable not found. Server will likely reject payloads (401).")
