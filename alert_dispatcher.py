@@ -7,7 +7,7 @@ Solves the problem that ButterClaw's alerts currently only exist on the
 dashboard — if nobody is watching, threats go unnoticed.
 
 Provides:
-  - Channel management (webhook, discord, ntfy, smtp, gotify)
+  - Channel management (webhook, discord, telegram, ntfy, smtp, gotify)
   - Rule-based event routing with per-rule cooldown
   - Non-blocking dispatch via daemon threads
   - Retry with exponential backoff (3 attempts: 1s, 2s, 4s)
@@ -46,6 +46,7 @@ Event types:
 Channel types:
   - webhook  — Generic HTTP POST with HMAC-SHA256 signing
   - discord  — Discord webhook with embed JSON
+  - telegram — Telegram Bot API push notification
   - ntfy     — Push notification via ntfy.sh or self-hosted
   - smtp     — Email via smtplib
   - gotify   — Self-hosted push notification
@@ -76,6 +77,7 @@ import smtplib
 from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+import requests
 from config import cfg
 
 logger = logging.getLogger("butterclaw.alert")
@@ -96,12 +98,13 @@ VALID_EVENT_TYPES = (
     "system_startup",
 )
 
-VALID_CHANNEL_TYPES = ("webhook", "discord", "ntfy", "smtp", "gotify")
+VALID_CHANNEL_TYPES = ("webhook", "discord", "telegram", "ntfy", "smtp", "gotify")
 
 # Required config fields per channel type
 CHANNEL_CONFIG_REQUIRED = {
     "webhook": ["url"],
     "discord": ["webhook_url"],
+    "telegram": ["bot_token", "chat_id"],
     "ntfy":    ["url", "topic"],
     "smtp":    ["host", "port", "from_addr", "to_addr"],
     "gotify":  ["url", "token"],
@@ -125,6 +128,13 @@ DISCORD_COLORS = {
     "critical": 15548997,   # red
     "warning":  16776960,   # amber
     "info":     5793266,    # emerald
+}
+
+# Telegram severity emoji mapping
+TELEGRAM_EMOJIS = {
+    "critical": "🔴",
+    "warning":  "🟡",
+    "info":     "🟢",
 }
 
 # ntfy priority mapping
@@ -679,6 +689,33 @@ def _format_payload(event_type, context, channel_type):
         payload = {"embeds": [embed]}
         return payload, {}
 
+    elif channel_type == "telegram":
+        emoji = TELEGRAM_EMOJIS.get(severity, TELEGRAM_EMOJIS["info"])
+        lines = [
+            f"{emoji} {title}",
+            f"Severity: {severity.upper()}",
+            f"Event: {event_type}",
+            f"Time: {timestamp}",
+            "",
+            str(description)[:2048],
+        ]
+        field_lines = []
+        for key, value in context.items():
+            if key in ("description", "summary"):
+                continue
+            label = str(key).replace("_", " ").title()
+            field_lines.append(f"{label}: {str(value)[:512]}")
+            if len(field_lines) >= 10:
+                break
+        if field_lines:
+            lines.extend(["", *field_lines])
+        lines.extend(["", "— ButterClaw Alert Dispatcher"])
+        text = "\n".join(lines)
+        if len(text) > 4096:
+            text = text[:4093] + "..."
+        payload = {"text": text}
+        return payload, {}
+
     elif channel_type == "ntfy":
         priority = NTFY_PRIORITY.get(severity, 2)
         # ntfy tags map to emoji
@@ -759,6 +796,44 @@ def _deliver_discord(config, payload):
     resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
     return resp.status
 
+
+
+def _deliver_telegram(config, payload):
+    """Deliver alert via Telegram Bot API using requests (no Telegram SDK)."""
+    bot_token = config["bot_token"]
+    chat_id = config["chat_id"]
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+    try:
+        response = requests.post(
+            url,
+            json={
+                "chat_id": chat_id,
+                "text": payload.get("text", "ButterClaw Alert"),
+                "disable_web_page_preview": True,
+            },
+            headers={"User-Agent": "ButterClaw-Alert/0.6.4"},
+            timeout=DELIVERY_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise requests.RequestException(
+            f"Telegram API request failed: {exc.__class__.__name__}"
+        ) from exc
+
+    if response.status_code >= 400:
+        raise requests.RequestException(
+            f"Telegram API returned HTTP {response.status_code}"
+        )
+
+    try:
+        response_body = response.json()
+    except ValueError:
+        response_body = {}
+    if response_body.get("ok") is False:
+        description = str(response_body.get("description", "Telegram API error"))[:200]
+        raise requests.RequestException(f"Telegram API error: {description}")
+
+    return response.status_code
 
 
 def _deliver_ntfy(config, payload):
@@ -848,6 +923,7 @@ def _deliver_gotify(config, payload):
 _DELIVERY_MAP = {
     "webhook": lambda config, payload, secret: _deliver_webhook(config, payload, secret),
     "discord": lambda config, payload, secret: _deliver_discord(config, payload),
+    "telegram": lambda config, payload, secret: _deliver_telegram(config, payload),
     "ntfy":    lambda config, payload, secret: _deliver_ntfy(config, payload),
     "smtp":    lambda config, payload, secret: _deliver_smtp(config, payload),
     "gotify":  lambda config, payload, secret: _deliver_gotify(config, payload),
@@ -997,7 +1073,7 @@ def _dispatch_worker(rule, channel, event_type, context):
                         event_type, channel_id, channel_type, attempt)
             return
 
-        except (HTTPError, URLError, OSError, smtplib.SMTPException) as e:
+        except (HTTPError, URLError, OSError, smtplib.SMTPException, requests.RequestException) as e:
             last_error = str(e)
             if isinstance(e, HTTPError):
                 response_code = e.code
@@ -1409,12 +1485,13 @@ if __name__ == "__main__":
     except Exception as e:
         test_fail(1, "DB init", str(e))
 
-    # --- Test 2: Channel CRUD (create 5 types) ---
-    print("\n[Test 2] Channel CRUD — create 5 channel types")
+    # --- Test 2: Channel CRUD (create all channel types) ---
+    print(f"\n[Test 2] Channel CRUD — create {len(VALID_CHANNEL_TYPES)} channel types")
     test_channels = {}
     channel_configs = {
         "webhook": {"url": "https://example.com/webhook"},
         "discord": {"webhook_url": "https://discord.com/api/webhooks/test/token"},
+        "telegram": {"bot_token": "123456:test-token", "chat_id": "123456789"},
         "ntfy":    {"url": "https://ntfy.sh", "topic": "butterclaw-test"},
         "smtp":    {"host": "smtp.example.com", "port": "587", "from_addr": "claw@example.com", "to_addr": "admin@example.com"},
         "gotify":  {"url": "https://gotify.example.com", "token": "test-token"},
@@ -1560,11 +1637,12 @@ if __name__ == "__main__":
     if all_formatted:
         # Verify Discord has embeds
         discord_p, _ = _format_payload("verdict_critical", test_context, "discord")
+        telegram_p, _ = _format_payload("verdict_critical", test_context, "telegram")
         smtp_p, _ = _format_payload("verdict_critical", test_context, "smtp")
-        if "embeds" in discord_p and "subject" in smtp_p:
+        if "embeds" in discord_p and "text" in telegram_p and "🔴" in telegram_p["text"] and "subject" in smtp_p:
             test_pass(11, f"All {len(VALID_CHANNEL_TYPES)} channel payloads formatted correctly")
         else:
-            test_fail(11, "Payload format", "Discord missing embeds or SMTP missing subject")
+            test_fail(11, "Payload format", "Discord, Telegram, or SMTP payload missing expected fields")
 
     # --- Test 12: Alert history logging + querying ---
     print("\n[Test 12] Alert history")
