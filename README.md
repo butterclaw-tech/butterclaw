@@ -604,6 +604,7 @@ python scripts/add_rule.py
 
 # 2. Fire the simulated payload and watch the Arsenal intercept it
 python scripts/test_attack.py
+```
 
 ---
 
