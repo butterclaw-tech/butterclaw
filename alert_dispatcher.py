@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — Alert Dispatcher
+ButterClaw v0.6.5 — Alert Dispatcher
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -31,35 +31,6 @@ Design decisions:
   - Cascade delete on channel removal — prevents orphaned rules/history
   - @after_request for auth failure tracking — catches both API key
     and session failures
-
-Event types:
-  - verdict_critical    — Brain returned CRITICAL verdict
-  - verdict_warning     — Brain returned WARNING verdict
-  - gibson_triggered    — Gibson panic button (chain path)
-  - gibson_manual       — Manual Gibson via /api/rotate-keys
-  - policy_override     — Policy Engine overrode Brain verdict
-  - policy_blocked      — Policy Engine blocked a request
-  - auth_brute_force    — 5+ auth failures from one IP in 60s
-  - mcp_offline         — MCP server health check failed
-  - system_startup      — ButterClaw server started
-
-Channel types:
-  - webhook  — Generic HTTP POST with HMAC-SHA256 signing
-  - discord  — Discord webhook with embed JSON
-  - telegram — Telegram Bot API push notification
-  - ntfy     — Push notification via ntfy.sh or self-hosted
-  - smtp     — Email via smtplib
-  - gotify   — Self-hosted push notification
-
-Integration points (server.py):
-  - analyze_threat():   verdict_critical, verdict_warning
-  - analyze_threat():   policy_override, policy_blocked (via policy engine)
-  - butter_keys():      gibson_triggered (chain path, BEFORE vault burn)
-  - /api/rotate-keys:   gibson_manual
-  - @after_request:     auth_brute_force (via track_auth_failure)
-  - MCP health check:   mcp_offline
-  - startup:            system_startup
-  - register_alert_routes(app): 13 API endpoints
 """
 
 import json
@@ -77,7 +48,6 @@ import smtplib
 from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-import requests
 from config import cfg
 
 logger = logging.getLogger("butterclaw.alert")
@@ -154,9 +124,9 @@ GOTIFY_PRIORITY = {
 DEFAULT_COOLDOWN = 60           # seconds
 MAX_RETRY_ATTEMPTS = cfg.ALERT_MAX_RETRIES
 RETRY_BACKOFF_BASE = 1          # exponential: 1s, 2s, 4s
-DELIVERY_TIMEOUT = cfg.ALERT_TIMEOUT
-AUTH_FAILURE_THRESHOLD = cfg.AUTH_FAIL_THRESHOLD
-AUTH_FAILURE_WINDOW = cfg.AUTH_FAIL_WINDOW
+DELIVERY_TIMEOUT = cfg.ALERT_DELIVERY_TIMEOUT
+AUTH_FAILURE_THRESHOLD = cfg.AUTH_FAILURE_THRESHOLD
+AUTH_FAILURE_WINDOW = cfg.AUTH_FAILURE_WINDOW
 
 # =============================================
 # DATABASE
@@ -230,6 +200,15 @@ def init_alert_db():
 
 
 # =============================================
+# UTILITIES
+# =============================================
+
+def _iso_now():
+    """Current UTC timestamp in ISO 8601 format (Python 3.12+ Safe)."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# =============================================
 # AUTH FAILURE TRACKING
 # =============================================
 
@@ -243,6 +222,9 @@ def track_auth_failure(ip_address):
     Fires auth_brute_force when threshold is reached.
     """
     now = time.time()
+    trigger_alert = False
+    count = 0
+
     with _auth_failure_lock:
         if ip_address not in _auth_failure_tracker:
             _auth_failure_tracker[ip_address] = []
@@ -255,7 +237,12 @@ def track_auth_failure(ip_address):
         _auth_failure_tracker[ip_address].append(now)
         count = len(_auth_failure_tracker[ip_address])
 
-    if count >= AUTH_FAILURE_THRESHOLD:
+        # Ensure the alert triggers atomically before resetting the list
+        if count >= AUTH_FAILURE_THRESHOLD:
+            trigger_alert = True
+            _auth_failure_tracker[ip_address] = []
+
+    if trigger_alert:
         logger.warning(
             "Auth brute-force detected from %s (%d failures in %ds)",
             ip_address, count, AUTH_FAILURE_WINDOW
@@ -265,9 +252,6 @@ def track_auth_failure(ip_address):
             "failure_count": count,
             "window_seconds": AUTH_FAILURE_WINDOW,
         })
-        # Reset tracker for this IP after firing
-        with _auth_failure_lock:
-            _auth_failure_tracker[ip_address] = []
 
 
 # =============================================
@@ -292,7 +276,7 @@ def create_channel(name, channel_type, config, signing_secret=None):
         return {"error": err}
 
     channel_id = str(uuid.uuid4())[:8]
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = _iso_now()
 
     with _db_lock:
         conn = _get_db()
@@ -350,7 +334,6 @@ def update_channel(channel_id, **kwargs):
     if not channel:
         return {"error": f"Channel {channel_id} not found"}
 
-    # If config is being updated, validate it
     if "config" in kwargs:
         valid, err = _validate_channel_config(channel["channel_type"], kwargs["config"])
         if not valid:
@@ -392,17 +375,14 @@ def delete_channel(channel_id):
     with _db_lock:
         conn = _get_db()
         try:
-            # Cascade: delete history for rules pointing at this channel
             conn.execute(
                 """DELETE FROM alert_history WHERE rule_id IN
                    (SELECT rule_id FROM alert_rules WHERE channel_id = ?)""",
                 (channel_id,)
             )
-            # Cascade: delete rules for this channel
             conn.execute(
                 "DELETE FROM alert_rules WHERE channel_id = ?", (channel_id,)
             )
-            # Delete the channel itself
             conn.execute(
                 "DELETE FROM alert_channels WHERE channel_id = ?", (channel_id,)
             )
@@ -450,7 +430,7 @@ def create_rule(name, event_type, channel_id, cooldown_secs=DEFAULT_COOLDOWN):
         return {"error": f"Channel {channel_id} not found"}
 
     rule_id = str(uuid.uuid4())[:8]
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = _iso_now()
 
     with _db_lock:
         conn = _get_db()
@@ -639,22 +619,19 @@ def _format_payload(event_type, context, channel_type):
     Returns (payload_dict_or_str, headers_dict).
     """
     severity = SEVERITY_MAP.get(event_type, "info")
-    timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+    timestamp = _iso_now()
     title = f"🦞 ButterClaw Alert: {event_type.replace('_', ' ').title()}"
 
-    # --- THE HUMAN POLISH PATCH ---
     if "description" in context:
         description = context["description"]
     elif "summary" in context:
         description = context["summary"]
     else:
-        # Turn raw JSON context into a clean, multi-line summary
         parts = []
         for key, val in context.items():
             clean_key = str(key).replace("_", " ").title()
             parts.append(f"{clean_key}:\n{val}")
         description = "\n\n".join(parts)
-    # ------------------------------
 
     if channel_type == "webhook":
         payload = {
@@ -675,7 +652,6 @@ def _format_payload(event_type, context, channel_type):
             "footer": {"text": "ButterClaw Alert Dispatcher"},
             "fields": [],
         }
-        # Add context fields as embed fields
         for key, value in context.items():
             if key in ("description", "summary"):
                 continue
@@ -718,7 +694,6 @@ def _format_payload(event_type, context, channel_type):
 
     elif channel_type == "ntfy":
         priority = NTFY_PRIORITY.get(severity, 2)
-        # ntfy tags map to emoji
         tag_map = {"critical": "rotating_light", "warning": "warning", "info": "information_source"}
         payload = {
             "title": title,
@@ -768,9 +743,9 @@ def _deliver_webhook(config, payload, signing_secret=None):
 
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "ButterClaw-Alert/0.6.2",
+        "User-Agent": "ButterClaw-Alert/0.6.5",
         "X-ButterClaw-Event": payload.get("event", "unknown"),
-        "X-ButterClaw-Timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "X-ButterClaw-Timestamp": _iso_now(),
     }
 
     if signing_secret:
@@ -789,7 +764,7 @@ def _deliver_discord(config, payload):
 
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "ButterClaw-Alert/0.6.2",
+        "User-Agent": "ButterClaw-Alert/0.6.5",
     }
 
     req = Request(url, data=payload_bytes, headers=headers, method="POST")
@@ -797,43 +772,38 @@ def _deliver_discord(config, payload):
     return resp.status
 
 
-
 def _deliver_telegram(config, payload):
-    """Deliver alert via Telegram Bot API using requests (no Telegram SDK)."""
+    """Deliver alert via Telegram Bot API."""
     bot_token = config["bot_token"]
     chat_id = config["chat_id"]
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
+    req_payload = {
+        "chat_id": chat_id,
+        "text": payload.get("text", "ButterClaw Alert"),
+        "disable_web_page_preview": True,
+    }
+    payload_bytes = json.dumps(req_payload).encode("utf-8")
+
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "ButterClaw-Alert/0.6.5",
+    }
+
+    req = Request(url, data=payload_bytes, headers=headers, method="POST")
+    
     try:
-        response = requests.post(
-            url,
-            json={
-                "chat_id": chat_id,
-                "text": payload.get("text", "ButterClaw Alert"),
-                "disable_web_page_preview": True,
-            },
-            headers={"User-Agent": "ButterClaw-Alert/0.6.4"},
-            timeout=DELIVERY_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise requests.RequestException(
-            f"Telegram API request failed: {exc.__class__.__name__}"
-        ) from exc
-
-    if response.status_code >= 400:
-        raise requests.RequestException(
-            f"Telegram API returned HTTP {response.status_code}"
-        )
-
-    try:
-        response_body = response.json()
-    except ValueError:
-        response_body = {}
-    if response_body.get("ok") is False:
-        description = str(response_body.get("description", "Telegram API error"))[:200]
-        raise requests.RequestException(f"Telegram API error: {description}")
-
-    return response.status_code
+        resp = urlopen(req, timeout=DELIVERY_TIMEOUT)
+        return resp.status
+    except HTTPError as e:
+        # Try to parse Telegram's JSON error response
+        error_desc = "Telegram API error"
+        try:
+            body = json.loads(e.read().decode("utf-8"))
+            error_desc = body.get("description", error_desc)
+        except Exception:
+            pass
+        raise URLError(f"HTTP {e.code}: {error_desc}")
 
 
 def _deliver_ntfy(config, payload):
@@ -844,24 +814,20 @@ def _deliver_ntfy(config, payload):
     topic = config["topic"]
     url = f"{base_url}/{topic}"
 
-    # 1. The body is ONLY the beautifully formatted text
     message_text = payload.get("message", "Empty Alert")
     payload_bytes = message_text.encode("utf-8")
 
-    # 2. RFC 2047 encode the title to bypass Python's strict latin-1 header rule
     raw_title = payload.get("title", "ButterClaw Alert")
     b64_title = base64.b64encode(raw_title.encode('utf-8')).decode('ascii')
     safe_title = f"=?UTF-8?B?{b64_title}?="
 
-    # 3. All the fancy stuff moves to the HTTP Headers
     headers = {
         "Title": safe_title,
         "Priority": str(payload.get("priority", 3)),
         "Tags": ",".join(payload.get("tags", [])),
-        "User-Agent": "ButterClaw-Alert/0.6.3.1",
+        "User-Agent": "ButterClaw-Alert/0.6.5",
     }
 
-    # ntfy supports auth token
     if config.get("token"):
         headers["Authorization"] = f"Bearer {config['token']}"
 
@@ -905,13 +871,15 @@ def _deliver_gotify(config, payload):
     """Deliver alert via Gotify push notification."""
     base_url = config["url"].rstrip("/")
     token = config["token"]
-    url = f"{base_url}/message?token={token}"
+    
+    url = f"{base_url}/message"
 
     payload_bytes = json.dumps(payload, default=str).encode("utf-8")
 
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "ButterClaw-Alert/0.6.2",
+        "User-Agent": "ButterClaw-Alert/0.6.5",
+        "X-Gotify-Key": token
     }
 
     req = Request(url, data=payload_bytes, headers=headers, method="POST")
@@ -938,7 +906,7 @@ def _log_history(rule_id, channel_id, event_type, status, response_code=None,
                  error_message=None, payload_preview=None, attempt_count=0):
     """Log an alert dispatch attempt to history."""
     history_id = str(uuid.uuid4())[:12]
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = _iso_now()
 
     if payload_preview and len(payload_preview) > 200:
         payload_preview = payload_preview[:200]
@@ -1024,18 +992,15 @@ def _dispatch_worker(rule, channel, event_type, context):
     config = channel["config"] if isinstance(channel["config"], dict) else json.loads(channel["config"])
     signing_secret = channel.get("signing_secret")
 
-    # --- Cooldown check ---
     if not _is_cooled_down(rule_id, rule["cooldown_secs"]):
         logger.debug("Rule %s is in cooldown, skipping", rule_id)
         _log_history(rule_id, channel_id, event_type, "cooldown",
                      payload_preview=json.dumps(context, default=str)[:200])
         return
 
-    # --- Format payload ---
     payload, extra_headers = _format_payload(event_type, context, channel_type)
     payload_preview = json.dumps(payload, default=str)[:200]
 
-    # --- Deliver with retry ---
     deliver_fn = _DELIVERY_MAP.get(channel_type)
     if not deliver_fn:
         logger.error("No delivery function for channel type: %s", channel_type)
@@ -1050,17 +1015,15 @@ def _dispatch_worker(rule, channel, event_type, context):
     for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
         try:
             response_code = deliver_fn(config, payload, signing_secret)
-            # Success
             _log_history(rule_id, channel_id, event_type, "sent",
                          response_code=response_code,
                          payload_preview=payload_preview,
                          attempt_count=attempt)
 
-            # Update channel last_used / last_status
             with _db_lock:
                 conn = _get_db()
                 try:
-                    now = datetime.datetime.utcnow().isoformat() + "Z"
+                    now = _iso_now()
                     conn.execute(
                         "UPDATE alert_channels SET last_used = ?, last_status = ? WHERE channel_id = ?",
                         (now, "ok", channel_id)
@@ -1073,7 +1036,7 @@ def _dispatch_worker(rule, channel, event_type, context):
                         event_type, channel_id, channel_type, attempt)
             return
 
-        except (HTTPError, URLError, OSError, smtplib.SMTPException, requests.RequestException) as e:
+        except (HTTPError, URLError, OSError, smtplib.SMTPException) as e:
             last_error = str(e)
             if isinstance(e, HTTPError):
                 response_code = e.code
@@ -1084,14 +1047,12 @@ def _dispatch_worker(rule, channel, event_type, context):
                 backoff = RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                 time.sleep(backoff)
 
-    # All retries exhausted
     _log_history(rule_id, channel_id, event_type, "retry_exhausted",
                  response_code=response_code,
                  error_message=last_error,
                  payload_preview=payload_preview,
                  attempt_count=MAX_RETRY_ATTEMPTS)
 
-    # Update channel last_status
     with _db_lock:
         conn = _get_db()
         try:
@@ -1119,7 +1080,6 @@ def dispatch_alert(event_type, context=None):
         logger.warning("dispatch_alert called with invalid event_type: %s", event_type)
         return
 
-    # Find matching enabled rules
     conn = _get_db()
     try:
         rows = conn.execute(
@@ -1175,7 +1135,7 @@ def send_test_alert(channel_id):
         "description": "This is a test alert from ButterClaw Alert Dispatcher.",
         "channel_id": channel_id,
         "channel_type": channel_type,
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "timestamp": _iso_now(),
     }
 
     payload, _ = _format_payload("system_startup", test_context, channel_type)
@@ -1190,11 +1150,10 @@ def send_test_alert(channel_id):
                      response_code=response_code,
                      payload_preview="[test alert]",
                      attempt_count=1)
-        # Update last_used
         with _db_lock:
             conn = _get_db()
             try:
-                now = datetime.datetime.utcnow().isoformat() + "Z"
+                now = _iso_now()
                 conn.execute(
                     "UPDATE alert_channels SET last_used = ?, last_status = ? WHERE channel_id = ?",
                     (now, "ok", channel_id)
@@ -1217,44 +1176,30 @@ def send_test_alert(channel_id):
 # =============================================
 
 def bootstrap_infrastructure_alerts():
-    """
-    Auto-heals internal alert channels from the environment.
-    If BUTTERCLAW_ALERT_NTFY_TOPIC is set, it ensures an ntfy channel
-    and baseline critical routing rules exist in the database.
-    """
     ntfy_topic = os.environ.get("BUTTERCLAW_ALERT_NTFY_TOPIC")
     if not ntfy_topic:
         return None
 
-    # Check if we already have an ntfy channel
     channels = list_channels()
     if any(c["channel_type"] == "ntfy" for c in channels):
-        return None  # Everything is humming perfectly
+        return None  
 
     logger.info("⚙️ [AUTO-HEAL] Injecting ntfy push notification channel...")
     
-    # 1. Create the Channel (Internal Docker DNS points to the ntfy container)
     channel_res = create_channel(
         name="Local Push Notifications",
         channel_type="ntfy",
         config={"url": "http://ntfy:80", "topic": ntfy_topic}
     )
 
-    # 2. Wire up the Megaphone (Create Rules)
     if "channel_id" in channel_res:
         ch_id = channel_res["channel_id"]
-        # Rule: Text me if the Gibson fires (0 cooldown, immediate)
         create_rule("Gibson Panic", "gibson_triggered", ch_id, cooldown_secs=0)
-        # Rule: Text me if a Critical Threat is found (60s cooldown to prevent spam)
         create_rule("Critical Threat", "verdict_critical", ch_id, cooldown_secs=60)
         
     return True
 
 def register_alert_routes(app):
-    """
-    Register all alert dispatcher API endpoints on the Flask app.
-    Requires auth module's @require_auth decorator.
-    """
     try:
         from auth import require_auth
     except ImportError:
@@ -1264,21 +1209,17 @@ def register_alert_routes(app):
                 return f
             return decorator
 
-    # --- Channel endpoints ---
-
     @app.route('/api/alerts/channels', methods=['GET'])
     @require_auth(min_role="viewer")
     def api_list_channels():
         channels = list_channels()
-        # Redact sensitive config fields for non-admin
         from flask import request as req, jsonify
         role = getattr(req, 'auth_context', {}).get('role', 'viewer')
         if role != 'admin':
             for ch in channels:
-                # Redact secrets from config display
                 redacted = {}
                 for k, v in ch.get("config", {}).items():
-                    if any(s in k.lower() for s in ("secret", "password", "token")):
+                    if any(s in k.lower() for s in ("secret", "password", "token", "username")):
                         redacted[k] = "***"
                     else:
                         redacted[k] = v
@@ -1342,7 +1283,6 @@ def register_alert_routes(app):
             return jsonify(result), status_code
         return jsonify(result)
 
-    # --- Rule endpoints ---
 
     @app.route('/api/alerts/rules', methods=['GET'])
     @require_auth(min_role="viewer")
@@ -1399,7 +1339,6 @@ def register_alert_routes(app):
             return jsonify(result), 404
         return jsonify(result)
 
-    # --- History & status endpoints ---
 
     @app.route('/api/alerts/history', methods=['GET'])
     @require_auth(min_role="viewer")
@@ -1453,10 +1392,8 @@ if __name__ == "__main__":
     results = {"passed": 0, "failed": 0}
     test_db = os.path.join(BASE_DIR, 'butterclaw_test_alert.db')
 
-    # Override DB_PATH for testing
     import alert_dispatcher
     alert_dispatcher.DB_PATH = test_db
-    # Also update module-level reference
     globals()['DB_PATH'] = test_db
 
     def test_pass(num, name):
@@ -1467,7 +1404,6 @@ if __name__ == "__main__":
         results["failed"] += 1
         print(f"  ❌ Test {num}: {name} — {reason}")
 
-    # --- Test 1: DB Init ---
     print("\n[Test 1] Database initialization")
     try:
         init_alert_db()
@@ -1485,7 +1421,6 @@ if __name__ == "__main__":
     except Exception as e:
         test_fail(1, "DB init", str(e))
 
-    # --- Test 2: Channel CRUD (create all channel types) ---
     print(f"\n[Test 2] Channel CRUD — create {len(VALID_CHANNEL_TYPES)} channel types")
     test_channels = {}
     channel_configs = {
@@ -1507,16 +1442,14 @@ if __name__ == "__main__":
     if all_created:
         test_pass(2, f"Created {len(test_channels)} channels")
 
-    # --- Test 3: Channel validation (reject invalid) ---
     print("\n[Test 3] Channel validation")
     bad1 = create_channel("Bad", "carrier_pigeon", {"url": "lol"})
-    bad2 = create_channel("Bad", "webhook", {})  # missing url
+    bad2 = create_channel("Bad", "webhook", {}) 
     if "error" in bad1 and "error" in bad2:
         test_pass(3, "Rejected invalid channel type and missing config")
     else:
         test_fail(3, "Channel validation", "Should have rejected invalid inputs")
 
-    # --- Test 4: Channel toggle ---
     print("\n[Test 4] Channel toggle")
     if test_channels.get("webhook"):
         r1 = toggle_channel(test_channels["webhook"])
@@ -1530,14 +1463,12 @@ if __name__ == "__main__":
     else:
         test_fail(4, "Channel toggle", "No webhook channel to test")
 
-    # --- Test 5: Rule CRUD ---
     print("\n[Test 5] Rule CRUD")
     test_rules = {}
     if test_channels.get("webhook"):
         r = create_rule("Critical to webhook", "verdict_critical", test_channels["webhook"], 30)
         if "error" not in r:
             test_rules["critical_webhook"] = r["rule_id"]
-            # Verify get
             rule = get_rule(r["rule_id"])
             if rule and rule["event_type"] == "verdict_critical":
                 test_pass(5, "Rule created and retrieved")
@@ -1548,7 +1479,6 @@ if __name__ == "__main__":
     else:
         test_fail(5, "Rule CRUD", "No webhook channel available")
 
-    # --- Test 6: Rule validation ---
     print("\n[Test 6] Rule validation")
     bad_r1 = create_rule("Bad", "alien_invasion", test_channels.get("webhook", "x"))
     bad_r2 = create_rule("Bad", "verdict_critical", "nonexistent-channel-id")
@@ -1557,7 +1487,6 @@ if __name__ == "__main__":
     else:
         test_fail(6, "Rule validation", "Should have rejected invalid inputs")
 
-    # --- Test 7: Rule toggle ---
     print("\n[Test 7] Rule toggle")
     if test_rules.get("critical_webhook"):
         toggle_rule(test_rules["critical_webhook"])
@@ -1571,27 +1500,21 @@ if __name__ == "__main__":
     else:
         test_fail(7, "Rule toggle", "No rule to test")
 
-    # --- Test 8: Webhook signing verification ---
     print("\n[Test 8] Webhook signing")
     test_payload = b'{"event":"test","data":{}}'
     test_secret = "my-secret-key"
     sig = _sign_payload(test_payload, test_secret)
-    # Verify signature
     expected = hmac.new(test_secret.encode("utf-8"), test_payload, hashlib.sha256).hexdigest()
     if sig == f"sha256={expected}":
         test_pass(8, "HMAC-SHA256 signature verified")
     else:
         test_fail(8, "Webhook signing", f"Mismatch: {sig}")
 
-    # --- Test 9: Cooldown enforcement ---
     print("\n[Test 9] Cooldown enforcement")
     if test_rules.get("critical_webhook"):
         rid = test_rules["critical_webhook"]
-        # No history yet — should be cooled down
         if _is_cooled_down(rid, 60):
-            # Manually log a "sent" entry
             _log_history(rid, test_channels["webhook"], "verdict_critical", "sent")
-            # Now should NOT be cooled down
             if not _is_cooled_down(rid, 60):
                 test_pass(9, "Cooldown blocks after recent send")
             else:
@@ -1601,12 +1524,9 @@ if __name__ == "__main__":
     else:
         test_fail(9, "Cooldown", "No rule to test")
 
-    # --- Test 10: Auth failure tracking ---
     print("\n[Test 10] Auth failure tracking")
-    # Reset tracker
     _auth_failure_tracker.clear()
     test_ip = "192.168.1.99"
-    # Track 4 failures — should NOT fire
     for _ in range(4):
         with _auth_failure_lock:
             if test_ip not in _auth_failure_tracker:
@@ -1614,8 +1534,6 @@ if __name__ == "__main__":
             _auth_failure_tracker[test_ip].append(time.time())
     count_before = len(_auth_failure_tracker.get(test_ip, []))
     if count_before == 4:
-        # The 5th should trigger (but dispatch will fail since no real channel)
-        # We just verify the tracking logic
         _auth_failure_tracker[test_ip].append(time.time())
         if len(_auth_failure_tracker[test_ip]) >= AUTH_FAILURE_THRESHOLD:
             test_pass(10, f"Threshold detected at {AUTH_FAILURE_THRESHOLD} failures")
@@ -1624,7 +1542,6 @@ if __name__ == "__main__":
     else:
         test_fail(10, "Auth tracking", f"Expected 4 tracked, got {count_before}")
 
-    # --- Test 11: Payload formatting per channel type ---
     print("\n[Test 11] Payload formatting")
     test_context = {"description": "Test payload", "ip": "10.0.0.1", "verdict": "CRITICAL"}
     all_formatted = True
@@ -1635,7 +1552,6 @@ if __name__ == "__main__":
             all_formatted = False
             break
     if all_formatted:
-        # Verify Discord has embeds
         discord_p, _ = _format_payload("verdict_critical", test_context, "discord")
         telegram_p, _ = _format_payload("verdict_critical", test_context, "telegram")
         smtp_p, _ = _format_payload("verdict_critical", test_context, "smtp")
@@ -1644,7 +1560,6 @@ if __name__ == "__main__":
         else:
             test_fail(11, "Payload format", "Discord, Telegram, or SMTP payload missing expected fields")
 
-    # --- Test 12: Alert history logging + querying ---
     print("\n[Test 12] Alert history")
     hid = _log_history("test-rule", "test-channel", "verdict_critical", "sent",
                        response_code=200, payload_preview='{"test": true}')
@@ -1655,15 +1570,11 @@ if __name__ == "__main__":
     else:
         test_fail(12, "Alert history", "No history found after logging")
 
-    # --- Test 13: Test alert dispatch (dry — will fail delivery but test the path) ---
     print("\n[Test 13] Dispatch path (dry)")
     if test_channels.get("webhook") and test_rules.get("critical_webhook"):
-        # Clear cooldown by waiting or using 0 cooldown
         update_rule(test_rules["critical_webhook"], cooldown_secs=0)
-        # Dispatch — will spawn thread but delivery will fail (fake URL)
         dispatch_alert("verdict_critical", {"description": "Diagnostic test", "source": "diagnostic"})
-        time.sleep(2)  # Give daemon thread time to run
-        # Check history for an attempt
+        time.sleep(2) 
         recent = get_alert_history(event_type="verdict_critical", limit=5)
         dispatch_attempted = any(
             h.get("rule_id") == test_rules["critical_webhook"]
@@ -1677,7 +1588,6 @@ if __name__ == "__main__":
     else:
         test_fail(13, "Dispatch path", "No channel/rule to test")
 
-    # --- Test 14: Cleanup — cascade delete ---
     print("\n[Test 14] Cascade delete cleanup")
     cleanup_ok = True
     for ch_type, ch_id in test_channels.items():
@@ -1685,7 +1595,6 @@ if __name__ == "__main__":
         if "error" in result:
             test_fail(14, f"Delete {ch_type} channel", result["error"])
             cleanup_ok = False
-    # Verify rules are gone
     remaining_rules = list_rules()
     remaining_channels = list_channels()
     if cleanup_ok and len(remaining_rules) == 0 and len(remaining_channels) == 0:
@@ -1693,13 +1602,11 @@ if __name__ == "__main__":
     elif cleanup_ok:
         test_fail(14, "Cascade delete", f"Orphans remain: {len(remaining_rules)} rules, {len(remaining_channels)} channels")
 
-    # Cleanup test DB
     try:
         os.remove(test_db)
     except OSError:
         pass
 
-    # --- Summary ---
     print("\n" + "=" * 60)
     passed = results["passed"]
     failed = results["failed"]

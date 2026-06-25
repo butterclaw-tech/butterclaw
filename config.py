@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — Configuration Module
+ButterClaw v0.6.5 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -53,7 +53,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.6.4"
+CONFIG_VERSION = "0.6.5"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.
@@ -233,12 +233,12 @@ class ButterClawConfig:
         self.COOKIE_SECURE = _env_bool("COOKIE_SECURE", True)
 
         # ── CORS ──
+        # [S-07] "null" origin securely removed from defaults
         default_origins = [
             "http://127.0.0.1:5000",
             "http://localhost:5000",
             "http://127.0.0.1:5500",
             "http://localhost:5500",
-            "null",
         ]
         cors_raw = _env_list("CORS_ORIGINS")
         self.CORS_ORIGINS = cors_raw if cors_raw else default_origins
@@ -263,14 +263,12 @@ class ButterClawConfig:
         self.SESSION_TTL = _env_int("SESSION_TTL", 3600)
 
         # ── Alert Dispatcher ──
+        # [Q-01] Duplicate mappings removed
         self.ALERT_DELIVERY_TIMEOUT = _env_int("ALERT_TIMEOUT", 10)
-        self.ALERT_TIMEOUT = _env_int("ALERT_TIMEOUT", 10)
         self.ALERT_MAX_RETRIES = _env_int("ALERT_RETRIES", 3)
         self.ALERT_RETRY_BACKOFF = _env_int("ALERT_BACKOFF", 1)
         self.AUTH_FAILURE_THRESHOLD = _env_int("AUTH_FAIL_THRESHOLD", 5)
-        self.AUTH_FAIL_THRESHOLD = _env_int("AUTH_FAIL_THRESHOLD", 5)
         self.AUTH_FAILURE_WINDOW = _env_int("AUTH_FAIL_WINDOW", 60)
-        self.AUTH_FAIL_WINDOW = _env_int("AUTH_FAIL_WINDOW", 60)
 
         # ── OAuth ──
         self.OAUTH_STATE_TTL = _env_int("OAUTH_TTL", 600)
@@ -400,6 +398,7 @@ class ButterClawConfig:
         Redacted fields:
           - MCP SSE token (truncated)
           - MCP SSE URL (truncated if contains token-like paths)
+          - Google API Key
         """
         d = {
             "version": CONFIG_VERSION,
@@ -411,12 +410,15 @@ class ButterClawConfig:
                 "host": self.HOST,
                 "port": self.PORT,
                 "debug": self.DEBUG,
+                "base_url": self.BASE_URL,
+                "cookie_secure": self.COOKIE_SECURE,
             },
             "cors_origins": self.CORS_ORIGINS,
             "brain": {
                 "ollama_base_url": self.OLLAMA_BASE_URL,
                 "ollama_chat_path": self.OLLAMA_CHAT_PATH,
                 "model_name": self.MODEL_NAME,
+                "google_api_key": "***" if redact_secrets and self.GOOGLE_API_KEY else self.GOOGLE_API_KEY,
                 "confidence_threshold": self.CONFIDENCE_THRESHOLD,
                 "dry_run": self.DRY_RUN,
             },
@@ -472,10 +474,13 @@ class ButterClawConfig:
             "HOST": self.HOST,
             "PORT": self.PORT,
             "DEBUG": self.DEBUG,
+            "BASE_URL": self.BASE_URL,
+            "COOKIE_SECURE": self.COOKIE_SECURE,
             "CORS_ORIGINS": self.CORS_ORIGINS,
             "OLLAMA_BASE_URL": self.OLLAMA_BASE_URL,
             "OLLAMA_CHAT_PATH": self.OLLAMA_CHAT_PATH,
             "MODEL_NAME": self.MODEL_NAME,
+            "GOOGLE_API_KEY": "***" if self.GOOGLE_API_KEY else "",
             "CONFIDENCE_THRESHOLD": self.CONFIDENCE_THRESHOLD,
             "DRY_RUN": self.DRY_RUN,
             "MCP_TRANSPORT": self.MCP_TRANSPORT,
@@ -546,8 +551,8 @@ if __name__ == "__main__":
           repr(cfg))
 
     # ── Test 2: Version matches ──
-    _test(2, "Config version is 0.6.3",
-          CONFIG_VERSION == "0.6.3",
+    _test(2, "Config version is 0.6.5",
+          CONFIG_VERSION == "0.6.5",
           f"CONFIG_VERSION = {CONFIG_VERSION}")
 
     # ── Test 3: BASE_DIR is a real directory ──
@@ -616,16 +621,17 @@ if __name__ == "__main__":
     # ── Test 13: to_dict() redacts secrets ──
     d_redacted = cfg.to_dict(redact_secrets=True)
     mcp_token = d_redacted.get("mcp", {}).get("sse_token", "")
-    # Token should be '***' if set, or '' if empty
-    _test(13, "to_dict() redacts MCP SSE token",
-           mcp_token in ("***", ""),
-           f"sse_token = '{mcp_token}'")
+    google_key = d_redacted.get("brain", {}).get("google_api_key", "")
+    _test(13, "to_dict() redacts MCP SSE token and Google API key",
+           mcp_token in ("***", "") and google_key in ("***", ""),
+           f"sse_token = '{mcp_token}', google_api_key = '{google_key}'")
 
     # ── Test 14: to_flat_dict() includes all fields ──
     flat = cfg.to_flat_dict()
     expected_keys = [
         "BASE_DIR", "DB_PATH", "MCP_SCRIPT", "HOST", "PORT", "DEBUG",
-        "CORS_ORIGINS", "OLLAMA_BASE_URL", "OLLAMA_CHAT_PATH", "MODEL_NAME",
+        "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL", 
+        "OLLAMA_CHAT_PATH", "MODEL_NAME", "GOOGLE_API_KEY",
         "CONFIDENCE_THRESHOLD", "DRY_RUN", "MCP_TRANSPORT", "MCP_SSE_URL",
         "MCP_SSE_TOKEN", "AUTH_RATE_ADMIN", "AUTH_RATE_OPERATOR",
         "AUTH_RATE_VIEWER", "SESSION_TTL", "ALERT_DELIVERY_TIMEOUT",
@@ -633,7 +639,7 @@ if __name__ == "__main__":
         "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", "INSTANCE_ID",
     ]
     missing = [k for k in expected_keys if k not in flat]
-    _test(14, "to_flat_dict() includes all 26 config fields",
+    _test(14, f"to_flat_dict() includes all {len(expected_keys)} config fields",
            len(missing) == 0,
            f"Missing: {missing}" if missing else f"All {len(expected_keys)} fields present")
 

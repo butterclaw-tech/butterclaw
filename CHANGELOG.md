@@ -6,6 +6,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## [0.6.5] - The Exoskeleton: The Agentic SOC - 2026-06-24
+
+### Added
+- **Zero-Day Arsenal (`default_signatures.json`):** Shipped with 5 pre-compiled regex signatures targeting CSWH and prompt injections out of the box.
+- **The Paranoia Dial (`server.py`, `.env`):** Scalable kinetic response system via `BUTTERCLAW_PARANOIA`. Level 1 (Observe), Level 2 (Active Defense: SIGKILL only), Level 3 (Air-Gapped Lockdown: SIGKILL + Shred Vault).
+- **Visual TUI Dashboard (`tui_dashboard.py`):** Real-time, double-buffered, flicker-free terminal interface displaying live SOC telemetry, active rules, and current Paranoia level.
+- **TUI Micro-Shortcut (`install.sh`, `dash.bat`):** Deployment scripts now auto-generate a native `./dash` executable for zero-friction access to the live containerized TUI across both Linux and Windows environments.
+- **Live Fire Testing Scripts (`scripts/add_rule.py`, `scripts/test_attack.py`):** Standalone diagnostic harnesses allowing operators to safely inject custom regex signatures and simulate kinetic prompt injection attacks against the Arsenal without requiring an active LLM payload.
+
+### Security & Hardening (v0.6.4 Code Audit)
+- **Infrastructure Identity (S-01):** Reconciled the ghost `infrastructure` role in `auth.py`. Bootstrapped background services now correctly align with the `ROLE_HIERARCHY`.
+- **Gotify Leak Plugged (S-02):** Moved the Gotify authentication token out of the URL query parameters and into the `X-Gotify-Key` HTTP header, preventing secret leakage in Nginx access logs.
+- **Gibson Race Condition (S-03):** Closed a critical timing vulnerability in `buttervault.py`. The Vault shredding sequence is now wrapped in a single SQLite `BEGIN IMMEDIATE` transaction, eliminating the window where a concurrently minted token could survive the wipe.
+- **Encrypted SMTP (S-04):** SMTP passwords in the Alert Dispatcher are no longer stored in plaintext JSON. They are now fully encrypted at rest using the ButterVault keyring.
+- **Thread Safety (S-05):** Secured the `routing_mode` global variable in `server.py` with a mutex lock to prevent stale or torn reads under concurrent HTTP load.
+- **Brute-Force Memory (S-06):** Migrated the `_auth_failure_tracker` from volatile RAM to SQLite. Brute-force counts now survive Docker restarts and container crashes.
+- **CORS & Werkzeug Hardening (S-07, S-08):** Purged `"null"` from default allowed origins and added a hard environment guard that instantly crashes the boot sequence if Flask's interactive debug mode is enabled in production.
+
+### Changed
+- **Policy Engine Arsenal Integration (`policy_engine.py`):** Arsenal signatures load into memory on boot and evaluate before SQLite deterministic rules for zero-latency threat interception.
+- **Deployment Context Awareness (`install.sh`):** Added safety checks to prevent nested `git clone` loops when running the install script locally inside an active dev workspace.
+- **Terminal Observability (`server.py`):** Configured the Python root logger to properly expose `INFO` level logs, ensuring Vault sealing and Arsenal payload statuses are visible across the Docker boundary.
+- **Deprecation Cleansing (R-07):** Stripped all instances of the deprecated `datetime.utcnow()` across the codebase, migrating to timezone-aware UTC datetimes.
+- **Thread Optimization (R-01, R-03, R-05):** Replaced unbounded thread spawning with a capped `ThreadPoolExecutor` in the Alert Dispatcher. Fixed thread stacking in the self-auditor and stripped unnecessary thread-per-request overhead in Auth.
+
+- **Contributor Addition - Telegram Alert Channel (`alert_dispatcher.py`):** Added native Telegram Bot API support to the Alert Dispatcher. Operators can now route SOC alerts directly to mobile. Features include automatic severity-to-emoji mapping (🔴, 🟡, 🟢), safe payload chunking to respect Telegram's strict 4096-character limit, and disabled web page previews to prevent Telegram backend servers from scanning malicious URLs extracted from prompt injections. Includes strict error handling that catches silent ok: False API rejections. (Contributed by @huanghaiyss)
+
+### ⚖️ License Migration: MIT → Apache 2.0
+
+ButterClaw has officially transitioned from the MIT License to the **Apache License 2.0**.
+
+This upgrade strengthens the project’s legal and contributor framework by introducing an explicit patent grant. This ensures that all contributions—including the ButterVault subsystem, the DRIFT pattern architecture, and future operator‑facing modules—are protected under a clear Defensive IP model.
+
+Adopting Apache 2.0 aligns ButterClaw with modern enterprise security expectations and the Agentic AI Foundation (AAIF) guidelines, enabling safe, frictionless collaboration across organizations as the project grows beyond a single‑maintainer codebase.
+
+*Note: All prior releases (v0.6.4 and below) remain MIT‑licensed. All releases from v0.6.5 onward are distributed under Apache 2.0.*
+
+### Fixed
+- **Bare-Metal Database Crashes (`policy_engine.py`):** Added self-healing directory creation to `_get_db()` to prevent SQLite `OperationalError` when running native scripts on host OS environments outside of Docker.
+- **Config Self-Test (B-01):** Fixed the permanently broken version diagnostic assertion that was failing on every deployment.
+- **Policy Engine Logic & Locks (B-02, B-03, R-06):** Aligned the context key for chain evaluations (`chain`), added missing database locks to `delete_policy()`, and added crucial SQLite indexes to prevent full table scans.
+- **Database Descriptor Leaks (R-04):** Wrapped unmanaged SQLite connections in `buttervault.py` with `try/finally` blocks to guarantee file handle release on exception paths.
+- **SSE Timeouts (R-02):** Added strict connection and read timeouts to the MCPSSEClient to prevent worker threads from hanging indefinitely on dead MCP servers.
+- **TUI Database Targeting (`tui_dashboard.py`):** Patched the TUI to dynamically import `DB_PATH` from the config module, ensuring it reads from `/data/butterclaw.db` when running inside the production Docker container.
+
+---
+
 ## [0.6.4] - ButterClaw - Exoskeleton - Autonomous Deployment - 2026-06-08
 
 ### Added

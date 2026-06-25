@@ -1,0 +1,1 @@
+docker compose exec butterclaw python tui_dashboard.py

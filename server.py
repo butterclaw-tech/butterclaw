@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — The Exoskeleton (Deployment Packaging) - Full Docker
+ButterClaw v0.6.5 — The Exoskeleton (Deployment Packaging & Paranoia)
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -8,10 +8,9 @@ Changelog:
   [v0.6.0] API Gateway & Auth (RBAC, API Keys, Sessions)
   [v0.6.1] Policy Engine (Deterministic DRIFT framework)
   [v0.6.2] Alert Dispatcher (Notifications & monitoring)
-  [v0.6.3] Deployment Packaging:
-           - Centralized config module via .env/env vars.
-           - Enhanced health checks for orchestration.
-           - Boot parameters and DB_PATH centralized.
+  [v0.6.3] Deployment Packaging (Docker, config.py)
+  [v0.6.4] Active Tools & Autonomous Deployment
+  [v0.6.5] The Paranoia Dial & TUI Integration
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -20,6 +19,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import requests as http_requests
 import datetime
 import logging
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
 import time
 import sqlite3
 import threading
@@ -61,7 +63,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.4"
+VERSION = "0.6.5"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -95,7 +97,10 @@ def track_auth_failures(response):
 _state_lock = threading.Lock()
 total_logs_processed = 0
 _logs_counter_lock = threading.Lock()
-current_level = "3"
+
+# Initialize Paranoia from .env (Default to 2: Active Defense)
+current_level = os.getenv("BUTTERCLAW_PARANOIA", "2")
+
 shield_enabled = True
 model_name = cfg.MODEL_NAME
 routing_mode = "local"
@@ -692,9 +697,10 @@ def ask_guardian_agent(threat_type, raw_data):
                 timeline_context += f" - [{event['timestamp']}] Executed: {event['tool_name']} | Result: {event['status']}\n"
         timeline_context += "\n"
 
-    mode_instructions = "Mode: RELAXED. Be lenient unless it's a clear RCE."
-    if level == "2": mode_instructions = "Mode: CAUTIOUS. Flag anomalies and token leaks."
-    if level == "3": mode_instructions = "Mode: PARANOID. Zero Trust. Flag ANY external origin breathing on local ports."
+    # Apply Paranoia Logic to Prompt
+    if level == "1": mode_instructions = "Mode: RELAXED OBSERVER. Log anomalies, but do not terminate processes."
+    elif level == "2": mode_instructions = "Mode: CAUTIOUS ACTIVE DEFENSE. Flag anomalies and terminate compromised processes via execute_gibson_kill."
+    else: mode_instructions = "Mode: PARANOID LOCKDOWN. Zero Trust. Terminate unautclated behavior and trigger full Vault destruction."
 
     active_gates = [k for k, v in gates.items() if v]
     inactive_gates = [k for k, v in gates.items() if not v]
@@ -1034,7 +1040,19 @@ def analyze_threat():
 
     if verdict_upper == "CRITICAL":
         color = "red"; icon = "🚨"
-        if kill_sw_armed:
+
+        # ====================================================
+        # [v0.6.5] PARANOIA DIAL INTEGRATION (The Gibson Gate)
+        # ====================================================
+        if not kill_sw_armed or current_level == "1":
+            # Paranoia Level 1 (Observe) or Kill Switch Disabled manually
+            action = "Monitored (Kinetics Disabled)"
+            print(f"🛡️ [SERVER] Threat logged. Kinetic responses skipped (Paranoia Level 1 or Kill Switch disarmed).")
+        else:
+            # Paranoia Level 2 (Active Defense) or Level 3 (Air-Gapped Lockdown)
+            executed_critical_tools = False
+            mcp_failures = []
+
             chain_steps = analysis.get('chain') if isinstance(analysis, dict) else None
             if chain_steps and isinstance(chain_steps, list) and len(chain_steps) > 0:
                 print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
@@ -1043,19 +1061,9 @@ def analyze_threat():
                 
                 executed_tools = [s['tool'] for s in executor.executed if s.get('status') == 'executed']
                 if "execute_gibson_kill" in executed_tools or "rotate_keys" in executed_tools:
-                    if DRY_RUN:
-                        print("🧪 [DRY RUN] Critical chain tool executed. Skipping ButterVault destruction (DRY_RUN=True).")
-                    else:
-                        print("☢️ [SERVER] Chain executed a critical tool. Triggering ButterVault...")
-                        if ALERT_DISPATCHER_ENABLED:
-                            alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "chain"})
-                        buttervault.butter_keys()
-                else:
-                    print("🛡️ [SERVER] Critical tools were skipped/blocked. Vault remains sealed.")
-                    
-                print(f"🔗 CHAIN EXECUTED: {action}")
+                    executed_critical_tools = True
             else:
-                mcp_failures = []
+                # Execute fallback hardcoded defense tools
                 gibson_blocked = False
                 if POLICY_ENGINE_ENABLED:
                     gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "execute_gibson_kill", "tool_args": {"target_process": "openclaw"}, "verdict": "CRITICAL", "confidence": 1.0})
@@ -1065,6 +1073,7 @@ def analyze_threat():
                 if not gibson_blocked:
                     gibson_resp = mcp_manager.send("tools/call", {"name": "execute_gibson_kill", "arguments": {"target_process": "openclaw"}}, trigger="critical")
                     if "error" in gibson_resp: mcp_failures.append("gibson_kill"); print(f"⚠️ [MCP] gibson_kill failed: {gibson_resp['error']}")
+                    else: executed_critical_tools = True
                 
                 rotate_blocked = False
                 if POLICY_ENGINE_ENABLED:
@@ -1075,20 +1084,27 @@ def analyze_threat():
                 if not rotate_blocked:
                     rotate_resp = mcp_manager.send("tools/call", {"name": "rotate_keys", "arguments": {"provider": "OpenRouter"}}, trigger="critical")
                     if "error" in rotate_resp: mcp_failures.append("rotate_keys"); print(f"⚠️ [MCP] rotate_keys failed: {rotate_resp['error']}")
+                    else: executed_critical_tools = True
 
-                if not gibson_blocked or not rotate_blocked:
-                    if DRY_RUN:
-                        print("🧪 [DRY RUN] Hardcoded critical tool allowed. Skipping ButterVault destruction (DRY_RUN=True).")
-                    else:
-                        print("☢️ [SERVER] Hardcoded critical tool allowed. Triggering ButterVault...")
-                        if ALERT_DISPATCHER_ENABLED:
-                            alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "fallback"})
-                        buttervault.butter_keys()
+            # Evaluate Paranoia Level against the executed critical tools
+            if executed_critical_tools:
+                if DRY_RUN:
+                    print("🧪 [DRY RUN] Critical tool triggered. Skipping further kinetic action.")
+                    action = f"SIGKILL (Dry Run) | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL (Dry Run)"
                 else:
-                    print("🛡️ [SERVER] All critical hardcoded tools blocked. Vault remains sealed.")
-                    
-                action = f"Keys Buttered | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Keys Buttered"
-        else: action = "ALERT | Kill Switch Disarmed"
+                    if current_level == "3":
+                        print("☢️ [SERVER] Paranoia Level 3 Active: Air-Gapped Lockdown. Triggering ButterVault destruction...")
+                        if ALERT_DISPATCHER_ENABLED:
+                            alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "paranoia_3"})
+                        buttervault.butter_keys()
+                        action = f"Vault Shredded | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Vault Shredded"
+                    else:
+                        print("⚔️ [SERVER] Paranoia Level 2 Active: Active Defense. SIGKILL executed. Vault remains sealed.")
+                        action = f"SIGKILL Executed | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL Executed"
+            else:
+                print("🛡️ [SERVER] All critical tools blocked or failed. Vault remains sealed.")
+                action = "ALERT | Blocks/Failures Prevented Kinetics"
+
         threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()
     elif verdict_upper == "WARNING": color = "amber"; icon = "⚠️"; action = "Monitored"
     elif verdict_upper == "ERROR": color = "red"; icon = "❌"; action = "System Offline"
@@ -1511,24 +1527,14 @@ if __name__ == '__main__':
     print(f"   Alert Dispatcher: {'ENABLED' if ALERT_DISPATCHER_ENABLED else 'DISABLED'}")
     print(f"   MCP Transport: {mcp_transport_mode}")
 
-    #print("\n🔐 [AUTH] Checking API key bootstrap...") <- changed for docker
-    #bootstrap_admin_key()
-    
-    #if ALERT_DISPATCHER_ENABLED:
     print("\n🔐 [AUTH] Checking API key bootstrap...")
-    #bootstrap_admin_key()   
-    #auth.bootstrap_infrastructure_keys()
-
-    # Existing boot sequence
     bootstrap_admin_key()
     auth.bootstrap_infrastructure_keys()
-    
-    # THE MISSING WIRE: Actually call the auto-heal feature!
     auth.bootstrap_infrastructure_keys_auto_heal()
     
     print("\n🚨 [ALERTS] Checking infrastructure channels...")
-    import alert_dispatcher
-    alert_dispatcher.bootstrap_infrastructure_alerts()
+    if ALERT_DISPATCHER_ENABLED:
+        alert_dispatcher.bootstrap_infrastructure_alerts()
 
     print("\n🔐 [VAULT] Initializing Master Keyring...")
     try:

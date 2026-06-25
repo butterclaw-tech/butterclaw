@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "signatures": [
+    {
+      "id": "sig_cswh_01",
+      "name": "CSWH WebSocket Port Scanning",
+      "description": "Detects attempts to pivot and open WebSocket connections to internal network boundaries.",
+      "pattern": "ws:\\/\\/(127\\.0\\.0\\.1|localhost|0\\.0\\.0\\.0|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1]))(:[0-9]{1,5})?",
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "sig_exfil_01",
+      "name": "Environment Variable Exfiltration",
+      "description": "Catches tools attempting to pipe sensitive local files to external endpoints via curl/wget.",
+      "pattern": "(curl|wget).*(-d|--data).*(@\\.env|@~\\/\\.aws\\/credentials|@\\/etc\\/passwd|\\$AWS_ACCESS_KEY_ID|\\$OPENAI_API_KEY)",
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "sig_exfil_02",
+      "name": "Base64 Encoding Pipeline",
+      "description": "Detects obfuscated exfiltration where output is piped into base64 before transmission.",
+      "pattern": "\\|\\s*base64\\s*(-\\-wrap=0|-w0|\\s*\\|\\s*(curl|wget|nc))",
+      "severity": "WARNING"
+    },
+    {
+      "id": "sig_inj_01",
+      "name": "System Prompt Override (Jailbreak)",
+      "description": "Catches classic and evolving system-level instruction override attempts.",
+      "pattern": "(?i)(ignore all previous instructions|you are now a|enter developer mode|system prompt override)",
+      "severity": "WARNING"
+    },
+    {
+      "id": "sig_kin_01",
+      "name": "Unauthorized Execution Modifiers",
+      "description": "Catches attempts to silently change file permissions or set up reverse shells.",
+      "pattern": "(chmod\\s+\\+x|nc\\s+-e\\s+\\/bin\\/(ba)?sh|bash\\s+-i\\s+>&\\s+\\/dev\\/tcp\\/)",
+      "severity": "CRITICAL"
+    }
+  ]
+}

@@ -1,12 +1,19 @@
-# 🦞 ButterClaw v0.6.4: The Exoskeleton (Active Tools & Autonomous Deployment)
+██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
+██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
+██████╔╝██║   ██║   ██║      ██║   █████╗  ██████╔╝██║     ██║     ███████║██║ █╗ ██║
+██╔══██╗██║   ██║   ██║      ██║   ██╔══╝  ██╔══██╗██║     ██║     ██╔══██║██║███╗██║
+██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
+╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ 
 
-Version 0.6.4 — June 8, 2026 | [Official Dashboard: butterclaw.tech](https://butterclaw.tech)
+# 🦞 ButterClaw v0.6.5: The Agentic SOC
+
+[![License](https://img.shields.io/badge/License-Apache_2.0-ef4444.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Version](https://img.shields.io/badge/version-0.6.5-navy.svg)](CHANGELOG.md)
+[![Dashboard](https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg)](https://butterclaw.tech)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
 Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
-
-> **Note:** *ButterClaw is an original agent platform, implemented from the ground up. While it operates in the same problem space as other long‑running agent systems, it does not share code, commit history, or architectural lineage with those projects. It is designed as an independent system with its own runtime, memory model, and execution semantics.*
 
 ---
 
@@ -23,17 +30,31 @@ ButterClaw Tech has its own architecture, runtime, memory model, and execution s
 
 **If you’re looking for:**
 * **A hosted OpenClaw experience?** → Use `butterclaw.ai` or Hostinger's 1-click solution.
-* **A general autonomous agent framework?** → Use OpenClaw or Hermes Agent.
+* **A general autonomous agent framework?** → Use OpenClaw or Hermes-Agent.
 * **A local‑first kinetic security layer with behavioral drift tracking, dual‑hemisphere reasoning, and a vault that actually shreds keys?** → You’re in the right place ([ButterClaw.tech](https://butterclaw.tech)).
 
 ---
 
 🤝 Seeking AAIF / MCP Co-Maintainers
-ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are actively seeking security-focused co-maintainers and contributors—specifically those working with the Model Context Protocol (MCP)—to help scale our v0.7 stdio transport layer. Check out our CONTRIBUTING.md and our GOVERNANCE.md to get involved, or grab one of the "good first issues" on our tracker!
+ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are actively seeking security-focused co-maintainers and contributors—specifically those working with the Model Context Protocol (MCP)—to help scale our v0.7 stdio transport layer. Check out our [CONTRIBUTING.md](CONTRIBUTING.md) and our [GOVERNANCE.md](GOVERNANCE.md) to get involved, or grab one of the "good first issues" on our tracker!
 
 ---
 
-## 🚀 What's New in v0.6.4 (Autonomous Deployment)?
+## 🚀 What's New in v0.6.5 (The Exoskeleton Sealed)?
+
+**Version 0.6.5** is the official code-locked, mathematically sealed production release for the Hacker News launch. It introduces deterministic zero-day defense, a live terminal matrix, and massive security hardening.
+
+* **Zero-Day Arsenal (`default_signatures.json`):** Shipped with 5 pre-compiled regex signatures targeting CSWH and prompt injections out of the box. Intercepts threats in milliseconds before the LLM Brain even evaluates them.
+* **The Paranoia Dial:** Scalable kinetic response system. Level 1 (Observe), Level 2 (Active Defense: SIGKILL only), Level 3 (Air-Gapped Lockdown: SIGKILL + Shred Vault).
+* **Visual TUI Dashboard (`.\dash`):** Real-time, double-buffered, flicker-free terminal interface displaying live SOC telemetry, active rules, and the current Paranoia level across both Linux and Windows Docker hosts.
+* **Audit Remediation & Hardening:** Systematically eradicated 29 distinct vulnerabilities, race conditions, and thread leaks. The Gibson race condition is mathematically sealed, SMTP passwords are now encrypted at rest, and SQLite brute-force tracking is fully persistent.
+- **Live Fire Testing Scripts (`scripts/add_rule.py`, `scripts/test_attack.py`):** Standalone diagnostic harnesses allowing operators to safely inject custom regex signatures and simulate kinetic prompt injection attacks against the Arsenal without requiring an active LLM payload.
+
+* **Contribution Provided by the Community:** Telegram Alert Channel — Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement. (Contributed by @huanghaiyss)
+
+---
+
+## 🚀 What was New in v0.6.4 (Autonomous Deployment)?
 
 **Version 0.6.4** combines the patches of the last two bug fix releases for the previous feature version (0.6.3). And adds a One-Click Autonomous Install Script now offered for less friction in the install process.
 
@@ -42,7 +63,7 @@ ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are
 
 ---
 
-## 🚀 What's New in v0.6.3.2 (Active Tools & Nginx Routing)?
+## 🚀 What was New in v0.6.3.2 (Active Tools & Nginx Routing)?
 
 **Version 0.6.3.2** completely isolates the application backend and upgrades the Gibson kill-switch from a local wipe to an active network-level threat response.
 
@@ -278,6 +299,17 @@ DESTROYED by Gibson:           SURVIVES Gibson:
 
 ---
 
+## 📚 Documentation
+
+For deep dives into ButterClaw's architecture, API references, and security models, see our documentation directory:
+
+* **[Architecture & The Exoskeleton](docs/ARCHITECTURE.md)**
+* **[API Reference (43 Endpoints)](docs/API.md)**
+* **[OWASP Agentic Security Initiative (ASI) Mapping](docs/SECURITY.md)**
+* **[Deployment & Configuration Guide](docs/DEPLOYMENT.md)**
+
+---
+
 ## 🏗️ Architecture
 
 **The Exoskeleton — Layered Defense:**
@@ -510,17 +542,17 @@ butterclaw/
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Start (Autonomous Deployment)
 
-### Autonomous Deployment
+Time-to-value is under 60 seconds. ButterClaw's auto-healing architecture builds its own database, generates secure keys, and wires up its alert networks from a completely blank slate.
 
-One-Click Install:
+**1. The One-Click Install:**
 
 ```bash
 curl -sSL [https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh](https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh) | bash
 ```
 
-### Docker (Recommended Full-Stack Boot)
+**2. Docker Compose (Recommended):**
 
 ButterClaw's auto-healing architecture allows it to build its database, generate secure keys, and wire up its alert networks from a completely blank slate. Assuming local ollama is running with a local model. Suggestion: `ollama pull Modelfile.example`, will get you a 'butterclaw-optimized:latest' version of the Gemma 4:e4b open-sourced model.
 
@@ -546,7 +578,32 @@ docker compose logs -f butterclaw
 
 ```
 
+**3. Launch the Matrix TUI:**
+Once the container is running, attach to the live terminal dashboard to watch the SOC in real-time:
+
+```bash
+./dash
+
+```
+
 Once you grab your API key from the terminal, access the securely routed dashboard at **https://localhost** and subscribe to your ntfy topic at **http://localhost:2586**!
+
+---
+
+## 🎯 Live Fire Testing (The Zero-Day Arsenal)
+
+ButterClaw ships with safe, standalone scripts to verify the integrity of the Policy Engine and the Zero-Day Arsenal without requiring a live LLM or external payloads. 
+
+Once your deployment is running, you can simulate a targeted prompt injection attack directly against the Arsenal:
+
+```bash
+# 1. Inject a test signature into the live database
+python scripts/add_rule.py
+
+# 2. Fire the simulated payload and watch the Arsenal intercept it
+python scripts/test_attack.py
+
+---
 
 ### systemd (Bare-Metal VPS)
 
@@ -610,12 +667,12 @@ All modules include standalone diagnostic suites:
 
 ## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Apache 2.0 License. See [LICENSE](LICENSE) for details.
 
 -----
 
 <p align="center">
-<strong>🦞 ButterClaw v0.6.4 — The Exoskeleton (Active Tools & Autonomous Deployment)</strong><br>
+<strong>🦞 ButterClaw v0.6.5 — The Exoskeleton (The Agentic SOC)</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <em>Built with unautclated telemetry. Yes, unautclated. 🦞</em><br>

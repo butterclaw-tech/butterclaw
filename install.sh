@@ -1,5 +1,5 @@
 #!/bin/bash
-# ButterClaw v0.6.4 Exoskeleton - Automated Deployment
+# ButterClaw v0.6.5 Exoskeleton - Automated Deployment
 
 set -e
 
@@ -22,24 +22,34 @@ else
     echo "✅ Host Ollama detected."
 fi
 
-# 3. Clone the Repository
-if [ -d "butterclaw" ]; then
-    echo "⚠️  Directory 'butterclaw' already exists."
-    echo "To update, cd into the directory and run 'git pull', then 'docker compose up -d'."
-    exit 1
+# 3. Context-Aware Repository Handling
+# If running inside an already cloned directory, don't try to clone a duplicate
+if [ -f "docker-compose.yml" ] && [ -f "server.py" ]; then
+    echo "🏠 Local development workspace detected. Skipping repository clone..."
+else
+    if [ -d "butterclaw" ]; then
+        echo "⚠️  Directory 'butterclaw' already exists."
+        echo "To update, cd into the directory and run 'git pull', then 'docker compose up -d'."
+        exit 1
+    fi
+    echo "📦 Cloning ButterClaw repository..."
+    git clone https://github.com/butterclaw-tech/butterclaw.git
+    cd butterclaw
 fi
-
-echo "📦 Cloning ButterClaw repository..."
-git clone https://github.com/butterclaw-tech/butterclaw.git
-cd butterclaw
 
 # 4. Scaffold the Environment
 echo "⚙️  Configuring the local ButterVault environment..."
-cp .env.example .env
+if [ ! -f ".env" ]; then
+    cp .env.example .env
+fi
 
-# Auto-generate Instance ID
-INSTANCE_ID="bc_$(openssl rand -hex 4)"
-sed -i "s/BUTTERCLAW_INSTANCE_ID=.*/BUTTERCLAW_INSTANCE_ID=$INSTANCE_ID/" .env
+# Auto-generate Instance ID if not set
+if ! grep -q "BUTTERCLAW_INSTANCE_ID=" .env || grep -q "BUTTERCLAW_INSTANCE_ID=$" .env; then
+    INSTANCE_ID="bc_$(openssl rand -hex 4)"
+    sed -i "s/BUTTERCLAW_INSTANCE_ID=.*/BUTTERCLAW_INSTANCE_ID=$INSTANCE_ID/" .env
+else
+    INSTANCE_ID=$(grep "BUTTERCLAW_INSTANCE_ID=" .env | cut -d'=' -f2)
+fi
 
 # Auto-generate Internal API Key for daemon self-healing
 INTERNAL_KEY="$(openssl rand -hex 32)"
@@ -72,7 +82,15 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -out nginx/certs/butterclaw.crt \
     -subj "/C=US/ST=State/L=City/O=ButterClaw/CN=localhost" 2>/dev/null
 
-# 7. Bring the Sentinel Online
+# 7. Auto-generate the TUI Dashboard Shortcut Script
+echo "📝 Writing TUI visualization harness..."
+cat << 'EOF' > dash
+#!/bin/bash
+docker compose exec server python tui_dashboard.py
+EOF
+chmod +x dash
+
+# 8. Bring the Sentinel Online
 echo "🚀 Igniting the LLM-in-the-middle proxy..."
 docker compose up -d --build
 
@@ -86,4 +104,6 @@ echo ""
 echo "Your unique Instance ID: $INSTANCE_ID"
 echo "Your private Ntfy Topic: https://ntfy.sh/$UNIQUE_NTFY"
 echo ""
-echo "To view live telemetry, run: cd butterclaw && docker compose logs -f"
+echo "🖥️  To view your live visual SOC dashboard at any time, run:"
+echo "    ./dash"
+echo "------------------------------------------------------"

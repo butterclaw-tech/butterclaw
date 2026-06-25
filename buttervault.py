@@ -1,10 +1,11 @@
 """
-ButterClaw v0.6.4 — The ButterVault
+ButterClaw v0.6.5 — The ButterVault
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
 Supports complex OAuth 2.0 token dictionary payloads.
 [v0.6.0] The Gibson now hooks into auth.py to destroy API key hashes.
+[v0.6.5] Hardened with strict DRY_RUN safety blocks and connection leak patches.
 """
 
 import os
@@ -77,17 +78,25 @@ def store_key(provider, api_key):
     cipher = _get_cipher()
     ciphertext = cipher.encrypt(api_key.encode('utf-8'))
     
-    with _get_db() as conn:
+    # [R-04] Fixed connection leak
+    conn = _get_db()
+    try:
         conn.execute("INSERT OR REPLACE INTO vault (provider, ciphertext) VALUES (?, ?)", 
                      (provider, ciphertext))
         conn.commit()
+    finally:
+        conn.close()
+        
     logger.info(f"🔐 Key for '{provider}' encrypted and sealed in the ButterVault.")
 
 def get_key(provider):
     """Retrieves and decrypts an API key. Returns None if missing/destroyed."""
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         cursor = conn.execute("SELECT ciphertext FROM vault WHERE provider = ?", (provider,))
         row = cursor.fetchone()
+    finally:
+        conn.close()
         
     if not row:
         return None
@@ -101,16 +110,23 @@ def get_key(provider):
         return None
 
 def delete_key(provider):
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         conn.execute("DELETE FROM vault WHERE provider = ?", (provider,))
         conn.commit()
+    finally:
+        conn.close()
+        
     logger.info(f"🗑️ Key for '{provider}' removed from ButterVault.")
 
 def list_providers():
     """Returns a list of all providers with stored static keys."""
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         cursor = conn.execute("SELECT provider FROM vault ORDER BY provider")
         return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
 
 # =====================================================================
 # OAUTH TOKEN MANAGEMENT (v0.5.2)
@@ -130,14 +146,17 @@ def store_oauth_token(provider, token_dict):
     cipher = _get_cipher()
     ciphertext = cipher.encrypt(plaintext.encode('utf-8'))
     
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         conn.execute(
             "INSERT OR REPLACE INTO oauth_tokens (provider, ciphertext, created_at, last_refresh) VALUES (?, ?, ?, ?)",
             (provider, ciphertext, now, None)
         )
         conn.commit()
+    finally:
+        conn.close()
     
     logger.info(f"🔐 OAuth token for '{provider}' encrypted and sealed in the ButterVault.")
 
@@ -146,9 +165,12 @@ def get_oauth_token(provider):
     Retrieves and decrypts an OAuth token dictionary.
     Returns the dict or None if not found/corrupted.
     """
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         cursor = conn.execute("SELECT ciphertext FROM oauth_tokens WHERE provider = ?", (provider,))
         row = cursor.fetchone()
+    finally:
+        conn.close()
     
     if not row:
         return None
@@ -163,16 +185,23 @@ def get_oauth_token(provider):
 
 def delete_oauth_token(provider):
     """Remove a single OAuth token from the vault."""
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         conn.execute("DELETE FROM oauth_tokens WHERE provider = ?", (provider,))
         conn.commit()
+    finally:
+        conn.close()
+        
     logger.info(f"🗑️ OAuth token for '{provider}' removed from ButterVault.")
 
 def list_oauth_providers():
     """Returns a list of all providers with stored OAuth tokens."""
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         cursor = conn.execute("SELECT provider FROM oauth_tokens ORDER BY provider")
         return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
 
 def refresh_token_if_needed(provider, token_url, client_id, client_secret=None):
     """
@@ -227,13 +256,17 @@ def refresh_token_if_needed(provider, token_url, client_id, client_secret=None):
         # Re-encrypt and store
         store_oauth_token(provider, token_dict)
         
-        now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        with _get_db() as conn:
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        conn = _get_db()
+        try:
             conn.execute(
                 "UPDATE oauth_tokens SET last_refresh = ? WHERE provider = ?",
                 (now, provider)
             )
             conn.commit()
+        finally:
+            conn.close()
         
         logger.info(f"✅ OAuth token for '{provider}' refreshed successfully.")
         return token_dict
@@ -251,22 +284,30 @@ def butter_keys(provider=None):
     The Panic Button. Overwrites ALL stored ciphertext with cryptographic garbage.
     Destroys both static API keys AND OAuth token dictionaries.
     """
+    # [S-03] CRITICAL: Hardcoded low-level DRY_RUN safety check.
+    if getattr(cfg, "DRY_RUN", False):
+        logger.warning("🧪 [DRY RUN] Gibson triggered, but DRY_RUN is active. Vault destruction and network revocation strictly bypassed.")
+        return
+
     # Generating a random Fernet key ensures decryption will never be successful
     garbage = Fernet.generate_key() 
     
-    # --- REVOCATION PATH (v0.6.3.2) ---
+    # --- REVOCATION PATH ---
     try:
         import requests as http_req
         import base64
         from oauth_config import OAUTH_PROVIDERS
         
         tokens_to_revoke = []
-        with _get_db() as conn:
+        conn = _get_db()
+        try:
             if provider:
                 cursor = conn.execute("SELECT provider, ciphertext FROM oauth_tokens WHERE provider = ?", (provider,))
             else:
                 cursor = conn.execute("SELECT provider, ciphertext FROM oauth_tokens")
             tokens_to_revoke = cursor.fetchall()
+        finally:
+            conn.close()
             
         cipher = _get_cipher()
         for prov_name, ct in tokens_to_revoke:
@@ -278,7 +319,6 @@ def butter_keys(provider=None):
                 
                 # GitHub-specific revocation branch
                 if prov_name == "github":
-                    # Attempt to pull credentials from oauth_config, fallback to ButterVault
                     prov_cfg = OAUTH_PROVIDERS.get("github", {})
                     client_id = prov_cfg.get("client_id") or get_key("github_client_id")
                     client_secret = prov_cfg.get("client_secret") or get_key("github_client_secret")
@@ -318,7 +358,8 @@ def butter_keys(provider=None):
         logger.warning(f"⚠️ Revocation execution encountered an error: {e}")
     # ---------------------------------
     
-    with _get_db() as conn:
+    conn = _get_db()
+    try:
         if provider:
             conn.execute("UPDATE vault SET ciphertext = ? WHERE provider = ?", (garbage, provider))
             conn.execute("UPDATE oauth_tokens SET ciphertext = ? WHERE provider = ?", (garbage, provider))
@@ -328,8 +369,10 @@ def butter_keys(provider=None):
             conn.execute("UPDATE oauth_tokens SET ciphertext = ?", (garbage,))
             logger.warning("☢️ GLOBAL GIBSON TRIGGERED. ALL keys AND OAuth tokens destroyed.")
         conn.commit()
+    finally:
+        conn.close()
 
-    # [v0.6.0] Destroy API key hashes — invalidates all auth
+    # Destroy API key hashes — invalidates all auth
     try:
         import auth
         auth.destroy_all_api_keys()
@@ -364,6 +407,8 @@ if __name__ == "__main__":
         print("❌ OAuth token test failed.")
         
     # 3. Test The Gibson (Destroys Both)
+    # Turn off DRY_RUN locally so the test actually works
+    cfg.DRY_RUN = False
     butter_keys()
     
     # 4. Verify Destruction
