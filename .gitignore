@@ -1,0 +1,40 @@
+# --- Python Environment ---
+.venv/
+venv/
+env/
+bin/
+lib/
+include/
+setuptools.pypa.io/
+
+# --- Python Cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Local Data & Secrets (CRITICAL) ---
+# Never commit the local database containing encrypted/shredded keys
+butterclaw.db
+data/
+# Never commit local environment variable files
+.env
+.env.local
+
+# --- Logs ---
+*.log
+openclaw_gateway.log
+
+# --- IDE / Editor Settings ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+desktop.ini

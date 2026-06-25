@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.db
+data/
+.env
+backups/
+nginx/certs/
+*.md
+LICENSE
+.dockerignore
+docker-compose*.yml
+systemd/
