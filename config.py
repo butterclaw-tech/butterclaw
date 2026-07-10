@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.5 — Configuration Module
+ButterClaw v0.6.6 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -53,7 +53,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.6.5"
+CONFIG_VERSION = "0.6.6"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.
@@ -257,10 +257,11 @@ class ButterClawConfig:
         self.MCP_SSE_TOKEN = _env_str("MCP_SSE_TOKEN", "")
 
         # ── Auth ──
-        self.AUTH_RATE_ADMIN = _env_int("RATE_ADMIN", 30)
-        self.AUTH_RATE_OPERATOR = _env_int("RATE_OPERATOR", 15)
-        self.AUTH_RATE_VIEWER = _env_int("RATE_VIEWER", 5)
-        self.SESSION_TTL = _env_int("SESSION_TTL", 3600)
+        self.AUTH_RATE_ADMIN          = _env_int("RATE_ADMIN", 30)
+        self.AUTH_RATE_OPERATOR       = _env_int("RATE_OPERATOR", 15)
+        self.AUTH_RATE_VIEWER         = _env_int("RATE_VIEWER", 5)
+        self.AUTH_RATE_INFRASTRUCTURE = _env_int("RATE_INFRASTRUCTURE", 1000)
+        self.SESSION_TTL              = _env_int("SESSION_TTL", 3600)
 
         # ── Alert Dispatcher ──
         # [Q-01] Duplicate mappings removed
@@ -328,9 +329,17 @@ class ButterClawConfig:
             ("AUTH_RATE_ADMIN", self.AUTH_RATE_ADMIN),
             ("AUTH_RATE_OPERATOR", self.AUTH_RATE_OPERATOR),
             ("AUTH_RATE_VIEWER", self.AUTH_RATE_VIEWER),
+            ("AUTH_RATE_INFRASTRUCTURE", self.AUTH_RATE_INFRASTRUCTURE),
         ]:
             if val < 1:
                 errors.append(f"Invalid rate limit {name}: {val} (must be >= 1)")
+            
+            # Floor check to prevent Watcher starvation
+            if name == "AUTH_RATE_INFRASTRUCTURE" and val < 500:
+                logger.warning(
+                    "AUTH_RATE_INFRASTRUCTURE is set to %d — values below 500 "
+                    "may starve the Watcher daemon. Recommended minimum: 1000.", val
+                )
 
         # Session TTL must be positive
         if self.SESSION_TTL < 1:
@@ -433,6 +442,7 @@ class ButterClawConfig:
             },
             "auth": {
                 "rate_limits": {
+                    "infrastructure": self.AUTH_RATE_INFRASTRUCTURE,
                     "admin": self.AUTH_RATE_ADMIN,
                     "operator": self.AUTH_RATE_OPERATOR,
                     "viewer": self.AUTH_RATE_VIEWER,
@@ -486,6 +496,7 @@ class ButterClawConfig:
             "MCP_TRANSPORT": self.MCP_TRANSPORT,
             "MCP_SSE_URL": self.MCP_SSE_URL,
             "MCP_SSE_TOKEN": "***" if self.MCP_SSE_TOKEN else "",
+            "AUTH_RATE_INFRASTRUCTURE": self.AUTH_RATE_INFRASTRUCTURE,
             "AUTH_RATE_ADMIN": self.AUTH_RATE_ADMIN,
             "AUTH_RATE_OPERATOR": self.AUTH_RATE_OPERATOR,
             "AUTH_RATE_VIEWER": self.AUTH_RATE_VIEWER,
@@ -551,8 +562,8 @@ if __name__ == "__main__":
           repr(cfg))
 
     # ── Test 2: Version matches ──
-    _test(2, "Config version is 0.6.5",
-          CONFIG_VERSION == "0.6.5",
+    _test(2, "Config version is 0.6.6",
+          CONFIG_VERSION == "0.6.6",
           f"CONFIG_VERSION = {CONFIG_VERSION}")
 
     # ── Test 3: BASE_DIR is a real directory ──
@@ -588,10 +599,12 @@ if __name__ == "__main__":
 
     # ── Test 9: Rate limits are positive ──
     _test(9, "Auth rate limits are all positive",
+          cfg.AUTH_RATE_INFRASTRUCTURE >= 1 and
           cfg.AUTH_RATE_ADMIN >= 1 and
           cfg.AUTH_RATE_OPERATOR >= 1 and
           cfg.AUTH_RATE_VIEWER >= 1,
-          f"admin={cfg.AUTH_RATE_ADMIN} operator={cfg.AUTH_RATE_OPERATOR} viewer={cfg.AUTH_RATE_VIEWER}")
+          f"infrastructure={cfg.AUTH_RATE_INFRASTRUCTURE} admin={cfg.AUTH_RATE_ADMIN} "
+          f"operator={cfg.AUTH_RATE_OPERATOR} viewer={cfg.AUTH_RATE_VIEWER}")
 
     # ── Test 10: Session TTL is positive ──
     _test(10, "SESSION_TTL is positive",
@@ -633,10 +646,11 @@ if __name__ == "__main__":
         "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL", 
         "OLLAMA_CHAT_PATH", "MODEL_NAME", "GOOGLE_API_KEY",
         "CONFIDENCE_THRESHOLD", "DRY_RUN", "MCP_TRANSPORT", "MCP_SSE_URL",
-        "MCP_SSE_TOKEN", "AUTH_RATE_ADMIN", "AUTH_RATE_OPERATOR",
-        "AUTH_RATE_VIEWER", "SESSION_TTL", "ALERT_DELIVERY_TIMEOUT",
-        "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF", "AUTH_FAILURE_THRESHOLD",
-        "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", "INSTANCE_ID",
+        "MCP_SSE_TOKEN", "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", 
+        "AUTH_RATE_OPERATOR", "AUTH_RATE_VIEWER", "SESSION_TTL", 
+        "ALERT_DELIVERY_TIMEOUT", "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF", 
+        "AUTH_FAILURE_THRESHOLD", "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", 
+        "INSTANCE_ID",
     ]
     missing = [k for k in expected_keys if k not in flat]
     _test(14, f"to_flat_dict() includes all {len(expected_keys)} config fields",

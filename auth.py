@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.5 — Authentication & Authorization Module
+ButterClaw v0.6.6 — Authentication & Authorization Module
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
@@ -68,7 +68,7 @@ KEY_PREFIX = "bc_"
 
 # Per-role rate limits (requests per minute on /api/analyze)
 ROLE_RATE_LIMITS = {
-    "infrastructure": 1000, # Max throughput for internal daemons
+    "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
     "admin": cfg.AUTH_RATE_ADMIN,
     "operator": cfg.AUTH_RATE_OPERATOR,
     "viewer": cfg.AUTH_RATE_VIEWER,
