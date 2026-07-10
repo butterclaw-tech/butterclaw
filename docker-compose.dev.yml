@@ -1,26 +1,33 @@
-# =============================================
-# ButterClaw v0.6.3 — Development Override
-# =============================================
+# ButterClaw — Development Compose Override v0.6.6
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #
-# Overrides for development:
-#   - Debug mode enabled
-#   - Port exposed to all interfaces (not just localhost)
-#   - Hot-reload via volume mount of all .py files
-#   - No nginx (direct access to Flask)
-
-version: '3.8'
+# This file OVERRIDES the production docker-compose.yml for local development.
+# It enables hot-reload, debug logging, and disables TLS termination.
+# Ollama runs on the HOST — not as a managed Docker service.
+# Use host.docker.internal (Windows/macOS) or 172.17.0.1 (Linux) for OLLAMA_BASE_URL.
 
 services:
-  butterclaw:
+  butterclaw-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    volumes:
+      - .:/app                          # hot-reload: source changes reflected immediately
+      - /app/__pycache__                # exclude pycache from mount
     environment:
       - BUTTERCLAW_DEBUG=true
-      - BUTTERCLAW_INSTANCE_ID=butterclaw-dev
-    volumes:
-      - .:/app                         # Mount entire project for hot-reload
-      - butterclaw-data:/data
+      - BUTTERCLAW_LOG_LEVEL=DEBUG
+      - BUTTERCLAW_DRY_RUN=true         # hard-blocks Gibson and all destructive actions
+      - BUTTERCLAW_API_KEY=${BUTTERCLAW_API_KEY:-dev-bootstrap-key-change-me}
     ports:
-      - "5000:5000"                    # Exposed to all interfaces for dev
+      - "5000:5000"                     # direct Flask access — no nginx in dev
+    restart: "no"                       # fail-fast in dev; do not auto-restart
 
   nginx:
-    profiles: ["production"]           # Disabled in dev
+    profiles:
+      - production                      # nginx is production-only; excluded from dev stack
+
+  butterclaw-ntfy:
+    profiles:
+      - production                      # ntfy is production-only; excluded from dev stack
