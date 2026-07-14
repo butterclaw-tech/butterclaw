@@ -59,7 +59,7 @@ ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are
 
 **Version 0.6.5** is the official code-locked, mathematically sealed production release for the Hacker News launch. It introduces deterministic zero-day defense, a live terminal matrix, and massive security hardening.
 
-* **Zero-Day Arsenal (`default_signatures.json`):** Shipped with 5 pre-compiled regex signatures targeting CSWH and prompt injections out of the box. Intercepts threats in milliseconds before the LLM Brain even evaluates them.
+* **Threat Signatures Arsenal (`default_signatures.json`):** Shipped with 5 pre-compiled regex signatures targeting CSWH and prompt injections out of the box. Intercepts threats in milliseconds before the LLM Brain even evaluates them.
 * **The Paranoia Dial:** Scalable kinetic response system. Level 1 (Observe), Level 2 (Active Defense: SIGKILL only), Level 3 (Air-Gapped Lockdown: SIGKILL + Shred Vault).
 * **Visual TUI Dashboard (`./dash`):** Real-time, double-buffered, flicker-free terminal interface displaying live SOC telemetry, active rules, and the current Paranoia level across both Linux and Windows Docker hosts.
 * **Audit Remediation & Hardening:** Systematically eradicated 29 distinct vulnerabilities, race conditions, and thread leaks. The Gibson race condition is mathematically sealed, SMTP passwords are now encrypted at rest, and SQLite brute-force tracking is fully persistent.
