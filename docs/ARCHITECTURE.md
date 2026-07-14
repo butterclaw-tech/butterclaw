@@ -6,7 +6,7 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 
 ## The Exoskeleton — Layered Defense
 
-​```text
+```text
 ┌─────────────────────────────────────────────────┐
 │  Deployment Layer (v0.6.3+)                     │
 │  Docker, systemd, nginx, config.py, backup      │
@@ -26,13 +26,14 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 │  Core (v0.1–v0.4)                               │
 │  Watcher, ButterVault, Dashboard, Ollama        │
 └─────────────────────────────────────────────────┘
-​```
+
+```
 
 ---
 
 ## High-Level Data Flow
 
-​```mermaid
+```mermaid
 flowchart TD
     A[Gateway Log File] -->|tail, sanitize, POST| B[watcher.py]
     B -->|retry_queue.json on failure| B
@@ -66,14 +67,15 @@ flowchart TD
 
     VERDICT -->|30s delay| AUDIT[Auditor\nsecond LLM pass — false-positive check]
     AUDIT -->|result logged| LEDGER[Event Ledger\nmcp_events SQLite]
-​```
+
+```
 
 ---
 
 ## Component Map
 
 | Component | File | Role | NOT Responsible For | Failure Mode |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **Config** | `config.py` | Singleton env-driven configuration, 26 fields across 9 categories | Runtime decisions; validation logic | Missing required keys → `ConfigError` at boot, not at runtime |
 | **Server** | `server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster, 29 routes | Log ingestion; credential storage; policy authoring | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
 | **Auth** | `auth.py` | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed session tokens, rate limiting, 7 routes | Credential encryption; log ingestion; policy evaluation | Gibson destroys all key hashes + invalidates session cache simultaneously |
@@ -94,7 +96,7 @@ flowchart TD
 ButterClaw operates across **six trust zones**. Components communicate across zone boundaries only through defined, authenticated interfaces.
 
 | Zone | Components | Trust Level | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Internet-Facing** | nginx | Untrusted | TLS termination only; all traffic treated as adversarial until validated by auth middleware |
 | **Localhost / Watcher** | watcher.py → server.py | Semi-trusted (localhost only) | Watcher communicates over `127.0.0.1:5000` without per-request Bearer auth (see D-03). `/api/analyze` **must not** be exposed on external interfaces |
 | **LLM Output** | Ollama / Remote LLM API response | Untrusted | Brain output is treated as untrusted data. `post_brain` policy gates are the enforcement point before any verdict-driven action is taken |
@@ -133,7 +135,7 @@ Only one watcher instance may run per host, enforced by a PID lock file (`watche
 The watcher retry queue is capped at **100 entries** (`deque maxlen`). Entries beyond this limit are silently dropped. Queue state is persisted to `retry_queue.json` on SIGTERM/SIGINT and reloaded on boot.
 
 **I-09 — Sanitizer is a Targeted Blacklist**
-The log line sanitizer in `watcher.py` removes only shell-dangerous characters (`` [$`{}<>|;!] ``). It is intentionally **not** an aggressive whitelist — preserving log structure is required for the Brain to evaluate full prompt injection attempts. Truncation limit: 4096 chars.
+The log line sanitizer in `watcher.py` removes only shell-dangerous characters (`[$`{}<>|;!]`). It is intentionally **not** an aggressive whitelist — preserving log structure is required for the Brain to evaluate full prompt injection attempts. Truncation limit: 4096 chars.
 
 ---
 
@@ -170,7 +172,7 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 ## Paranoia Dial — Response Levels
 
 | Level | Name | Behavior | Trigger |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **1** | Observe | Log + SSE broadcast + alert channels. No active response. | Default |
 | **2** | Active Defense | Level 1 + terminate the offending process | CRITICAL verdict with chain + Paranoia ≥ 2 |
 | **3** | Lockdown | Level 2 + Gibson (full credential wipe) + system lockdown | CRITICAL verdict with chain + Paranoia = 3, or manual trigger |
@@ -182,7 +184,7 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 ## Source Code Map
 
 | File / Directory | Approx. Lines | Owns | Key Entry Points |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `server.py` | ~1,800 | Flask app factory, Guardian Brain, ChainExecutor, Auditor, SSE, 29 routes | `ask_guardian_agent()`, `ChainExecutor.run()`, `/api/analyze` |
 | `policy_engine.py` | ~900 | DRIFT policy runtime, rule CRUD, 3-scope evaluators, `policy_events` audit log | `evaluate_policy(scope, context)`, `test_payload()` |
 | `buttervault.py` | ~700 | Fernet vault, OS keyring master key, Gibson, OAuth token lifecycle | `store_key()`, `retrieve_key()`, `butter_keys()`, `refresh_oauth_token()` |
@@ -197,14 +199,14 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 | `nginx/` | — | TLS proxy — the internet-facing trust boundary | `nginx.conf` |
 | `systemd/` | — | Service unit files | `butterclaw.service`, `watcher.service` |
 | `scripts/` | — | Installation automation | `setup.sh` |
-| `default_signatures.json` | — | Zero-Day Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
+| `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
 
 ---
 
 ## DRIFT Policy Engine — Scope Reference
 
 | Scope | When | Available Context Fields | Valid Actions |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `pre_brain` | Before LLM call | `payload`, `threat_type`, `payload_length`, `source_ip`, `hour_of_day`, `day_of_week` | `allow`, `block` |
 | `post_brain` | After LLM verdict | All `pre_brain` fields + `verdict`, `confidence`, `primary_gate`, `reasoning`, `has_chain` | `allow`, `block`, `override_critical`, `override_benign`, `require_confidence` |
 | `pre_tool` | Before each MCP tool call | All prior fields + `tool_name`, `tool_args`, `chain_step` | `allow`, `block`, `skip_tool` |
@@ -241,7 +243,7 @@ Wiping policies during incident response would leave the system defenseless upon
 ## Extension Points
 
 | Extension | Interface | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **LLM Backend** | `ask_guardian_agent()` in `server.py` | Swap between local Ollama and any OpenAI-compatible remote API via `butterclaw.yml` |
 | **MCP Transport** | `BaseMCPManager` in `butterclaw_mcp.py` | Subclass for custom transports |
 | **Alert Channels** | Channel config in `alert_dispatcher.py` | 6 built-in types; extend the channel dispatcher |
@@ -253,6 +255,6 @@ Wiping policies during incident response would leave the system defenseless upon
 
 ## Related Documentation
 
-- [`API.md`](API.md) — Full endpoint reference (49 routes, 4-tier RBAC)
-- [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-- [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`API.md`](API.md) — Full endpoint reference (49 routes, 4-tier RBAC)
+* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
