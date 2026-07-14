@@ -5,7 +5,7 @@ ButterClaw was architected to protect autonomous AI agents from both external ex
 ## Base Security Mechanisms
 
 | Layer | Mechanism |
-|---|---|
+| --- | --- |
 | **TLS** | nginx reverse proxy with TLSv1.2/1.3, ECDHE ciphers, HSTS |
 | **Container** | Non-root user, read-only filesystem, `ProtectSystem=strict`, `NoNewPrivileges=true`, `ProtectHome=true`, `PrivateTmp=true` |
 | **Authentication** | HMAC-SHA256 API keys, HMAC-signed session tokens, `httpOnly` cookies |
@@ -21,10 +21,10 @@ ButterClaw was architected to protect autonomous AI agents from both external ex
 ButterClaw provides native mitigation for all 10 primary threats in the OWASP Agentic Security Initiative checklist:
 
 | ASI Threat | ButterClaw Mitigation |
-|---|---|
+| --- | --- |
 | **ASI-01: Excessive Agency** | Brain confidence gating + `ChainExecutor` `MAX_STEPS=10` / `TIMEOUT=60s` + Policy Engine `pre_tool` scope gating. No tool executes without policy clearance. |
 | **ASI-02: Insufficient Access Control** | 4-tier RBAC (infrastructure / admin / operator / viewer) + per-role rate limiting + HMAC-SHA256 auth gateway on all non-public routes. The `infrastructure` role is machine-only at privilege level -1 and cannot be created via the API. |
-| **ASI-03: Knowledge Poisoning** | Local-first LLM — no external training data ingestion. Watcher monitors OS telemetry, not user content. Zero-Day Arsenal signatures are static JSON compiled at startup, not fetched at runtime. |
+| **ASI-03: Knowledge Poisoning** | Local-first LLM — no external training data ingestion. Watcher monitors OS telemetry, not user content. Threat Signature Arsenal signatures are static JSON compiled at startup, not fetched at runtime. |
 | **ASI-04: Identity & Credential Abuse** | ButterVault (Fernet + OS keyring, master key never on disk) + OAuth lifecycle management + active token revocation + Gibson panic destruction overwrites all credentials atomically. |
 | **ASI-05: Cascading Failures** | `ChainExecutor` hard limits: `MAX_STEPS=10`, `TIMEOUT=60s`. Steps fail independently — a crashed MCP tool aborts the chain with partial results logged, not a system crash. Retry queue (`maxlen=100`) prevents watcher memory exhaustion. |
 | **ASI-06: Indirect Prompt Injection** | Policy Engine deterministic pattern matching on all inbound payloads (`pre_brain` scope) before the LLM is called. Watcher sanitizer strips shell-dangerous characters (`` [$`{}<>|;!] ``). Truncation limit 4096 chars covers full-length injections. |
@@ -38,19 +38,19 @@ ButterClaw provides native mitigation for all 10 primary threats in the OWASP Ag
 The following HTTP security headers are set by `nginx/butterclaw.conf` on all responses:
 
 | Header | Value |
-|---|---|
+| --- | --- |
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `X-XSS-Protection` | `1; mode=block` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 
-> **Note:** A `Content-Security-Policy` header is planned but not yet present in `nginx/butterclaw.conf` as of v0.6.5. Tracked for a future release.
+> **Note:** A `Content-Security-Policy` header is planned but not yet present in `nginx/butterclaw.conf` as of v0.6.6. Tracked for a future release.
 
 ## Known Attack Surfaces
 
 | Surface | Exposure | Mitigation |
-|---|---|---|
+| --- | --- | --- |
 | `/api/analyze` | Localhost only (`127.0.0.1:5000`) | Watcher is the only caller; unauthenticated by design on localhost (see D-03 in `ARCHITECTURE.md`) — must not be exposed externally |
 | LLM output | Untrusted — treated as adversarial data | `post_brain` policy gate before any verdict-driven action |
 | MCP tool results | Untrusted — treated as adversarial data | `pre_tool` policy gate + `ChainExecutor` step/timeout limits |
@@ -64,6 +64,6 @@ To report a security vulnerability, open a [GitHub Security Advisory](https://gi
 
 ## Related Documentation
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — Trust boundaries, system invariants, design decisions
-- [`API.md`](API.md) — Full endpoint reference, RBAC role table, rate limits
-- [`DEPLOYMENT.md`](DEPLOYMENT.md) — systemd hardening, nginx config, Docker security posture
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — Trust boundaries, system invariants, design decisions
+* [`API.md`](API.md) — Full endpoint reference, RBAC role table, rate limits
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — systemd hardening, nginx config, Docker security posture
