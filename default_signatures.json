@@ -1,4 +1,6 @@
-[
+{
+  "version": "1.0",
+  "signatures": [
   {
     "id": "sig_cswh_01",
     "name": "CSWH WebSocket Port Scanning",
@@ -68,5 +70,6 @@
     "response": "SIGKILL",
     "pattern": "\\.ssh/authorized_keys|/etc/(crontab|cron\\.d/|passwd|shadow|sudoers|hosts\\.allow|rc\\.local)|crontab\\s+-e\\b|systemctl\\s+(enable|daemon-reload)\\s+\\S+\\.service|/etc/systemd/system/\\S+\\.service|useradd\\b\\s+\\S|usermod\\s+-[aAGsuU]|chsh\\s+-s\\s+",
     "description": "NEW in v0.6.6. Detects persistence establishment attempts — the second stage of most agent compromise scenarios after initial access. Covers: (1) SSH authorized_keys writes (path presence sufficient — >> is stripped by sanitizer); (2) Cron injection via /etc/crontab, /etc/cron.d/, or crontab -e; (3) systemd service installation via systemctl enable or /etc/systemd/system/ path; (4) User creation/modification: useradd (any arguments), usermod with account-altering flags (-a/-G/-s/-u), chsh shell change. (5) Critical file modification: /etc/passwd, /etc/shadow, /etc/sudoers, /etc/hosts.allow, /etc/rc.local. Sanitizer note: >> redirection markers are stripped, so detection anchors on the destination path or command name, not the write operator."
-  }
-]
+    }
+  ]
+}
