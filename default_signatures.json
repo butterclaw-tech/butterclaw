@@ -1,40 +1,75 @@
 {
-  "version": "1.0",
+  "version": "0.6.7",
   "signatures": [
     {
       "id": "sig_cswh_01",
       "name": "CSWH WebSocket Port Scanning",
-      "description": "Detects attempts to pivot and open WebSocket connections to internal network boundaries.",
-      "pattern": "ws:\\/\\/(127\\.0\\.0\\.1|localhost|0\\.0\\.0\\.0|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1]))(:[0-9]{1,5})?",
-      "severity": "CRITICAL"
+      "severity": "CRITICAL",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "SIGKILL",
+      "pattern": "wss?://(127\\.0\\.0\\.1|localhost|::1|10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|192\\.168\\.\\d{1,3}\\.\\d{1,3}|172\\.(1[6-9]|2[0-9]|3[01])\\.\\d{1,3}\\.\\d{1,3}):\\d{1,5}",
+      "description": "Detects WebSocket connections (ws:// and wss://) to RFC-1918 private ranges and loopback addresses. Covers IPv6 loopback (::1). Octet ranges capped at {1,3} to reduce backtracking. wss:// coverage is essential — CSWH pivots through internal services over encrypted TLS tunnels as readily as plaintext."
     },
     {
       "id": "sig_exfil_01",
-      "name": "Environment Variable Exfiltration",
-      "description": "Catches tools attempting to pipe sensitive local files to external endpoints via curl/wget.",
-      "pattern": "(curl|wget).*(-d|--data).*(@\\.env|@~\\/\\.aws\\/credentials|@\\/etc\\/passwd|\\$AWS_ACCESS_KEY_ID|\\$OPENAI_API_KEY)",
-      "severity": "CRITICAL"
+      "name": "Credential Exfiltration via Network Tool",
+      "severity": "CRITICAL",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "SIGKILL",
+      "pattern": "(curl|wget|python[23]?\\s+-c|requests\\.(get|post|put)|httpx\\.(get|post|put)|urllib)\\b.{0,300}\\b(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|STRIPE_SECRET|DATABASE_URL|SECRET_KEY|PRIVATE_KEY|\\.env\\b)|(AKIA[A-Z2-7]{16})\\b|(sk-[A-Za-z0-9]{20,})\\b|(eyJ[A-Za-z0-9\\-_]{10,}\\.[A-Za-z0-9\\-_]{10,}\\.[A-Za-z0-9\\-_]{10,})",
+      "description": "Detects a network tool co-occurring with a known credential variable name, a live AWS access key (AKIA prefix + 16 Base32 chars), an OpenAI/Anthropic sk- token (>=20 chars to avoid short IDs), or a JWT bearer token (three Base64url segments). Note: watcher.py sanitize_log_line() strips '$' before this signature runs, so patterns match bare variable names (AWS_ACCESS_KEY_ID not $AWS_ACCESS_KEY_ID)."
     },
     {
       "id": "sig_exfil_02",
-      "name": "Base64 Encoding Pipeline",
-      "description": "Detects obfuscated exfiltration where output is piped into base64 before transmission.",
-      "pattern": "\\|\\s*base64\\s*(-\\-wrap=0|-w0|\\s*\\|\\s*(curl|wget|nc))",
-      "severity": "WARNING"
+      "name": "Base64 Exfiltration Pipeline",
+      "severity": "WARNING",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "BLOCK",
+      "pattern": "base64\\b.{0,200}\\b(curl|wget|nc\\b|socat|python[23]?|requests|httpx)|\\b(curl|wget|nc\\b|socat|python[23]?|requests|httpx)\\b.{0,200}\\bbase64\\b",
+      "description": "Detects base64 encoding in proximity to a network transmission tool. Note: watcher.py sanitize_log_line() strips '|' before this signature runs, so 'cat /etc/passwd | base64 | curl' arrives as 'cat /etc/passwd  base64  curl'. Proximity matching (within 200 chars, bidirectional) catches this correctly without requiring a literal pipe character."
     },
     {
       "id": "sig_inj_01",
-      "name": "System Prompt Override (Jailbreak)",
-      "description": "Catches classic and evolving system-level instruction override attempts.",
-      "pattern": "(?i)(ignore all previous instructions|you are now a|enter developer mode|system prompt override)",
-      "severity": "WARNING"
+      "name": "System Prompt Override / Jailbreak",
+      "severity": "WARNING",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "BLOCK",
+      "pattern": "ignore\\s+(all\\s+)?(your\\s+)?(previous|prior|above|earlier|initial|system)\\s+(instructions?|prompts?|rules?|constraints?|guidelines?)|you\\s+are\\s+now\\s+(a|an|the|my)\\s+\\w+|act\\s+as\\s+(a|an|the|my|if)\\s+\\w+|pretend\\s+(you\\s+are|to\\s+be)\\s+\\w+|your\\s+(new|actual|real|true)\\s+(instructions?|role|purpose|task|directive)s?\\b|disregard\\s+(your|all|the)\\s+(previous|prior|system|original|safety)\\s+\\w+|forget\\s+(all\\s+)?(your\\s+)?(previous|prior|earlier)?\\s*(instructions?|training|rules?|guidelines?)|override\\s+(your\\s+)?(instructions?|system|constraints?|safety|programming)|jailbreak|DAN\\s+mode|developer\\s+mode|unrestricted\\s+mode|sudo\\s+mode|god\\s+mode|new\\s+persona|from\\s+now\\s+on\\s+you\\s+(are|will|must)|your\\s+true\\s+(self|purpose|nature)|simulate\\s+(no\\s+restrictions|having\\s+no\\s+filter|being\\s+(unrestricted|unfiltered|evil|harmful))",
+      "description": "Detects indirect prompt injection and jailbreak attempts embedded in agent input. Covers: (1) ignore-previous-instructions variants including system/prior/above/earlier/initial; (2) persona reassignment (you are now / act as / pretend to be); (3) DAN, developer, sudo, god, unrestricted mode keywords; (4) override-safety and forget-training; (5) simulate-no-restrictions family. False-positive guards: 'act as both X and Y', 'summarize previous instructions', and 'acts as coordinator' all pass cleanly."
     },
     {
       "id": "sig_kin_01",
-      "name": "Unauthorized Execution Modifiers",
-      "description": "Catches attempts to silently change file permissions or set up reverse shells.",
-      "pattern": "(chmod\\s+\\+x|nc\\s+-e\\s+\\/bin\\/(ba)?sh|bash\\s+-i\\s+>&\\s+\\/dev\\/tcp\\/)",
-      "severity": "CRITICAL"
+      "name": "Reverse Shell Indicators",
+      "severity": "CRITICAL",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "SIGKILL",
+      "pattern": "/dev/(tcp|udp)/[^\\s/]+/\\d{1,5}|nc\\b.{0,80}-[a-zA-Z]*e[a-zA-Z]*\\s+\\S*/(ba)?sh\\b|socat\\s+\\S*(tcp|tcp4|tcp6)\\S*\\s+(exec|system):.*/(ba)?sh|mkfifo\\s+/tmp/\\w+|python[23]?\\s+-c\\s+.*socket\\.connect|perl\\s+-e\\s+.*socket|ruby\\s+-rsocket\\s+-e|php\\s+-r\\s+.*fsockopen",
+      "description": "Detects reverse shell establishment. Note: watcher.py strips '>' so 'bash -i >& /dev/tcp/' arrives as 'bash -i   /dev/tcp/'. Detection anchors on /dev/tcp/ and /dev/udp/ which survive sanitization intact. Hostname support: [^\\s/]+ catches domain names in addition to IP addresses. nc combined flags: -[a-zA-Z]*e[a-zA-Z]* catches -e, -ev, -elp etc. Covers: socat TCP exec, mkfifo /tmp/ staging, Python/Perl/Ruby/PHP one-liners. Safe negatives confirmed: /dev/null, nc -lvp (listen only), mkfifo /var/run/."
+    },
+    {
+      "id": "sig_exfil_03",
+      "name": "Cloud Metadata Service Probe",
+      "severity": "CRITICAL",
+      "scope": "pre_tool",
+      "enabled": true,
+      "response": "SIGKILL",
+      "pattern": "169\\.254\\.169\\.254|metadata\\.google\\.internal|fd00:ec2::254|169\\.254\\.170\\.2|instance-data\\.ec2\\.internal",
+      "description": "Detects agent-initiated requests to cloud instance metadata services: AWS IMDSv1 and IMDSv2 (169.254.169.254), AWS IPv6 IMDS (fd00:ec2::254), GCP metadata server (metadata.google.internal), Azure IMDS (169.254.169.254 shared), Oracle Cloud IMDS (169.254.169.254 shared), Amazon DNS (169.254.170.2). These endpoints serve live IAM credentials, user-data scripts, and instance identity documents. There is no legitimate reason for a monitored agent to query these endpoints directly. Applied at pre_tool scope: tool_args are not sanitized, so raw URLs are matched."
+    },
+    {
+      "id": "sig_kin_02",
+      "name": "Persistence Mechanism Injection",
+      "severity": "CRITICAL",
+      "scope": "pre_brain",
+      "enabled": true,
+      "response": "SIGKILL",
+      "pattern": "\\.ssh/authorized_keys|/etc/(crontab|cron\\.d/|passwd|shadow|sudoers|hosts\\.allow|rc\\.local)|crontab\\s+-e\\b|systemctl\\s+(enable|daemon-reload)\\s+\\S+\\.service|/etc/systemd/system/\\S+\\.service|useradd\\b\\s+\\S|usermod\\s+-[aAGsuU]|chsh\\s+-s\\s+",
+      "description": "Detects persistence establishment attempts — the second stage of most agent compromise scenarios after initial access. Covers: (1) SSH authorized_keys writes (path presence sufficient — >> is stripped by sanitizer); (2) Cron injection via /etc/crontab, /etc/cron.d/, or crontab -e; (3) systemd service installation via systemctl enable or /etc/systemd/system/ path; (4) User creation/modification: useradd (any arguments), usermod with account-altering flags (-a/-G/-s/-u), chsh shell change; (5) Critical file modification: /etc/passwd, /etc/shadow, /etc/sudoers, /etc/hosts.allow, /etc/rc.local. Sanitizer note: >> redirection markers are stripped, so detection anchors on the destination path or command name, not the write operator."
     }
   ]
 }

