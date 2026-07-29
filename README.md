@@ -1,4 +1,13 @@
-# 🦞 ButterClaw
+```text
+██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
+██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
+██████╔╝██║   ██║   ██║      ██║   █████╗  ██████╔╝██║     ██║     ███████║██║ █╗ ██║
+██╔══██╗██║   ██║   ██║      ██║   ██╔══╝  ██╔══██╗██║     ██║     ██╔══██║██║███╗██║
+██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
+╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+```
+
+# 🦞 ButterClaw: The Agentic SOC
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-ef4444.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Version](https://img.shields.io/badge/version-0.6.7-navy.svg)](CHANGELOG.md)
@@ -8,7 +17,9 @@
 
 ![Demo](assets/test-event-stream.png)
 
-Every AI agent security tool I evaluated was either cloud-hosted, required an API key pointed at a vendor, or logged what your agent did without stopping it. ButterClaw is a self-hosted security layer that intervenes — before the LLM call, after it, and before each tool execution — and executes hard responses when something goes wrong.
+Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
+
+Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
 
 ---
 
@@ -21,7 +32,7 @@ Every AI agent security tool I evaluated was either cloud-hosted, required an AP
 
 ## How It Works
 
-```
+```text
 Incoming agent log / tool call
          │
          ▼
@@ -47,6 +58,7 @@ Incoming agent log / tool call
 │  Kinetic Response       │  ← SIGKILL rogue process and/or Gibson credential shred
 │  + Alert Dispatch       │    ntfy / Discord / Telegram / SMTP / Webhook / Gotify
 └─────────────────────────┘
+
 ```
 
 Everything runs on your machine. SQLite for state. No outbound data.
@@ -55,8 +67,8 @@ Everything runs on your machine. SQLite for state. No outbound data.
 
 ## How It Compares
 
-| | ButterClaw | Halo | LangSmith / LangFuse | Traditional WAF / IDS |
-|---|---|---|---|---|
+|  | ButterClaw | Halo | LangSmith / LangFuse | Traditional WAF / IDS |
+| --- | --- | --- | --- | --- |
 | **Deployment** | Self-hosted, local | Cloud-hosted | Cloud-hosted | Self-hosted |
 | **LLM reasoning** | Local Ollama — stays on your machine | Cloud API calls | None | None |
 | **Telemetry** | Zero — SQLite only, no outbound data | Sent to Halo cloud | Sent to vendor cloud | Network-layer only |
@@ -84,7 +96,7 @@ All 7 patterns rebuilt sanitizer-aware in v0.6.7. Validated against the exact ch
 `watcher.py`'s `sanitize_log_line()` strips before payloads reach the engine.
 
 | ID | Name | Severity | Scope | Response |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `sig_cswh_01` | CSWH WebSocket Port Scanning | 🔴 CRITICAL | pre_brain | SIGKILL |
 | `sig_exfil_01` | Credential Exfiltration via Network Tool | 🔴 CRITICAL | pre_brain | SIGKILL |
 | `sig_exfil_02` | Base64 Exfiltration Pipeline | 🟡 WARNING | pre_brain | BLOCK |
@@ -99,6 +111,14 @@ All 7 patterns rebuilt sanitizer-aware in v0.6.7. Validated against the exact ch
 
 Requires: [Docker](https://docs.docker.com/get-docker/) · [Ollama](https://ollama.com/) running on the host · a consumer GPU (CPU fallback works, slower)
 
+### Option A: One-Click Autonomous Install (<60s)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh | bash
+```
+
+### Option B: Manual Docker Compose Stack
+
 ```bash
 git clone https://github.com/butterclaw-tech/butterclaw.git
 cd butterclaw
@@ -111,14 +131,17 @@ ollama create butterclaw-optimized -f Modelfile.example
 cp .env.example .env
 # Edit .env — set BUTTERCLAW_INSTANCE_ID and BUTTERCLAW_ALERT_NTFY_TOPIC at minimum
 
-# Generate local TLS certs for nginx
+# 2. Generate Local TLS Certificates (for nginx)
 mkdir -p nginx/certs
 docker run --rm -v "${PWD}/nginx/certs:/certs" alpine/openssl req -x509 -nodes \
   -days 365 -newkey rsa:2048 \
   -keyout /certs/butterclaw.key -out /certs/butterclaw.crt -subj "/CN=localhost"
 
-# Start the stack (3 containers: server, nginx, ntfy)
+# 3. Ignite the Exoskeleton
 docker compose up -d --build
+
+# 4. Grab your Bootstrap Admin API Key (look for the 🔐 [AUTH] line)
+docker compose logs -f butterclaw
 ```
 
 On first boot, look for the 🔑 `[AUTH]` line in `docker compose logs -f butterclaw` — that's your bootstrap admin API key. Shown once.
@@ -136,13 +159,15 @@ Dashboard → **https://localhost** · ntfy UI → **http://localhost:2586**
 
 ## Live-Fire Test Suite
 
-Clone, run, verify. No mocking — fires against a live container.
-
 ```bash
+# 1. Inject custom test signature into the live engine
+python scripts/add_rule.py
+
+# 2. Fire the simulated attack suite against the Arsenal
 python scripts/test_attack.py
 ```
 
-```
+```text
 =================================================================
   RESULT: 25/25 passed  |  0 failed  |  0 connection errors
 =================================================================
@@ -155,19 +180,19 @@ input. CI-compatible — exits with code 1 on any failure.
 
 ## Key Features
 
-- **The Paranoia Dial** — Level 1 (Observe), Level 2 (SIGKILL), Level 3 (SIGKILL + vault shred). Switch at runtime without restart.
-- **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub and OAuth providers to invalidate tokens globally, then shreds local data atomically.
-- **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
-- **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
-- **4-Tier RBAC** — infrastructure / admin / operator / viewer. HMAC-SHA256 API keys and session tokens.
-- **49 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
+* **The Paranoia Dial** — Level 1 (Observe), Level 2 (SIGKILL), Level 3 (SIGKILL + vault shred). Switch at runtime without restart.
+* **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub and OAuth providers to invalidate tokens globally, then shreds local data atomically.
+* **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
+* **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
+* **4-Tier RBAC** — infrastructure / admin / operator / viewer. HMAC-SHA256 API keys and session tokens.
+* **49 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
 
 ---
 
 ## Documentation
 
 | Doc | Contents |
-|---|---|
+| --- | --- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Dual-hemisphere reasoning, behavioral drift, design decisions D-01 through D-09 |
 | [`docs/API.md`](docs/API.md) | All 49 endpoints, roles, request/response shapes |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker, systemd, bare-metal, nginx TLS, backup/restore |
@@ -190,7 +215,9 @@ Apache 2.0 — see [`LICENSE`](LICENSE).
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.6.7 — The Agentic SOC</strong><br>
+<strong>🦞 ButterClaw v0.6.7 — The Agentic SOC (The Arsenal Hardening)</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
-<a href="https://butterclaw.tech">butterclaw.tech</a>
+<em>The Sentinel never goes silent. We watch the room.</em><br>
+<em>Built with unautclated telemetry. Yes, unautclated. 🦞</em><br>
+<a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
