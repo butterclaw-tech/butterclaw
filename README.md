@@ -1,11 +1,13 @@
-```text
+<div align="center">
+<pre>
 ██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
 ██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
 ██████╔╝██║   ██║   ██║      ██║   █████╗  ██████╔╝██║     ██║     ███████║██║ █╗ ██║
 ██╔══██╗██║   ██║   ██║      ██║   ██╔══╝  ██╔══██╗██║     ██║     ██╔══██║██║███╗██║
 ██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
 ╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
-```
+</pre>
+</div>
 
 <h1 align="center">🦞 ButterClaw: The Agentic SOC</h1>
 
@@ -24,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="bc_demo.gif" alt="ButterClaw Live-Fire Test gif">
+  <img src="bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
 </p>
 
 <p align="center">Regex signatures test against the policy engine, displayed live in the TUI.</p>
