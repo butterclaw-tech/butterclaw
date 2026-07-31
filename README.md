@@ -1,15 +1,15 @@
-<p align="center">
+```text
 ██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
 ██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
 ██████╔╝██║   ██║   ██║      ██║   █████╗  ██████╔╝██║     ██║     ███████║██║ █╗ ██║
 ██╔══██╗██║   ██║   ██║      ██║   ██╔══╝  ██╔══██╗██║     ██║     ██╔══██║██║███╗██║
 ██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
 ╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
-</p>
+```
 
 <h1 align="center">🦞 ButterClaw: The Agentic SOC</h1>
 
-<p align="center"><b>Runtime security enforcement for autonomous AI agents. Local LLM reasoning. No cloud. No telemetry. SIGKILLs rogue processes.</b></p>
+<p align="center"><b>Runtime security enforcement for autonomous AI agents.</b><br>Local LLM reasoning. No cloud. No telemetry. SIGKILLs rogue processes.</p>
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0">
@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
+  <img src="bc_demo.gif" alt="ButterClaw Live-Fire Test gif">
 </p>
 
 <p align="center">Regex signatures test against the policy engine, displayed live in the TUI.</p>
