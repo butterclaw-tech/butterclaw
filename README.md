@@ -1,4 +1,4 @@
-<div align="center">
+<p align="center">
 ```text
 ██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
 ██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
@@ -7,7 +7,7 @@
 ██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
 ╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
 ```
-</div>
+</p>
 
 <h1 align="center">🦞 ButterClaw: The Agentic SOC</h1>
 
@@ -25,11 +25,15 @@
   </a>
 </p>
 
-![Demo](assets/bc_demo-small.gif)
+<p align="center">
+  <img src="bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
+</p>
 
 <p align="center">Regex signatures test against the policy engine, displayed live in the TUI.</p>
 
-![Demo](assets/test-event-stream.png)
+<p align="center">
+  <img src="test-event-stream.png" alt="ButterClaw Live-Fire Test Screenshot">
+</p>
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
