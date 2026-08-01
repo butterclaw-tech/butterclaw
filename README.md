@@ -26,13 +26,13 @@
 </p>
 
 <p align="center">
-  <img src="assets/bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
+  <img src="bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
 </p>
 
 <p align="center">Regex signatures test against the policy engine, displayed live in the TUI.</p>
 
 <p align="center">
-  <img src="assets/test-event-stream.png" alt="ButterClaw Live-Fire Test Screenshot">
+  <img src="test-event-stream.png" alt="ButterClaw Live-Fire Test Screenshot">
 </p>
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
@@ -196,7 +196,7 @@ docker exec -it butterclaw ./dash
 
 A full browser-accessible dashboard served through the Nginx reverse proxy built into the Docker stack. Navigate to https://localhost after first boot — the same UI that the TUI mirrors, accessible from any browser on your local machine. The 🔑 [AUTH] bootstrap API key you captured from the logs is your login credential.
 
-**3. Log Injection — Test the Brain Directly**
+**3. Log Injection - Test the Brain Directly**
 
 The cleanest way to run custom attack scenarios against ButterClaw's analysis engine without a live agent. When the container starts, it generates an openclaw_gateway.log file that the Watcher daemon monitors continuously.
 
@@ -227,7 +227,6 @@ python scripts/test_attack.py
 =================================================================
   RESULT: 25/25 passed  |  0 failed  |  0 connection errors
 =================================================================
-
 ```
 
 25 attack variants across all 7 signatures. Payloads pre-sanitized to match real engine
@@ -264,9 +263,11 @@ input. CI-compatible — exits with code 1 on any failure.
 ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and is actively seeking security-focused co-maintainers — particularly those working with the **Model Context Protocol (MCP)** — to help scale the v0.7 stdio transport layer. Grab a `good first issue` or read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ## 🤝 Community Contributors
-Contributors who ship features get credited here — not just in git log.
+Contributors who ship features get credited here - not just in the git log.
 
-**Telegram Alert Channel** — Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement. (Contributed by @huanghaiyss)
+**Telegram Alert Channel** - Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement. 
+<p align="center"><br>
+(Contributed by @huanghaiyss)</p>
 
 If you ship something that lands, your name goes here. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) to get started.
 
@@ -282,6 +283,5 @@ Apache 2.0 — see [`LICENSE`](LICENSE).
 <strong>🦞 ButterClaw v0.6.8 — The Agentic SOC (The Arsenal Hardening) 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
-<em>Built with unautclated telemetry. Yes, unautclated.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
 </p>
