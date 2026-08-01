@@ -1,33 +1,42 @@
-# 🦞 ButterClaw v0.6.8 — The Arsenal Hardening (The Agentic SOC) with docs & WebUI Updates
+# 🦞 ButterClaw v0.6.8 — Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion with docs & WebUI Updates
 
 **Release Date:** August 01, 2026
 **Branch:** `dev` → `main`
 **New Files:** none
-**Files Changed:** `assets/bc_demo-small.gif`, `scripts/test_attack.py`, `index.html`
-, `routing.html`, `CHANGELOG.md`, `README.md`
+**Files Changed:** `default_signatures.json`, `scripts/test_attack.py`, `assets/bc_demo-small.gif`, `index.html`, `README.md`, `routing.html`, `CHANGELOG.md`
 
 ---
 
-## 🚀 Overview: The Arsenal Hardening
+## 🚀 Overview
 
-ButterClaw v0.6.7 is a security-critical Arsenal integrity release. No new runtime
-features were added. The Exoskeleton shipped in v0.6.5 is untouched.
+ButterClaw v0.6.8 ships in two layers.
 
-What *was* shipped: a post-release audit of `default_signatures.json` against the actual
-engine it runs inside. `watcher.py`'s `sanitize_log_line()` strips a defined set of
-characters — `$ | < > { } ; !` — from every log line before it reaches the Arsenal. Three
-of the five signatures shipped in v0.6.5 depended on characters in that strip list. They
-were silently non-functional on the watcher monitoring path from day one. One signature
-contained an HTML entity encoding artifact that made its most critical branch — reverse
-shell detection — a no-op regardless of the sanitizer.
+The foundation is the security-critical Arsenal integrity work first staged as v0.6.7: a post-release audit of `default_signatures.json` against the actual engine it runs inside. `watcher.py`'s `sanitize_log_line()` strips a defined set of characters — `$ | < > { } ; !` — from every log line before it reaches the Arsenal. Three of the five signatures shipped in v0.6.5 depended on characters in that strip list. They were silently non-functional on the watcher monitoring path from day one. One signature contained an HTML entity encoding artifact that made its most critical branch — reverse shell detection — a no-op regardless of the sanitizer.
 
-All five existing signatures have been rebuilt sanitizer-aware. Two new CRITICAL signatures
-have been added. The Arsenal grows from 5 to 7. `scripts/test_attack.py` has been rebuilt
-from a single-payload proof of concept into a structured 23-case live-fire suite covering
-all 7 signatures.
+All five existing signatures have been rebuilt sanitizer-aware. Two new CRITICAL signatures have been added. The Arsenal grows from 5 to 7. `scripts/test_attack.py` has been rebuilt from a single-payload proof of concept into a structured 25-case live-fire suite covering all 7 signatures.
 
-A security product whose signatures don't match the input they receive is a security
-product that isn't running. This release fixes that.
+On top of that, v0.6.8 delivers a round of docs and WebUI fixes: the Oopsie Logs "View All" button is now fully wired up, the test script has a rate limit for remote brain usage, the demo GIF has been updated to reflect the expanded 7-signature Arsenal, and the README has been brought up to date.
+
+A security product whose signatures don't match the input they receive is a security product that isn't running. This release fixes that.
+
+---
+
+## 🌐 v0.6.8 — Docs & WebUI Updates
+
+### Fixed
+
+#### Oopsie Logs — "View All" button now functional (`index.html`)
+- Button was a visual stub with no `id` or event listener wired up; now fully implemented.
+- Clicking **View All →** expands the log container past the 400 px height cap so the full entry list is readable with a scroll.
+- Clicking **Collapse ↑** returns the container to its default height and resets scroll position to the top.
+
+#### Rate limit added to test script for remote brain usage (`scripts/test_attack.py`)
+- Added a 5-second delay between requests; the 25-case suite now takes just over two minutes to complete.
+- This stretches the execution window wide enough that the rolling 60-second request count never exceeds 12, keeping you safely under Google's 15 RPM free-tier ceiling.
+- **Note:** Remove the rate-limit line when running locally against a self-hosted model.
+
+#### Updated demo GIF (`assets/bc_demo-small.gif`)
+- Demo recording now reflects the expanded Arsenal of 7 signatures, up from the 5 shown in the previous GIF.
 
 ---
 
@@ -260,9 +269,12 @@ responded, not whether the Arsenal actually fired.
 
 **What's new:**
 
-* **23 named test cases** grouped by signature ID, each labelled with the specific attack
+* **25 named test cases** grouped by signature ID, each labelled with the specific attack
   variant it targets (e.g., `"wss:// pivot to 192.168.x internal service"`,
   `"AWS IMDSv2 token PUT in tool args"`, `"useradd new admin user"`).
+* **Rate-limited for remote brain usage:** 5-second delay between requests keeps the
+  25-case suite safely under Google's 15 RPM free-tier ceiling. Remove the delay when
+  running locally.
 * **Sanitizer-aware payloads:** `pre_brain` test strings are pre-sanitized to match what
   the engine actually receives. `pre_tool` payloads use `json.dumps(tool_args)` format.
 * **Correct pass/fail logic:** Non-2xx response = Arsenal fired = **PASS**. 200 OK =
@@ -291,7 +303,10 @@ Script remains **stdlib-only** (`urllib`, `json`, `sys`). Zero new pip dependenc
 | `sig_kin_01` | Fixed + expanded | HTML entity bug; sanitizer anchor shift; hostname support; combined nc flags; +6 shell variants |
 | `sig_exfil_03` | New (CRITICAL) | Cloud metadata service probe; `pre_tool` scope |
 | `sig_kin_02` | New (CRITICAL) | Persistence mechanism injection; `pre_brain` scope |
-| `scripts/test_attack.py` | Rebuilt | 1 payload → 23-case structured suite; all 7 sigs covered |
+| `scripts/test_attack.py` | Rebuilt | 1 payload → 25-case structured suite; all 7 sigs covered; remote brain rate limit added |
+| `index.html` | Fixed | Oopsie Logs "View All" button fully implemented; expand/collapse with scroll reset |
+| `assets/bc_demo-small.gif` | Updated | Demo reflects 7-signature Arsenal; updated test run recording |
+| `README.md` | Updated | Docs brought up to date for v0.6.8 |
 
 **Validation:** All 7 signatures tested against 74 positive and negative cases in a
 Python harness using `re.compile(pattern, re.IGNORECASE)` and `re.search()` — the exact
@@ -304,23 +319,22 @@ call signature used by `policy_engine.py`. All 74 tests pass.
 
 ## 🗺️ What's Next: v0.7.0
 
-With the Arsenal integrity restored and the documentation reconciled in v0.6.6, the
-core framework is in its most trustworthy state since the project began. The roadmap
-turns toward the Hacker News launch and the v0.7.0 milestone: expanding the Model
-Context Protocol (MCP) transport layer, scaling stdio capabilities for wider ecosystem
-integration, and delivering the `watcher.service` systemd unit disclosed as absent in
-v0.6.6.
+With the Arsenal integrity restored and the documentation reconciled, the core framework
+is in its most trustworthy state since the project began. The roadmap turns toward the
+Hacker News launch and the v0.7.0 milestone: expanding the Model Context Protocol (MCP)
+transport layer, scaling stdio capabilities for wider ecosystem integration, and
+delivering the `watcher.service` systemd unit disclosed as absent in v0.6.6.
 
-Moving to this capability matrix is a massive architectural upgrade. In v0.6.7, the policy engine relied entirely on a negative security model—the Arsenal looked for known bad patterns and blocked them. The v0.7.0 policy_engine.py script introduces a strict positive security model through the capabilities.json file. 
+Moving to this capability matrix is a massive architectural upgrade. In v0.6.8, the policy engine relied entirely on a negative security model — the Arsenal looked for known bad patterns and blocked them. The v0.7.0 `policy_engine.py` introduces a strict positive security model through the `capabilities.json` file.
 
 Instead of just asking "Is this payload malicious?", the pre-tool scope now asks "Does this specific agent have the clearance to do this?"
 
-Here is exactly how the new matrix will enforce those bounds: 
+Here is exactly how the new matrix will enforce those bounds:
 
-  The 4-Tier RBAC Weighting: The validate_tool_skill function converts your tier names into numeric weights, where viewer is 1, operator is 2, and admin is 3. If your active model (like gemma4:e4b, defined as an operator) tries to call a tool that requires an admin tier (like rotate_keys), the engine mathematically denies it.  
-  
-  Strict Scope Verification: Tier clearance isn't enough on its own. The engine explicitly checks that the agent possesses every scope required by the tool. For instance, execute_gibson_kill requires the destructive scope. Because gemma4:e4b is only allowed ["read", "analyze", "network_safe"], it will fail this check and the engine will return a skip_tool action. 
-  
-  Fail-Closed Default: If capabilities.json goes missing, or if a tool isn't explicitly defined in the matrix, the engine logs a warning and defaults to a strict block.  ButterClaw has essentially become a localized IAM (Identity and Access Management) role system for LLMs. If an agent gets completely hijacked by a jailbreak prompt, it doesn't matter what the LLM wants to do, because the Python runtime will physically reject any tool execution outside of its hardcoded JSON bounds.
+  The 4-Tier RBAC Weighting: The `validate_tool_skill` function converts tier names into numeric weights, where `viewer` is 1, `operator` is 2, and `admin` is 3. If your active model (like `gemma4:e4b`, defined as an operator) tries to call a tool that requires an `admin` tier (like `rotate_keys`), the engine mathematically denies it.
 
-*The Sentinel never goes silent. We watch the room.* 🦞🕶️
+  Strict Scope Verification: Tier clearance isn't enough on its own. The engine explicitly checks that the agent possesses every scope required by the tool. For instance, `execute_gibson_kill` requires the `destructive` scope. Because `gemma4:e4b` is only allowed `["read", "analyze", "network_safe"]`, it will fail this check and the engine will return a `skip_tool` action.
+
+  Fail-Closed Default: If `capabilities.json` goes missing, or if a tool isn't explicitly defined in the matrix, the engine logs a warning and defaults to a strict block. ButterClaw has essentially become a localized IAM (Identity and Access Management) role system for LLMs. If an agent gets completely hijacked by a jailbreak prompt, it doesn't matter what the LLM wants to do — the Python runtime will physically reject any tool execution outside of its hardcoded JSON bounds.
+
+<p align="center">🦞 <i>The Sentinel never goes silent. We watch the room.</i> 🕶️</p>
