@@ -15,13 +15,13 @@
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0">
-   <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
   </a>
   <a href="CHANGELOG.md">
-   <img src="https://img.shields.io/badge/version-0.6.8-navy.svg">
+  <img src="https://img.shields.io/badge/version-0.6.8-navy.svg">
   </a>
   <a href="https://butterclaw.tech">
-   <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
+  <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
   </a>
 </p>
 
@@ -33,6 +33,14 @@
 
 <p align="center">
   <img src="test-event-stream.png" alt="ButterClaw Live-Fire Test Screenshot">
+</p>
+
+<p align="center">
+  <img src="butterclaw-log.png" alt="ButterClaw Live WebUI">
+</p>
+
+<p align="center">
+  <img src="butterclaw-night.png" alt="ButterClaw Live WebUI Dark Mode">
 </p>
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with **deterministic policy guardrails**, **external alert dispatch**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
@@ -266,8 +274,8 @@ ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and
 Contributors who ship features get credited here - not just in the git log.
 
 **Telegram Alert Channel** - Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement. 
-<p align="center"><br>
-(Contributed by @huanghaiyss)</p>
+<p align="center">
+(Contributed by @huanghaiyss)<br></p>
 
 If you ship something that lands, your name goes here. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) to get started.
 
