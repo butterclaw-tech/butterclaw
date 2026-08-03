@@ -6,6 +6,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
+## 📋 Version History
+
+| Version | Codename | Date | Milestone |
+| --- | --- | --- | --- |
+| **v0.6.8** | The Arsenal Hardening | 2026-08-02 | Oopsie Logs "View All" wired up, test script rate limit, demo GIF updated|
+| **v0.6.7** | The Arsenal Hardening | 2026-07-27 | Sanitizer-aware signatures, 5→7 sigs, sig_kin_01 HTML entity fix, live-fire suite |
+| **v0.6.6** | The Reconciliation | 2026-07-14 | 63-point doc audit, 12-factor config, docker-compose.dev.yml critical fix |
+| **v0.6.5** | The Exoskeleton Sealed | 2026-06-24 | Regex Signatures Arsenal, Paranoia Dial, TUI Dashboard, 29-vuln audit |
+| **v0.6.4** | Autonomous Deployment | 2026-06-08 | One-Click Install Script |
+| **v0.6.3.2** | Active Tools & Nginx Routing | 2026-05-21 | TLS routing, SSRF lockdown, active token revocation |
+| **v0.6.3.1** | Deployment Packaging (Docker Edition) | 2026-05-07 | Docker bridge, Vault deadlock fix, Windows volume fixes |
+| **v0.6.3** | The Exoskeleton: Deployment Packaging | 2026-05-01 | config.py, Docker, systemd, nginx, backup/restore |
+| **v0.6.2** | The Exoskeleton: Alert Dispatcher | 2026-05-01 | 5 channels, 9 events, HMAC signing, brute-force detection |
+| **v0.6.1** | The Exoskeleton: Policy Engine | 2026-05-01 | 3-scope pipeline, 15 operators, DRIFT pattern |
+| **v0.6.0** | The Exoskeleton: API Gateway & Auth | 2026-04-20 | HMAC-SHA256, 3-tier RBAC, session tokens |
+| **v0.5.2** | ButterVault OAuth | 2026-04-16 | OAuth 2.0 flows, token refresh, Gibson destroys OAuth |
+| **v0.5.1** | Tool Chaining | 2026-04-16 | ChainExecutor, multi-step execution, safety rails |
+| **v0.5.0** | The Nervous System | 2026-04-14 | Event Ledger, SSE Transport, MCP Manager |
+| **v0.4.x** | MCP Transport Refactor | 2026-04-10 | Modular transport, JSON-RPC |
+| **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
+| **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
+| **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.6.8] - Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion with docs & WebUI Updates - 2026-08-02
+
+**Files Changed:** `server.py`, `default_signatures.json`, `scripts/test_attack.py`, `assets/bc_demo-small.gif`, `index.html`, `README.md`, `routing.html`, `CHANGELOG.md`
+**New runtime dependencies:** 0
+
+### Fixed
+- **Oopsie Logs — "View All" button now functional** (`index.html`)
+  - Button was a visual stub with no `id` or event listener wired up; now fully implemented.
+  - Clicking "View All →" expands the log container past the 400px height cap so all entries are readable.
+  - Clicking "Collapse ↑" returns the container to its default height and resets scroll position to top.
+
+  - **Oopsie Logs — `/api/logs` SQL cap raised to 40** (`server.py`)
+  - Hard cap was `LIMIT 10` at ship; raised to 25 mid-session, then to 40 to cover the
+    full test run: 25 test cases + 13 auditor self-audit calls = 38 entries per run.
+  - 2 slots of headroom above the 38-entry ceiling.
+
+- **Rate Limit to API requests if remote brain is used** (`scripts/test_attack.py`)
+ - Added a 5-second delay, the 25-case suite will take a little over two minutes to complete now. 
+ - This stretches the execution window wide enough that the rolling 60-second limit will never exceed 12 requests, keeping you safely under Google's 15 RPM (free tier API) ceiling.
+ - Note: Remove rate limit line from test when running locally.
+
+- **Updated gif demo in assets folder** (`assets/bc_demo-small.gif`)
+ - Now test demo reflects updated set of 7 known regex signatures from previous 5.
+
+ ### Changed
+ - **Version Bump** (`routing.html`)
+
+---
+
 ## [0.6.7] - Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion - 2026-07-27
 
 **Files changed:** `default_signatures.json`, `scripts/test_attack.py`

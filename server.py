@@ -1127,7 +1127,7 @@ def analyze_threat():
 def get_logs():
     try:
         conn = get_db_connection()
-        rows = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 10').fetchall()
+        rows = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 40').fetchall()
         conn.close()
         return jsonify([dict(row) for row in rows])
     except sqlite3.Error as e: return jsonify({"error": f"Database read failed: {e}"}), 500

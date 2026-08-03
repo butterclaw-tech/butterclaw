@@ -2,9 +2,10 @@ import urllib.request
 import urllib.error
 import json
 import sys
+import time  # <-- added for rate limiting sleep, free tier api usage
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  ButterClaw Arsenal Live-Fire Test Suite (v0.6.7)
+#  ButterClaw Arsenal Live-Fire Test Suite (v0.6.8)
 #  Tests all 7 signatures in default_signatures.json against the running stack.
 #
 #  Usage:
@@ -261,6 +262,8 @@ def main():
             print(f"\n  [{sig_id}]{new_marker}")
 
         ok, detail = fire(api_key, sig_id, label, raw_data)
+
+        time.sleep(5) # <-- if using free tier api (15 req/min), uncomment this line to avoid rate limiting
 
         if ok is None:
             errored += 1

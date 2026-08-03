@@ -375,7 +375,7 @@
       </div>
     </div>
   
-            <div class="text-center py-3"><span class="text-xs text-slate-400">ButterClaw v0.6.7</span></div>
+            <div class="text-center py-3"><span class="text-xs text-slate-400">ButterClaw v0.6.8</span></div>
         </aside>
 
   <main class="flex-1 overflow-y-auto p-8 lg:p-12 scroll-smooth">
@@ -440,7 +440,7 @@
               class="text-xs bg-slate-100 hover:bg-claw-100 text-slate-500 hover:text-claw-600 font-bold py-1.5 px-4 rounded-full transition flex items-center space-x-1">
               <span>👾</span><span>Simulate Attack</span>
             </button>
-            <button class="text-sm text-butter-500 font-bold hover:text-butter-400 transition">View All &rarr;</button>
+            <button id="viewAllLogsBtn" class="text-sm text-butter-500 font-bold hover:text-butter-400 transition">View All &rarr;</button>
           </div>
         </div>
         <div id="oopsieContainer" class="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200"></div>
@@ -529,7 +529,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.7 — The Exoskeleton</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.6.8 — The Exoskeleton</p>
     </div>
   </div>
 
@@ -1340,8 +1340,30 @@
 
     mcpBadge.addEventListener('click', () => { window.location.href = 'routing.html#mcpSection'; });
 
-    checkMCPStatus();
+        checkMCPStatus();
     setInterval(checkMCPStatus, 30000);
+
+    // =============================================
+    // 9. OOPSIE LOGS — VIEW ALL TOGGLE 📋
+    // =============================================
+    (function () {
+      const viewAllBtn      = document.getElementById('viewAllLogsBtn');
+      const oopsieContainer = document.getElementById('oopsieContainer');
+      if (!viewAllBtn || !oopsieContainer) return;
+      let expanded = false;
+
+      viewAllBtn.addEventListener('click', () => {
+        expanded = !expanded;
+        if (expanded) {
+          oopsieContainer.style.maxHeight = 'none';
+          viewAllBtn.innerHTML = 'Collapse &uarr;';
+        } else {
+          oopsieContainer.style.maxHeight = '400px';
+          oopsieContainer.scrollTop = 0;
+          viewAllBtn.innerHTML = 'View All &rarr;';
+        }
+      });
+    })();
 
   });
   </script>
