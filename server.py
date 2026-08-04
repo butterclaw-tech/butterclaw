@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.5 — The Exoskeleton (Deployment Packaging & Paranoia)
+ButterClaw v0.6.8 — The Arsenal Hardening Stability Patch
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -11,6 +11,8 @@ Changelog:
   [v0.6.3] Deployment Packaging (Docker, config.py)
   [v0.6.4] Active Tools & Autonomous Deployment
   [v0.6.5] The Paranoia Dial & TUI Integration
+  [v0.6.6] The Reconciliation
+  [v0.6.7] The Arsenal Hardening (Sanitizer-Aware Signatures)
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -63,7 +65,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.5"
+VERSION = "0.6.8"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -682,6 +684,36 @@ def _validate_endpoint_url(url_string):
     except: return False
 
 # =============================================
+# BRAIN API CALL — RETRY WITH BACKOFF
+# =============================================
+
+def _call_brain_api(api_url, payload, headers, timeout=120, max_retries=3):
+    """
+    POST to the Brain API with exponential backoff on 429 and 503.
+    Fails fast on all other non-200 status codes.
+    """
+    delay = 15  # Initial backoff in seconds
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = http_requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+            if response.status_code in (429, 503):
+                retry_after = int(response.headers.get("Retry-After", delay))
+                wait = max(retry_after, delay)
+                print(f"⚠️ [BRAIN] HTTP {response.status_code} on attempt {attempt}/{max_retries}. Retrying in {wait}s...")
+                time.sleep(wait)
+                delay *= 2  # Exponential backoff: 15s → 30s → 60s
+                continue
+            return response  # success or non-retryable error — caller handles it
+        except Exception as e:
+            print(f"⚠️ [BRAIN] Request exception on attempt {attempt}/{max_retries}: {e}")
+            if attempt < max_retries:
+                time.sleep(delay)
+                delay *= 2
+            else:
+                raise
+    return None
+
+# =============================================
 # THE GUARDIAN BRAIN
 # =============================================
 
@@ -741,12 +773,13 @@ def ask_guardian_agent(threat_type, raw_data):
     print("🧠 Transmitting payload to Brain... stand by.")
 
     try:
-        response = http_requests.post(api_url, json=payload, headers=headers, timeout=120)
+        response = _call_brain_api(api_url, payload, headers, timeout=120)
         
         # --- BULLETPROOF NETWORK PATCH ---
-        if response.status_code != 200:
-            print(f"⚠️ [API ERROR] HTTP {response.status_code}: {response.text}")
-            return {"verdict": "ERROR", "confidence": 0.0, "primary_gate": "None", "chain": None, "reasoning": f"API HTTP {response.status_code} Error. Check terminal logs."}
+        if response is None or response.status_code != 200:
+            code = response.status_code if response else "N/A"
+            print(f"⚠️ [API ERROR] HTTP {code}: {response.text if response else 'No response'}")
+            return {"verdict": "ERROR", "confidence": 0.0, "primary_gate": "None", "chain": None, "reasoning": f"API HTTP {code} Error after retries. Check terminal logs."}
 
         resp_json = response.json()
         if isinstance(resp_json, list):
@@ -810,13 +843,14 @@ def run_self_audit(original_threat):
         payload = {"model": active_model, "format": "json", "stream": False, "options": {"temperature": 0.0}, "messages": messages}
 
     try:
-        response = http_requests.post(api_url, json=payload, headers=headers, timeout=300)
+        response = _call_brain_api(api_url, payload, headers, timeout=300)
         
         # --- BULLETPROOF NETWORK PATCH ---
-        if response.status_code != 200:
-            print(f"❌ [AUDITOR] API Error HTTP {response.status_code}: {response.text}")
+        if response is None or response.status_code != 200:
+            code = response.status_code if response else "N/A"
+            print(f"❌ [AUDITOR] API Error HTTP {code} after retries: {response.text if response else 'No response'}")
             return
-
+        
         resp_json = response.json()
         if isinstance(resp_json, list):
             resp_json = resp_json[0] if resp_json else {}

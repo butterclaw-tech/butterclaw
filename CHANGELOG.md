@@ -10,7 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.8** | The Arsenal Hardening | 2026-08-02 | Oopsie Logs "View All" wired up, test script rate limit, demo GIF updated|
+| **v0.6.8** | The Arsenal Hardening | 2026-08-03 | Oopsie Logs "View All" wired up, test script rate limit, demo updated, error handling|
 | **v0.6.7** | The Arsenal Hardening | 2026-07-27 | Sanitizer-aware signatures, 5→7 sigs, sig_kin_01 HTML entity fix, live-fire suite |
 | **v0.6.6** | The Reconciliation | 2026-07-14 | 63-point doc audit, 12-factor config, docker-compose.dev.yml critical fix |
 | **v0.6.5** | The Exoskeleton Sealed | 2026-06-24 | Regex Signatures Arsenal, Paranoia Dial, TUI Dashboard, 29-vuln audit |
@@ -31,32 +31,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
-## [0.6.8] - Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion with docs & WebUI Updates - 2026-08-02
+## [0.6.8] - Arsenal Hardening: Sanitizer-Aware Signatures & Live-Fire Expansion with docs & WebUI Updates - 2026-08-03
 
 **Files Changed:** `server.py`, `default_signatures.json`, `scripts/test_attack.py`, `assets/bc_demo-small.gif`, `index.html`, `README.md`, `routing.html`, `CHANGELOG.md`
 **New runtime dependencies:** 0
 
 ### Fixed
+
 - **Oopsie Logs — "View All" button now functional** (`index.html`)
   - Button was a visual stub with no `id` or event listener wired up; now fully implemented.
   - Clicking "View All →" expands the log container past the 400px height cap so all entries are readable.
   - Clicking "Collapse ↑" returns the container to its default height and resets scroll position to top.
 
-  - **Oopsie Logs — `/api/logs` SQL cap raised to 40** (`server.py`)
+- **Oopsie Logs — `/api/logs` SQL cap raised to 40** (`server.py`)
   - Hard cap was `LIMIT 10` at ship; raised to 25 mid-session, then to 40 to cover the
     full test run: 25 test cases + 13 auditor self-audit calls = 38 entries per run.
   - 2 slots of headroom above the 38-entry ceiling.
 
+- **Brain API 429 & 503 retry with exponential backoff** (`server.py`)
+  - `_call_brain_api()` helper wraps all Gemini POST calls in a 3-attempt retry loop.
+  - Backs off 15s → 30s → 60s; respects `Retry-After` headers on 429 responses.
+  - 503 (transient overload) gets identical treatment to 429 — both are retried, all other non-200 codes fail fast.
+  - Both `ask_guardian_agent` and `run_self_audit` now route through the helper.
+
 - **Rate Limit to API requests if remote brain is used** (`scripts/test_attack.py`)
- - Added a 5-second delay, the 25-case suite will take a little over two minutes to complete now. 
- - This stretches the execution window wide enough that the rolling 60-second limit will never exceed 12 requests, keeping you safely under Google's 15 RPM (free tier API) ceiling.
- - Note: Remove rate limit line from test when running locally.
+  - Added a 5-second delay, the 25-case suite will take a little over two minutes to complete now. 
+  - This stretches the execution window wide enough that the rolling 60-second limit will never exceed 12 requests, keeping you safely under Google's 15 RPM (free tier API) ceiling.
+  - Note: Remove rate limit line from test when running locally.
 
 - **Updated gif demo in assets folder** (`assets/bc_demo-small.gif`)
- - Now test demo reflects updated set of 7 known regex signatures from previous 5.
+  - Now test demo reflects updated set of 7 known regex signatures from previous 5.
 
- ### Changed
- - **Version Bump** (`routing.html`)
+### Changed
+
+- **Version Bump** (`routing.html`)
+  - Updated labeled version to current
 
 ---
 
