@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.6.3 — systemd Service Unit
+# ButterClaw v0.7.0 — systemd Service Unit
 # =============================================
 # Install:
 #   sudo cp systemd/butterclaw.service /etc/systemd/system/
@@ -11,34 +11,46 @@
 # Logs: journalctl -u butterclaw -f
 
 [Unit]
-Description=ButterClaw — Local-First Agent Security Sentinel
+Description=ButterClaw Kinetic SOC (v0.7.0 stdio transport)
 Documentation=https://github.com/butterclaw-tech/butterclaw
-After=network.target ollama.service
-Wants=ollama.service
+After=network.target local-fs.target
+Wants=network-online.target
 
 [Service]
 Type=simple
+
+# Run as a dedicated, unprivileged user
 User=butterclaw
 Group=butterclaw
 WorkingDirectory=/opt/butterclaw
-EnvironmentFile=/etc/butterclaw.env
-ExecStart=/usr/bin/python3 server.py
-Restart=on-failure
-RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
-# Security hardening
-NoNewPrivileges=true
+# Load the Gibson keys and API tokens securely
+EnvironmentFile=/opt/butterclaw/.env
+
+# Execute the stdio transport listener
+ExecStart=/opt/butterclaw/venv/bin/python -m butterclaw.core.daemon --transport stdio
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Grant ONLY the specific capabilities needed to monitor and kill rogue agents
+# CAP_KILL: Required to issue SIGKILL to rogue processes
+# CAP_SYS_PTRACE: Required to read /proc/pid/fd for deep telemetry
+CapabilityBoundingSet=CAP_KILL CAP_SYS_PTRACE
+AmbientCapabilities=CAP_KILL CAP_SYS_PTRACE
+
+# Completely lock down the file system, only allowing writes to the SQLite vault and logs
 ProtectSystem=strict
+ReadWritePaths=/opt/butterclaw/data /opt/butterclaw/logs
 ProtectHome=true
-ReadWritePaths=/opt/butterclaw /opt/butterclaw/butterclaw.db
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+NoNewPrivileges=true
 
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=butterclaw
+# If the daemon crashes, restart it automatically to ensure the shield stays up
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
 
 [Install]
 WantedBy=multi-user.target

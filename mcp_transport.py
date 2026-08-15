@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — MCP Transport Abstraction Layer
+ButterClaw v0.7.0 — MCP Transport Abstraction Layer
 =====================================================================
 Provides transport-agnostic I/O for the MCP server. The protocol
 handler (ButterClawMCPServer) doesn't care how bytes arrive — it
@@ -28,6 +28,7 @@ import json
 import queue
 import logging
 import threading
+import os
 from abc import ABC, abstractmethod
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -76,7 +77,6 @@ class BaseTransport(ABC):
         """Human-readable transport identifier."""
         pass
 
-
 # =====================================================================
 # STDIO TRANSPORT — stdin/stdout (default, local)
 # =====================================================================
@@ -85,11 +85,28 @@ class StdioTransport(BaseTransport):
     """
     Reads JSON-RPC requests from stdin (one per line).
     Writes JSON-RPC responses to stdout (one per line).
-    This is the default transport for local child process mode.
+    Armed with a Physical Firewall to drop oversized or malformed byte payloads.
     """
 
     def __init__(self):
         self._running = False
+        self._constraints = {
+            "max_payload_bytes": 1048576,
+            "enforce_utf8_strict": True,
+            "block_embedded_newlines": True
+        }
+        
+        # Load STDIO Firewall constraints
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_stdio_transport.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+                    if "stdio_constraints" in data:
+                        self._constraints.update(data["stdio_constraints"])
+                logger.info(f"🛡️ [Transport] STDIO Firewall armed (Max: {self._constraints['max_payload_bytes']} bytes, Strict UTF-8: {self._constraints['enforce_utf8_strict']})")
+        except Exception as e:
+            logger.warning(f"⚠️ [Transport] Failed to load stdio constraints, using defaults: {e}")
 
     @property
     def transport_name(self):
@@ -104,31 +121,58 @@ class StdioTransport(BaseTransport):
         logger.info("📡 [Transport] stdio transport stopped.")
 
     def read(self):
+        max_bytes = self._constraints.get("max_payload_bytes", 1048576)
+        strict_utf8 = self._constraints.get("enforce_utf8_strict", True)
+        
         while True:
             if not self._running:
                 return None
             try:
-                line = sys.stdin.readline()
-                if not line:
-                    return None  # stdin closed
+                # 1. PHYSICAL FIREWALL: Read raw bytes with a hard length limit
+                # We add +1 so we can detect if the line exceeded the boundary
+                raw_bytes = sys.stdin.buffer.readline(max_bytes + 1)
+                
+                if not raw_bytes:
+                    return None  # EOF
+                    
+                # 2. PHYSICAL FIREWALL: Enforce payload size limits
+                if len(raw_bytes) > max_bytes:
+                    logger.critical(f"🛑 [FIREWALL] Payload blocked: Exceeds {max_bytes} bytes limit.")
+                    # Drain the rest of the malicious giant line to prevent pipe corruption
+                    while sys.stdin.buffer.read(1024 * 1024) == b'': pass
+                    raise ValueError(f"Payload exceeded max_payload_bytes ({max_bytes})")
+
+                # 3. PHYSICAL FIREWALL: Strict UTF-8 Encoding validation
+                if strict_utf8:
+                    line = raw_bytes.decode('utf-8', errors='strict')
+                else:
+                    line = raw_bytes.decode('utf-8', errors='replace')
+                    
                 line = line.strip()
                 if line:
                     return json.loads(line)
+                    
+            except UnicodeDecodeError as e:
+                logger.critical(f"🛑 [FIREWALL] Payload blocked: Strict UTF-8 validation failed - {e}")
+                raise
             except json.JSONDecodeError as e:
-                # Return a parse error response directly — caller handles it
                 logger.error(f"❌ [Transport] JSON parse error on stdin: {e}")
                 raise
-            except Exception:
+            except Exception as e:
+                if "Payload exceeded" not in str(e):
+                    logger.error(f"❌ [Transport] read error: {e}")
                 return None
 
     def write(self, response):
         try:
-            sys.stdout.write(json.dumps(response) + "\n")
-            sys.stdout.flush()
+            # 4. PHYSICAL FIREWALL: Ensure outgoing data is safely single-line
+            out_str = json.dumps(response, separators=(',', ':'))
+            # Encode to bytes and enforce strict UTF-8 outbound
+            sys.stdout.buffer.write(out_str.encode('utf-8') + b'\n')
+            sys.stdout.buffer.flush()
         except (BrokenPipeError, OSError):
             logger.error("❌ [Transport] stdout pipe broken.")
             self._running = False
-
 
 # =====================================================================
 # SSE TRANSPORT — HTTP POST + Server-Sent Events (network)

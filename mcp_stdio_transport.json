@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.7.0",
+  "enforcement_target": "mcp_stdio_transport",
+  "rbac_tiers": {
+    "viewer": {
+      "allowed_mcp_methods": [
+        "resources/list",
+        "resources/read",
+        "prompts/list",
+        "prompts/get",
+        "tools/list"
+      ],
+      "tool_whitelist": [],
+      "paranoia_override": 1
+    },
+    "operator": {
+      "allowed_mcp_methods": [
+        "resources/list",
+        "resources/read",
+        "prompts/list",
+        "prompts/get",
+        "tools/list",
+        "tools/call",
+        "sampling/createMessage"
+      ],
+      "tool_whitelist": [
+        "github_issue_read",
+        "local_file_read",
+        "postgres_query_safe"
+      ],
+      "paranoia_override": 2
+    },
+    "admin": {
+      "allowed_mcp_methods": ["*"],
+      "tool_whitelist": ["*"],
+      "paranoia_override": 3,
+      "restricted_tools": [
+        "aws_imds_probe",
+        "reverse_shell_exec"
+      ]
+    },
+    "infrastructure": {
+      "allowed_mcp_methods": ["*"],
+      "tool_whitelist": ["*"],
+      "paranoia_override": 3,
+      "restricted_tools": []
+    }
+  },
+  "stdio_constraints": {
+    "max_payload_bytes": 1048576,
+    "block_embedded_newlines": true,
+    "enforce_utf8_strict": true
+  }
+}

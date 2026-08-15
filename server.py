@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.8 — The Arsenal Hardening Stability Patch
+ButterClaw v0.7.0 — Positive Security Model & Capability Matrix
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -13,6 +13,8 @@ Changelog:
   [v0.6.5] The Paranoia Dial & TUI Integration
   [v0.6.6] The Reconciliation
   [v0.6.7] The Arsenal Hardening (Sanitizer-Aware Signatures)
+  [v0.6.8] The Arsenal Hardening Stability Patch
+  [v0.7.0] Positive Security Model & Capability Matrix Binding
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -65,7 +67,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.6.8"
+VERSION = "0.7.0"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -329,6 +331,9 @@ class ChainExecutor:
                 return
 
         if POLICY_ENGINE_ENABLED:
+            with _state_lock:
+                current_active_model = model_name
+                
             pre_tool_ctx = {
                 "raw_data": str(step.get("args", {})),
                 "threat_type": "chain_tool_call",
@@ -338,6 +343,7 @@ class ChainExecutor:
                 "chain_step": step_index,
                 "verdict": "CRITICAL", 
                 "confidence": 1.0,
+                "active_model": current_active_model
             }
             gate_result = policy_engine.evaluate_policies("pre_tool", pre_tool_ctx)
             
@@ -1100,7 +1106,15 @@ def analyze_threat():
                 # Execute fallback hardcoded defense tools
                 gibson_blocked = False
                 if POLICY_ENGINE_ENABLED:
-                    gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "execute_gibson_kill", "tool_args": {"target_process": "openclaw"}, "verdict": "CRITICAL", "confidence": 1.0})
+                    with _state_lock:
+                        current_active_model = model_name
+                    gate = policy_engine.evaluate_policies("pre_tool", {
+                        "tool_name": "execute_gibson_kill", 
+                        "tool_args": {"target_process": "openclaw"}, 
+                        "verdict": "CRITICAL", 
+                        "confidence": 1.0,
+                        "active_model": current_active_model
+                    })
                     if gate["action"] in ("skip_tool", "block"):
                         gibson_blocked = True; print(f"🚫 [POLICY] gibson_kill blocked by policy: {gate['reason']}")
                 
@@ -1111,7 +1125,15 @@ def analyze_threat():
                 
                 rotate_blocked = False
                 if POLICY_ENGINE_ENABLED:
-                    gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "OpenRouter"}, "verdict": "CRITICAL", "confidence": 1.0})
+                    with _state_lock:
+                        current_active_model = model_name
+                    gate = policy_engine.evaluate_policies("pre_tool", {
+                        "tool_name": "rotate_keys", 
+                        "tool_args": {"provider": "OpenRouter"}, 
+                        "verdict": "CRITICAL", 
+                        "confidence": 1.0,
+                        "active_model": current_active_model
+                    })
                     if gate["action"] in ("skip_tool", "block"):
                         rotate_blocked = True; print(f"🚫 [POLICY] rotate_keys blocked by policy: {gate['reason']}")
                 
@@ -1175,7 +1197,15 @@ def manual_key_rotation():
     
     rotate_blocked = False
     if POLICY_ENGINE_ENABLED:
-        gate = policy_engine.evaluate_policies("pre_tool", {"tool_name": "rotate_keys", "tool_args": {"provider": "Manual_Global"}, "verdict": "CRITICAL", "confidence": 1.0})
+        with _state_lock:
+            current_active_model = model_name
+        gate = policy_engine.evaluate_policies("pre_tool", {
+            "tool_name": "rotate_keys", 
+            "tool_args": {"provider": "Manual_Global"}, 
+            "verdict": "CRITICAL", 
+            "confidence": 1.0,
+            "active_model": current_active_model
+        })
         if gate["action"] in ("skip_tool", "block"):
             rotate_blocked = True; print(f"🚫 [POLICY] manual rotate_keys blocked by policy: {gate['reason']}")
 

