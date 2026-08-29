@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
+| **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
 | **v0.7.0** | Positive Security Model, Capability Matrix, & Physical Firewall | 2026-08-14 | Capability Matrix (4-tier RBAC), STDIO physical firewall (byte-level memory boundary), dynamic model state wiring, Docker config updates |
 | **v0.6.8** | The Arsenal Hardening Audit | 2026-08-03 | Oopsie Logs "View All" wired up, test script rate limit, demo updated, error handling |
 | **v0.6.7** | The Arsenal Hardening | 2026-07-27 | Sanitizer-aware signatures, 5→7 sigs, sig_kin_01 HTML entity fix, live-fire suite |
@@ -29,6 +30,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.7.1] - Full Policy Hotfix & Concurrency Hardening - 2026-08-29
+
+**Files Changed:** `server.py`, `auth.py`, `policy_engine.py`, `alert_dispatcher.py`, `capabilities.json`
+**New runtime dependencies:** 0
+
+### Security
+- **API Key Exfiltration Prevention (`server.py`):** Added `_build_ai_headers()` to domain-gate `cfg.GOOGLE_API_KEY`. The Bearer token is now strictly attached only when communicating with `generativelanguage.googleapis.com`. Custom or operator-configured remote endpoints must supply credentials via `REMOTE_API_KEY`, preventing key exfiltration to untrusted endpoints.
+- **Brute-Force Detection Bypass (`alert_dispatcher.py`):** Removed the list-reset wipe inside `track_auth_failure()`. Attackers can no longer cycle attempts below the threshold to avoid detection; the sliding window retains history and fires continuously under sustained attacks.
+
+### Fixed
+- **Authentication Bootstrapping (`auth.py`):** Corrected a logic bug in `bootstrap_infrastructure_keys()` where generated machine keys lacked the mandatory `bc_` (`KEY_PREFIX`). Keys generated during first-run bootstrap now verify properly against the API gateway.
+- **Capability Matrix Tier Weight (`policy_engine.py`):** Fixed a numeric inversion in `validate_tool_skill()`. The `infrastructure` agent tier is now properly weighted as `4` (top privilege) rather than `-1`, resolving a fail-closed capability blackout that blocked machine-to-machine agents from executing MCP tools.
+- **Fatal Import Fallback Crash (`auth.py`):** Relocated `SESSION_TTL` and `ROLE_RATE_LIMITS` inside the config `ImportError` fallback block. Deployments missing a `config.py` file will smoothly fall back to default limits instead of throwing a boot-time `NameError`.
+- **Length Operator Type Validation (`policy_engine.py`):** Patched `_validate_condition()` to validate `length_gt` and `length_lt` values using `int()` instead of `float()`, preventing runtime evaluation exceptions on decimal inputs.
+- **Paranoia Prompt Signal Optimization (`server.py`):** Refined the Paranoia Level 3 prompt instruction from `"unautclated"` to `"unauthorized"`, eliminating sub-token fragmentation and ensuring clean semantic signal processing during lockdown sequences.
+- **Dynamic Model State Desync (`policy_engine.py`):** Fixed an issue in evaluate_policies() where the engine prioritized the static boot configuration (cfg.MODEL_NAME) over the dynamic runtime context. The Capability Matrix now correctly identifies the live agent profile (e.g., butterclaw:optimized) instead of defaulting to the .env configuration, ensuring strict RBAC enforcement when operators switch models mid-session.
+- **Oopsie Log UI Chain Link Clobber (`server.py`):** Fixed an issue where blocked kinetic chains overwrote the database action string with a generic alert, inadvertently stripping the "Chain [" substring required by the frontend. Captured and preserved the chain_summary during Paranoia Level fallbacks, ensuring the dashboard correctly parses and renders the "View in Ledger" link even when the Exoskeleton physically blocks execution.
+
+### Changed
+- **Alert Dispatcher Concurrency Bounding (`alert_dispatcher.py`):** Replaced unbounded thread creation in `dispatch_alert()` with a centralized `ThreadPoolExecutor(max_workers=10, thread_name_prefix="alert")` to prevent thread starvation under event bursts.
+- **Hit Counter Serialization (`policy_engine.py`):** Swapped per-match daemon thread spawning in `_increment_hit_count()` for a non-blocking `queue.Queue` processed by a single background worker (`hit-count-worker`), serializing database writes without blocking the evaluation path.
+- **SQLite Write-Ahead Logging (`server.py`):** Enabled `PRAGMA journal_mode=WAL` and `PRAGMA synchronous=NORMAL` in `get_db_connection()`, resolving writer-lock contention and permitting concurrent read/write transactions.
+- **Database Hot-Path DDL Extraction (`auth.py`, `server.py`):** Removed repetitive `CREATE TABLE IF NOT EXISTS` execution from `_get_auth_db()`. Table creation is now handled once at application boot via `init_auth_db()`, reducing latency on authenticated requests.
+- **Thread-Safe Row ID Retrieval (`server.py`):** Replaced the secondary `SELECT last_insert_rowid()` query in `ledger_log_start()` with direct `cursor.lastrowid` access to prevent race conditions during concurrent event logging.
+- **Positive Security Model Matrix (`capabilities.json`):** Populated the Capability Matrix with explicit agent profiles for both local (butterclaw-optimized:latest) and remote routing options. This maps active runtime brains to the operator tier and grants audit scope clearance, ensuring the Exoskeleton properly authenticates dynamic models without triggering a default-deny capability blackout.
 
 ---
 

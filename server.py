@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.0 — Positive Security Model & Capability Matrix
+ButterClaw v0.7.1 — Positive Security Model & Capability Matrix
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -67,7 +67,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -137,6 +137,8 @@ DB_PATH = cfg.DB_PATH
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 def init_db():
@@ -171,6 +173,8 @@ def init_db():
     conn.commit()
     conn.close()
 
+    auth.init_auth_db()
+
     if POLICY_ENGINE_ENABLED:
         policy_engine.init_policy_db()
         
@@ -204,7 +208,8 @@ def _cleanup_expired_oauth_states():
 def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="auto", chain_id=None, chain_step=None):
     try:
         conn = get_db_connection()
-        conn.execute('''
+        cursor = conn.cursor()
+        cursor.execute('''
             INSERT INTO mcp_events (timestamp, req_id, method, tool_name, arguments, status, trigger, chain_id, chain_step)
             VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         ''', (
@@ -213,7 +218,7 @@ def ledger_log_start(req_id, method, tool_name=None, arguments=None, trigger="au
             json.dumps(arguments) if arguments else None,
             trigger, chain_id, chain_step
         ))
-        event_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        event_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return event_id
@@ -689,6 +694,19 @@ def _validate_endpoint_url(url_string):
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except: return False
 
+def _build_ai_headers(api_url):
+    """Only send Google API key to Google's own domain to prevent exfiltration."""
+    parsed = urlparse(api_url)
+    headers = {"Content-Type": "application/json"}
+    
+    if parsed.netloc == "generativelanguage.googleapis.com":
+        headers["Authorization"] = f"Bearer {cfg.GOOGLE_API_KEY}"
+    # Allow custom endpoints to use a separate key if provided in config
+    elif getattr(cfg, "REMOTE_API_KEY", None):
+        headers["Authorization"] = f"Bearer {cfg.REMOTE_API_KEY}"
+        
+    return headers
+
 # =============================================
 # BRAIN API CALL — RETRY WITH BACKOFF
 # =============================================
@@ -738,7 +756,7 @@ def ask_guardian_agent(threat_type, raw_data):
     # Apply Paranoia Logic to Prompt
     if level == "1": mode_instructions = "Mode: RELAXED OBSERVER. Log anomalies, but do not terminate processes."
     elif level == "2": mode_instructions = "Mode: CAUTIOUS ACTIVE DEFENSE. Flag anomalies and terminate compromised processes via execute_gibson_kill."
-    else: mode_instructions = "Mode: PARANOID LOCKDOWN. Zero Trust. Terminate unautclated behavior and trigger full Vault destruction."
+    else: mode_instructions = "Mode: PARANOID LOCKDOWN. Zero Trust. Terminate unauthorized behavior and trigger full Vault destruction."
 
     active_gates = [k for k, v in gates.items() if v]
     inactive_gates = [k for k, v in gates.items() if not v]
@@ -769,7 +787,7 @@ def ask_guardian_agent(threat_type, raw_data):
 
     if routing_mode == "remote":
         api_url = remote_endpoint if remote_endpoint else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        headers = {"Authorization": f"Bearer {cfg.GOOGLE_API_KEY}", "Content-Type": "application/json"}
+        headers = _build_ai_headers(api_url)
         payload = {"model": active_model, "response_format": {"type": "json_object"}, "temperature": 0.3, "messages": messages}
     else:
         api_url = _resolve_ollama_url()
@@ -841,7 +859,7 @@ def run_self_audit(original_threat):
 
     if routing_mode == "remote":
         api_url = remote_endpoint if remote_endpoint else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        headers = {"Authorization": f"Bearer {cfg.GOOGLE_API_KEY}", "Content-Type": "application/json"}
+        headers = _build_ai_headers(api_url)
         payload = {"model": active_model, "response_format": {"type": "json_object"}, "temperature": 0.0, "messages": messages}
     else:
         api_url = _resolve_ollama_url()
@@ -1092,12 +1110,16 @@ def analyze_threat():
             # Paranoia Level 2 (Active Defense) or Level 3 (Air-Gapped Lockdown)
             executed_critical_tools = False
             mcp_failures = []
+            chain_summary = None  # <-- WE CAPTURE THE CHAIN ID HERE
 
             chain_steps = analysis.get('chain') if isinstance(analysis, dict) else None
             if chain_steps and isinstance(chain_steps, list) and len(chain_steps) > 0:
                 print(f"🔗 [CHAIN] Brain composed {len(chain_steps)}-step chain for CRITICAL response")
                 executor = ChainExecutor(mcp_manager, chain_steps, dry_run=DRY_RUN)
-                action = executor.execute()['action_summary']
+                
+                # <-- STORE THE SUMMARY STRING INSTEAD OF IMMEDIATELY OVERWRITING
+                chain_summary = executor.execute()['action_summary']
+                action = chain_summary
                 
                 executed_tools = [s['tool'] for s in executor.executed if s.get('status') == 'executed']
                 if "execute_gibson_kill" in executed_tools or "rotate_keys" in executed_tools:
@@ -1146,20 +1168,22 @@ def analyze_threat():
             if executed_critical_tools:
                 if DRY_RUN:
                     print("🧪 [DRY RUN] Critical tool triggered. Skipping further kinetic action.")
-                    action = f"SIGKILL (Dry Run) | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL (Dry Run)"
+                    # <-- SAFELY INJECT THE SUMMARY INTO THE FINAL STRINGS
+                    action = f"{chain_summary} | SIGKILL (Dry Run)" if chain_summary else (f"SIGKILL (Dry Run) | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL (Dry Run)")
                 else:
                     if current_level == "3":
                         print("☢️ [SERVER] Paranoia Level 3 Active: Air-Gapped Lockdown. Triggering ButterVault destruction...")
                         if ALERT_DISPATCHER_ENABLED:
                             alert_dispatcher.dispatch_alert("gibson_triggered", {"threat_type": threat_type, "trigger": "paranoia_3"})
                         buttervault.butter_keys()
-                        action = f"Vault Shredded | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Vault Shredded"
+                        action = f"{chain_summary} | Vault Shredded" if chain_summary else (f"Vault Shredded | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL | Vault Shredded")
                     else:
                         print("⚔️ [SERVER] Paranoia Level 2 Active: Active Defense. SIGKILL executed. Vault remains sealed.")
-                        action = f"SIGKILL Executed | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL Executed"
+                        action = f"{chain_summary} | SIGKILL Executed" if chain_summary else (f"SIGKILL Executed | MCP partial failure: {', '.join(mcp_failures)}" if mcp_failures else "SIGKILL Executed")
             else:
                 print("🛡️ [SERVER] All critical tools blocked or failed. Vault remains sealed.")
-                action = "ALERT | Blocks/Failures Prevented Kinetics"
+                # <-- PREVENT THE CLOBBER IF KINETICS FAIL
+                action = f"{chain_summary} (Kinetics Blocked)" if chain_summary else "ALERT | Blocks/Failures Prevented Kinetics"
 
         threading.Thread(target=run_self_audit, args=(threat_type,), daemon=True).start()
     elif verdict_upper == "WARNING": color = "amber"; icon = "⚠️"; action = "Monitored"

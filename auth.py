@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.6 — Authentication & Authorization Module
+ButterClaw v0.7.1 — Authentication & Authorization Module
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
@@ -41,11 +41,31 @@ logger = logging.getLogger("butterclaw.auth")
 # Keep this line so the diagnostic tests still know where they are!
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# try:
+#     from config import cfg
+#     DB_PATH = cfg.DB_PATH
+# except ImportError:
+#     DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
 try:
     from config import cfg
     DB_PATH = cfg.DB_PATH
+    SESSION_TTL = cfg.SESSION_TTL
+    ROLE_RATE_LIMITS = {
+        "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+        "admin":          cfg.AUTH_RATE_ADMIN,
+        "operator":       cfg.AUTH_RATE_OPERATOR,
+        "viewer":         cfg.AUTH_RATE_VIEWER,
+    }
 except ImportError:
     DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+    SESSION_TTL = 3600
+    ROLE_RATE_LIMITS = {
+        "infrastructure": 1000,
+        "admin":          100,
+        "operator":       60,
+        "viewer":         30,
+    }
 
 # =============================================
 # CONSTANTS
@@ -60,19 +80,19 @@ ROLE_HIERARCHY = {
     "viewer": 2,
 }
 
-# Session token TTL (seconds)
-SESSION_TTL = cfg.SESSION_TTL
+# Session token TTL (seconds)   < -- Commented out; securely initialized in the step above
+# SESSION_TTL = cfg.SESSION_TTL
 
 # API key prefix for identification (not security — just UX)
 KEY_PREFIX = "bc_"
 
-# Per-role rate limits (requests per minute on /api/analyze)
-ROLE_RATE_LIMITS = {
-    "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
-    "admin": cfg.AUTH_RATE_ADMIN,
-    "operator": cfg.AUTH_RATE_OPERATOR,
-    "viewer": cfg.AUTH_RATE_VIEWER,
-}
+# Per-role rate limits (requests per minute on /api/analyze)   < -- Commented out; securely initialized in the step above
+# ROLE_RATE_LIMITS = {
+#     "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+#     "admin": cfg.AUTH_RATE_ADMIN,
+#     "operator": cfg.AUTH_RATE_OPERATOR,
+#     "viewer": cfg.AUTH_RATE_VIEWER,
+# }
 
 # Default rate limit for unauthenticated (shouldn't happen if auth is enforced)
 DEFAULT_RATE_LIMIT = 10
@@ -84,10 +104,9 @@ RATE_LIMIT_WINDOW = 60
 # DATABASE
 # =============================================
 
-def _get_auth_db():
-    """Thread-safe connection to the ButterClaw database."""
+def init_auth_db():
+    """One-time table initialization called at startup."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
     conn.execute('''
         CREATE TABLE IF NOT EXISTS api_keys (
             key_id      TEXT PRIMARY KEY,
@@ -101,8 +120,13 @@ def _get_auth_db():
         )
     ''')
     conn.commit()
-    return conn
+    conn.close()
 
+def _get_auth_db():
+    """Thread-safe connection to the ButterClaw database."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # =============================================
 # SESSION SIGNING KEY
@@ -702,7 +726,7 @@ def bootstrap_infrastructure_keys():
         logger.info(f"🔑 {len(infra_keys)} infrastructure key(s) already exist. Skipping bootstrap.")
         return None
 
-    new_key = secrets.token_hex(32)
+    new_key = KEY_PREFIX + secrets.token_hex(32)
 
     key_id = f"key_{secrets.token_hex(8)}"
     key_hash, salt = hash_api_key(new_key)

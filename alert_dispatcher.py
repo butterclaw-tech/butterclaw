@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.5 — Alert Dispatcher
+ButterClaw v0.7.1 — Alert Dispatcher
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -49,8 +49,11 @@ from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from config import cfg
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("butterclaw.alert")
+
+_alert_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="alert")
 
 # =============================================
 # CONSTANTS
@@ -240,7 +243,7 @@ def track_auth_failure(ip_address):
         # Ensure the alert triggers atomically before resetting the list
         if count >= AUTH_FAILURE_THRESHOLD:
             trigger_alert = True
-            _auth_failure_tracker[ip_address] = []
+            # _auth_failure_tracker[ip_address] = []
 
     if trigger_alert:
         logger.warning(
@@ -1104,13 +1107,14 @@ def dispatch_alert(event_type, context=None):
             "config": rule["config"],
             "signing_secret": rule.get("signing_secret"),
         }
-        t = threading.Thread(
-            target=_dispatch_worker,
-            args=(rule, channel, event_type, context),
-            daemon=True,
-            name=f"alert-{rule['rule_id']}-{event_type}"
-        )
-        t.start()
+        # t = threading.Thread(
+        #     target=_dispatch_worker,
+        #     args=(rule, channel, event_type, context),
+        #     daemon=True,
+        #     name=f"alert-{rule['rule_id']}-{event_type}"
+        # )
+        # t.start()
+        _alert_executor.submit(_dispatch_worker, rule, channel, event_type, context)
 
     logger.info("Dispatched %d alert(s) for event: %s", len(rows), event_type)
 

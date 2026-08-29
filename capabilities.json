@@ -1,7 +1,32 @@
 {
-  "version": "0.7.0",
+  "version": "0.7.1",
   "agent_profiles": {
+    "butterclaw-optimized:latest": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
+    "gemini-3.5-flash-lite": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
+    "gemini-3.1-flash-lite": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
     "gemma4:e4b": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
+    "gemma4:26b": {
+      "role_tier": "operator",
+      "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
+      "max_chain_steps": 10
+    },
+    "phi3:latest": {
       "role_tier": "operator",
       "allowed_scopes": ["read", "analyze", "network_safe", "audit"],
       "max_chain_steps": 10

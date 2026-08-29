@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.0 — Policy Engine
+ButterClaw v0.7.1 — Policy Engine
 ===================================
 Deterministic guardrails for the probabilistic Brain.
 
@@ -107,7 +107,7 @@ def validate_tool_skill(active_model, tool_name, matrix):
         return False, f"Tool '{tool_name}' has no defined security requirements."
 
     # Map the 4-Tier RBAC to numeric weights for comparison
-    tier_weights = {"infrastructure": -1, "viewer": 1, "operator": 2, "admin": 3}
+    tier_weights = {"infrastructure": 4, "admin": 3, "operator": 2, "viewer": 1}
     agent_tier_weight = tier_weights.get(agent_profile.get("role_tier", "viewer"), 0)
     tool_tier_weight = tier_weights.get(tool_reqs.get("minimum_tier", "admin"), 3)
 
@@ -300,18 +300,30 @@ def _now_iso():
     """Current UTC timestamp in ISO 8601 format (Python 3.12+ Safe)."""
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-def _increment_hit_count(policy_id):
-    """Increment the hit counter for a policy. Fire-and-forget, non-blocking."""
-    def _do_increment():
+import queue
+
+_hit_count_queue = queue.Queue()
+
+def _hit_count_worker():
+    while True:
+        policy_id = _hit_count_queue.get()
+        if policy_id is None: break
         try:
             with _db_lock:
                 with _get_db() as conn:
                     conn.execute("UPDATE policies SET hit_count = hit_count + 1 WHERE id = ?", (policy_id,))
                     conn.commit()
         except sqlite3.Error as e:
-            logger.warning(f"⚠️ [POLICY] Hit count increment failed for {policy_id}: {e}")
+            logger.warning(f"⚠️ [POLICY] Hit count update failed: {e}")
+        finally:
+            _hit_count_queue.task_done()
 
-    threading.Thread(target=_do_increment, daemon=True).start()
+# Start the worker thread once
+threading.Thread(target=_hit_count_worker, daemon=True, name="hit-count-worker").start()
+
+def _increment_hit_count(policy_id):
+    """Increment the hit counter for a policy. Fire-and-forget, non-blocking."""
+    _hit_count_queue.put(policy_id)
 
 def _log_policy_event(policy_id, policy_name, scope, action_taken,
                       original_verdict=None, final_verdict=None,
@@ -361,11 +373,23 @@ def _validate_condition(condition, scope):
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {e}")
 
-    if condition["operator"] in ("greater_than", "less_than", "greater_equal", "less_equal", "length_gt", "length_lt"):
+    # if condition["operator"] in ("greater_than", "less_than", "greater_equal", "less_equal", "length_gt", "length_lt"):
+    #     try:
+    #         float(condition["value"])
+    #     except (ValueError, TypeError):
+    #         raise ValueError(f"Operator '{condition['operator']}' requires a numeric value, got: '{condition['value']}'")
+
+    if condition["operator"] in ("greater_than", "less_than", "greater_equal", "less_equal"):
         try:
             float(condition["value"])
         except (ValueError, TypeError):
             raise ValueError(f"Operator '{condition['operator']}' requires a numeric value, got: '{condition['value']}'")
+
+    if condition["operator"] in ("length_gt", "length_lt"):
+        try:
+            int(condition["value"])
+        except (ValueError, TypeError):
+            raise ValueError(f"Operator '{condition['operator']}' requires an integer value, got: '{condition['value']}'")
 
 # =============================================
 # CRUD OPERATIONS
@@ -631,10 +655,13 @@ def evaluate_policies(scope, context):
     if scope == "pre_tool":
         tool_name = context.get("tool_name", "")
         # Safely extract the active model: config -> context -> fallback
-        try:
-            active_model = cfg.MODEL_NAME
-        except NameError:
-            active_model = context.get("active_model", "unknown")
+        #try:
+        #    active_model = cfg.MODEL_NAME
+        #except NameError:
+        #    active_model = context.get("active_model", "unknown")
+
+        # Extract the active model: runtime context -> static config -> fallback
+        active_model = context.get("active_model") or getattr(cfg, "MODEL_NAME", "unknown")
 
         is_authorized, reason = validate_tool_skill(active_model, tool_name, CAPABILITY_MATRIX)
         
@@ -661,7 +688,7 @@ def evaluate_policies(scope, context):
             }
 
     # =============================================
-    # 1. ZERO-DAY ARSENAL CHECK (STATIC REGEX)
+    # 1. SIGNATURES ARSENAL CHECK (STATIC REGEX)
     # =============================================
     if scope in ("pre_brain", "pre_tool"):
         payload_data = context.get("raw_data") if scope == "pre_brain" else context.get("tool_args", context.get("raw_data"))

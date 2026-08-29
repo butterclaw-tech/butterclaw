@@ -9,7 +9,7 @@
 </pre>
 </div>
 
-<h1 align="center">🦞 ButterClaw: The Agentic SOC</h1>
+<h1 align="center">ButterClaw: The Agentic SOC</h1>
 
 <p align="center"><b>Runtime security enforcement for autonomous AI agents.</b><br>Local LLM reasoning. No cloud. No telemetry. SIGKILLs rogue processes.</p>
 
@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
   </a>
   <a href="CHANGELOG.md">
-  <img src="https://img.shields.io/badge/version-0.7.0-navy.svg">
+  <img src="https://img.shields.io/badge/version-0.7.1-navy.svg">
   </a>
   <a href="https://butterclaw.tech">
   <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
@@ -298,7 +298,7 @@ Apache 2.0 — see [`LICENSE`](LICENSE).
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.7.0 — The Agentic SOC (Full Policy) 🦞</strong><br>
+<strong>🦞 ButterClaw v0.7.1 — The Agentic SOC (Full Policy Hotfix) 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>
