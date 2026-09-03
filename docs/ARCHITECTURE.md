@@ -8,8 +8,11 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│  Deployment Layer (v0.6.3+)                     │
-│  Docker, systemd, nginx, config.py, backup      │
+│  Deployment Layer (v0.7.2+)                     │
+│  setup_wizard.py, Docker, systemd, nginx        │
+├─────────────────────────────────────────────────┤
+│  Physical Firewall & Capability Matrix (v0.7.0) │
+│  capabilities.json, mcp_stdio_transport.json    │
 ├─────────────────────────────────────────────────┤
 │  Alert Layer (v0.6.2)                           │
 │  6 channels, 9 event types, HMAC signing        │
@@ -26,6 +29,7 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 │  Core (v0.1–v0.4)                               │
 │  Watcher, ButterVault, Dashboard, Ollama        │
 └─────────────────────────────────────────────────┘
+
 
 ```
 
@@ -44,7 +48,7 @@ flowchart TD
     PRE -->|pass| D[Guardian Brain\nask_guardian_agent]
 
     D -->|local| OL[Ollama LLM]
-    D -->|fallback| RM[Remote LLM API]
+    D -->|fallback| RM[Remote LLM API\nDomain-Gated]
     OL --> VERDICT[verdict / confidence / chain]
     RM --> VERDICT
 
@@ -56,7 +60,10 @@ flowchart TD
     CHAIN -->|no| ALERT[Alert Dispatcher\nWebhook · Discord · Telegram · ntfy · SMTP · Gotify]
     CHAIN -->|yes| CE[ChainExecutor\nmax 10 steps · 60s timeout]
 
-    CE --> PRETOOL[pre_tool policy gate\nDRIFT scope: tool_name / tool_args / chain_step]
+    CE --> CAPMATRIX[Capability Matrix Check\nAgent Profile vs 4-Tier RBAC]
+    CAPMATRIX -->|fail| CE
+    CAPMATRIX -->|pass| PRETOOL[pre_tool policy gate\nDRIFT scope: tool_name / tool_args / chain_step]
+    
     PRETOOL -->|skip_tool| CE
     PRETOOL -->|pass| MCP[MCP Tool Call\nstdio or SSE transport]
     MCP -->|result logged to mcp_events| CE
@@ -68,6 +75,7 @@ flowchart TD
     VERDICT -->|30s delay| AUDIT[Auditor\nsecond LLM pass — false-positive check]
     AUDIT -->|result logged| LEDGER[Event Ledger\nmcp_events SQLite]
 
+
 ```
 
 ---
@@ -77,30 +85,31 @@ flowchart TD
 | Component | File | Role | NOT Responsible For | Failure Mode |
 | --- | --- | --- | --- | --- |
 | **Config** | `config.py` | Singleton env-driven configuration, 26 fields across 9 categories | Runtime decisions; validation logic | Missing required keys → `ConfigError` at boot, not at runtime |
-| **Server** | `server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster, 29 routes | Log ingestion; credential storage; policy authoring | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
+| **Server** | `server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster, 30 routes. Uses SQLite WAL mode for concurrency. | Log ingestion; credential storage; policy authoring | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
 | **Auth** | `auth.py` | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed session tokens, rate limiting, 7 routes | Credential encryption; log ingestion; policy evaluation | Gibson destroys all key hashes + invalidates session cache simultaneously |
-| **Policy Engine** | `policy_engine.py` | DRIFT policy runtime — pre_brain / post_brain / pre_tool scopes, 15 operators, 6 actions | Making trust decisions; storing credentials; LLM inference | Misconfigured allow-all rule logs only — never crashes; policy errors surface in audit log |
-| **Alert Dispatcher** | `alert_dispatcher.py` | Multi-channel alert fanout (6 channels), HMAC-signed webhooks, 13 routes | Determining threat severity; storing history; rate limiting per channel | Per-channel failures are independent — a broken webhook never blocks the verdict pipeline |
+| **Policy Engine** | `policy_engine.py` | DRIFT policy runtime — pre_brain / post_brain / pre_tool scopes. Manages Hit Counters via non-blocking `queue.Queue` background worker. | Making trust decisions; storing credentials; LLM inference | Misconfigured allow-all rule logs only — never crashes; policy errors surface in audit log |
+| **Alert Dispatcher** | `alert_dispatcher.py` | Multi-channel alert fanout bounded by a `ThreadPoolExecutor` (max 10 workers). | Determining threat severity; storing history; rate limiting per channel | Per-channel failures are independent — a broken webhook never blocks the verdict pipeline |
 | **ButterVault** | `buttervault.py` | Fernet AES-128-CBC+HMAC-SHA256 encrypted credential store, OS keyring master key, Gibson | Policy evaluation; session management; alert dispatch | Master key absent from keyring → vault operations error; server degrades gracefully |
 | **MCP Client** | `butterclaw_mcp.py` | MCP dual-transport abstraction — `MCPProcessManager` (stdio) + `MCPSSEClient` (remote SSE) | Tool implementation; credential management; policy decisions | MCP process crash → ChainExecutor catches per-step; chain aborts with partial results logged |
-| **MCP Transport** | `mcp_transport.py` | Low-level MCP transport primitives shared by both transport implementations | — | — |
-| **OAuth Config** | `oauth_config.py` | OAuth provider registry, revocation logic (GitHub + generic) | Token storage; session management | — |
+| **MCP Transport** | `mcp_transport.py` | Low-level MCP transport primitives enforcing a strict byte-level physical memory boundary on incoming payloads. | — | Payload exceeds byte limit → active pipe draining to prevent fragment poisoning |
+| **Setup Wizard** | `setup_wizard.py` | Zero-dependency interactive Python configuration utility for environment bootstrapping. | Runtime execution | — |
 | **Watcher** | `watcher.py` | Log tail daemon — monitors `openclaw_gateway.log`, sanitizes lines, POSTs to `/api/analyze` | Parsing log structure; interpreting semantics; auth decisions | Server offline → enqueues up to 100 entries in `retry_queue.json` (persisted on SIGTERM); singleton enforced via PID lock |
-| **TUI Dashboard** | `tui_dashboard.py` | Read-only terminal operational view | Any write or control operations; auth enforcement | Crash does not affect server — read-only |
+| **TUI Dashboard** | `tui_dashboard.py` | Read-only terminal operational view, launched via cross-platform harnesses (`dash.sh`, `dash.bat`). | Any write or control operations; auth enforcement | Crash does not affect server — read-only |
 | **nginx** | `nginx/` | TLS termination, reverse proxy — the only internet-facing component | Auth; policy; any application logic | Trust boundary: all inbound traffic is untrusted until auth middleware in server.py accepts it |
 
 ---
 
 ## Trust Boundaries & Security Model
 
-ButterClaw operates across **six trust zones**. Components communicate across zone boundaries only through defined, authenticated interfaces.
+ButterClaw operates across **seven trust zones**. Components communicate across zone boundaries only through defined, authenticated interfaces.
 
 | Zone | Components | Trust Level | Notes |
 | --- | --- | --- | --- |
 | **Internet-Facing** | nginx | Untrusted | TLS termination only; all traffic treated as adversarial until validated by auth middleware |
 | **Localhost / Watcher** | watcher.py → server.py | Semi-trusted (localhost only) | Watcher communicates over `127.0.0.1:5000` without per-request Bearer auth (see D-03). `/api/analyze` **must not** be exposed on external interfaces |
 | **LLM Output** | Ollama / Remote LLM API response | Untrusted | Brain output is treated as untrusted data. `post_brain` policy gates are the enforcement point before any verdict-driven action is taken |
-| **MCP Tools** | MCPProcessManager (stdio) / MCPSSEClient (remote) | Untrusted | Each tool call passes through a `pre_tool` policy gate. ChainExecutor enforces step limit (max 10) and timeout (60s). No MCP result is acted on without policy clearance |
+| **MCP Tools** | MCPProcessManager (stdio) / MCPSSEClient (remote) | Untrusted | Each tool call passes through a `pre_tool` policy gate and Capability Matrix check. ChainExecutor enforces step limits. |
+| **Physical Transport** | mcp_transport.py | Hardware Level | Enforces strict byte-size limits and UTF-8 validation before payloads hit the JSON parser, preventing buffer poisoning. |
 | **Credential Plane** | buttervault.py + OS keyring | Trusted | Master key never touches disk or environment variables. Only ButterVault and session key derivation in auth.py access the keyring |
 | **Policy Plane** | policy_engine.py | Trusted | Policies are configuration, not secrets. They survive Gibson by design. No `eval()`, `exec()`, or dynamic code execution — 15 safe operators only |
 
@@ -114,7 +123,7 @@ These are properties that must always hold. A code change that violates any inva
 The ButterVault master key exists exclusively in the OS native keyring (`keyring.get_password`). It is never written to disk, environment variables, config files, or log output.
 
 **I-02 — Barrier Always Encrypts**
-All credentials stored in `butterclaw.db` pass through Fernet encryption before being written. The SQLite layer is untrusted — a compromised database file without the master key yields only encrypted ciphertext.
+All credentials stored in `butterclaw.db` pass through Fernet encryption before being written. The SQLite layer is untrusted — a compromised database file without the master key yields only encrypted ciphertext. Write-Ahead Logging (WAL) ensures concurrent thread safety.
 
 **I-03 — Gibson Atomicity**
 The Gibson sequence (`butter_keys`) executes as: (1) overwrite all ciphertext rows with cryptographic garbage using a new random Fernet poison key, (2) call `auth.destroy_all_api_keys()` to delete all HMAC hashes, (3) invalidate the in-memory session signing key cache. If `DRY_RUN` is set, `butter_keys()` returns immediately — this check is hardcoded and **not** config-overridable at runtime.
@@ -137,6 +146,9 @@ The watcher retry queue is capped at **100 entries** (`deque maxlen`). Entries b
 **I-09 — Sanitizer is a Targeted Blacklist**
 The log line sanitizer in `watcher.py` removes only shell-dangerous characters (`[$`{}<>|;!]`). It is intentionally **not** an aggressive whitelist — preserving log structure is required for the Brain to evaluate full prompt injection attempts. Truncation limit: 4096 chars.
 
+**I-10 — Physical STDIO Boundaries**
+Unbounded string buffering is strictly prohibited in local MCP transport. All inbound pipes read via byte-level limits (`sys.stdin.buffer.readline`) to prevent Out-Of-Memory (OOM) crashes before the JSON parser engages.
+
 ---
 
 ## Data Flow Walkthroughs
@@ -152,7 +164,7 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 7. **Guardian Brain** (`ask_guardian_agent`) sends prompt to Ollama (local) or remote LLM; returns `{verdict, confidence, reasoning, chain}`
 8. **post_brain policy scope** evaluates; can `override_critical`, `override_benign`, or enforce `require_confidence` threshold
 9. Verdict broadcast via **SSE stream** to all connected browser clients
-10. If `CRITICAL` and `has_chain`: **ChainExecutor** begins; per-step: `pre_tool` gate → MCP tool call → result logged to `mcp_events` → condition evaluated → next step or abort
+10. If `CRITICAL` and `has_chain`: **ChainExecutor** begins; per-step: Capability Matrix → `pre_tool` gate → MCP tool call → result logged to `mcp_events` → condition evaluated → next step or abort
 11. **Alert Dispatcher** fans out to all configured channels independently; channel failures do not block the pipeline
 12. **Paranoia Dial check**: Level 2 → terminate offending process; Level 3 → trigger Gibson + lockdown
 13. **30 seconds post-CRITICAL**: Auditor fires a second LLM pass for false-positive detection; result logged to Event Ledger
@@ -195,12 +207,12 @@ decisive and action-oriented, the other is skeptical and corrective.
 **Fires:** On every payload that clears the `pre_brain` policy gate.
 
 The Guardian Brain receives:
-- The current threat type and raw log payload
-- A sliding window of recent agent actions as `timeline_context` (see Behavioral Drift
-  Tracking below)
-- The current Paranoia level, which modifies the system prompt instructions
-- The list of available MCP tools and their descriptions
-- A strict JSON output schema: `{verdict, confidence, primary_gate, reasoning, chain?}`
+
+* The current threat type and raw log payload
+* A sliding window of recent agent actions as `timeline_context` (see Behavioral Drift Tracking below)
+* The current Paranoia level, which modifies the system prompt instructions
+* The list of available MCP tools and their descriptions
+* A strict JSON output schema: `{verdict, confidence, primary_gate, reasoning, chain?}`
 
 The Brain produces a verdict (`CRITICAL` / `WARNING` / `BENIGN`) and, for CRITICAL events,
 an optional `chain` array of MCP tool steps for the ChainExecutor to execute. It does
@@ -214,10 +226,10 @@ decide whether to act.
 **Fires:** 30 seconds after every `CRITICAL` verdict, in a background daemon thread.
 
 The Auditor receives:
-- The same sliding window of recent MCP actions (now including any actions taken in
-  response to the CRITICAL verdict)
-- The original threat that triggered the CRITICAL verdict
-- A system prompt with a single goal: `audit_verdict: AGREEMENT | FALSE_POSITIVE`
+
+* The same sliding window of recent MCP actions (now including any actions taken in response to the CRITICAL verdict)
+* The original threat that triggered the CRITICAL verdict
+* A system prompt with a single goal: `audit_verdict: AGREEMENT | FALSE_POSITIVE`
 
 If the Auditor returns `FALSE_POSITIVE`, the event is flagged in the Event Ledger and
 the TUI Dashboard with an amber 🤔 indicator. No automatic reversal of kinetic actions
@@ -232,16 +244,6 @@ typically produces hedged, low-confidence verdicts that underperform at both tas
 Separating them into two calls with explicit mandates, different temperatures, and a
 30-second temporal gap allows each hemisphere to operate at its natural optimum.
 
-| | Guardian Brain | Auditor |
-|---|---|---|
-| Function | `ask_guardian_agent()` | `run_self_audit()` |
-| Temperature | `0.3` | `0.0` |
-| Fires on | Every cleared payload | Every CRITICAL verdict (30s delay) |
-| System prompt | Decisive Blue Team Guardian | Skeptical false-positive reviewer |
-| Output | `verdict / confidence / chain` | `audit_verdict / reasoning` |
-| Acts on result? | Yes — drives ChainExecutor + Paranoia Dial | No — diagnostic only, logged to Event Ledger |
-| Routing | Local Ollama or remote LLM (follows `routing_mode`) | Same as Guardian Brain |
-
 ---
 
 ## Behavioral Drift Tracking
@@ -253,52 +255,7 @@ in isolation.
 ### Implementation
 
 On every call to `ask_guardian_agent()` and `run_self_audit()`, the server queries the
-Event Ledger for the 5 most recent successful MCP tool calls:
-
-```python
-mcp_history = ledger_query(limit=5, status="success")
-```
-
-These events are formatted into a `timeline_context` string and prepended to the user
-prompt sent to both LLM hemispheres:
-
-```
-RECENT SENTINEL ACTIONS (Sliding Window):
- - [2026-07-23T04:10:01Z] Executed: list_files | Result: success
- - [2026-07-23T04:11:30Z] Executed: read_file | Result: success
- - [2026-07-23T04:12:45Z] Executed: http_get | Result: success
-```
-
-The model uses this window to answer the implicit question: *does the current event
-represent a departure from this agent's recent behavioral pattern?*
-
-### What Drift Detection Enables
-
-Without context, an isolated `http_get` call is ambiguous. With a sliding window, the
-same call adjacent to a `base64` encode followed by a `socat` initiation reads as a
-multi-step exfiltration sequence. The Brain evaluates the **trajectory**, not just the
-current event.
-
-This also feeds the Auditor. By the time `run_self_audit()` fires 30 seconds after a
-CRITICAL verdict, the sliding window includes any MCP actions taken in response — giving
-the Auditor the full causal chain to assess whether the response was proportionate.
-
-### Scope and Limitations
-
-| Property | Value |
-|---|---|
-| Window size | Last 5 successful MCP tool calls |
-| Persisted across restarts? | Yes — queries `mcp_events` SQLite table |
-| Survives Gibson? | Yes — `mcp_events` is not wiped by the Gibson sequence (I-03) |
-| Covers failed/pending events? | No — `status="success"` filter only |
-| Updates in real time? | Yes — each new ledger entry is immediately visible to the next Brain call |
-| Semantic understanding of drift | Model-dependent — the Brain interprets the window; no statistical baseline or anomaly score is computed |
-
-The last point is important for accurate expectations: drift tracking is **contextual
-enrichment**, not a statistical anomaly detection system. There is no computed baseline,
-no drift score, and no threshold. The model reasons about the sequence in natural
-language. The quality of drift detection is therefore bounded by the model's reasoning
-capability on the specific sequence it receives.
+Event Ledger for the 5 most recent successful MCP tool calls. These events are formatted into a `timeline_context` string and prepended to the user prompt sent to both LLM hemispheres. The model uses this window to answer the implicit question: *does the current event represent a departure from this agent's recent behavioral pattern?*
 
 ---
 
@@ -306,7 +263,7 @@ capability on the specific sequence it receives.
 
 | File / Directory | Approx. Lines | Owns | Key Entry Points |
 | --- | --- | --- | --- |
-| `server.py` | ~1,800 | Flask core — Guardian Brain, Auditor, ChainExecutor, SSE broadcaster, 29 routes | `ask_guardian_agent()`, `run_self_audit()`, `ChainExecutor.run()`, `/api/analyze` |
+| `server.py` | ~1,800 | Flask core — Guardian Brain, Auditor, ChainExecutor, SSE broadcaster, 30 routes | `ask_guardian_agent()`, `run_self_audit()`, `ChainExecutor.run()`, `/api/analyze` |
 | `policy_engine.py` | ~900 | DRIFT policy runtime, rule CRUD, 3-scope evaluators, `policy_events` audit log | `evaluate_policy(scope, context)`, `test_payload()` |
 | `buttervault.py` | ~700 | Fernet vault, OS keyring master key, Gibson, OAuth token lifecycle | `store_key()`, `retrieve_key()`, `butter_keys()`, `refresh_oauth_token()` |
 | `auth.py` | ~650 | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed sessions, rate limiter, 7 routes | `verify_api_key()`, `require_auth()`, `destroy_all_api_keys()`, `ROUTE_CLASSIFICATION` |
@@ -314,13 +271,15 @@ capability on the specific sequence it receives.
 | `butterclaw_mcp.py` | ~400 | MCP dual-transport, `BaseMCPManager` interface | `MCPProcessManager`, `MCPSSEClient`, `get_available_tools()`, `call_tool()` |
 | `mcp_transport.py` | ~200 | Low-level MCP transport primitives | — |
 | `watcher.py` | ~250 | Log tail, blacklist sanitizer, retry queue, PID lock, log rotation detection | `watch_log()`, `send_to_server()`, `main()` |
+| `setup_wizard.py` | ~400 | Environment bootstrap | `main()` |
 | `oauth_config.py` | ~150 | OAuth provider registry (GitHub + generic), token revocation logic | `get_provider_config()` |
 | `config.py` | ~300 | Singleton config loader, `cfg` object, 26 fields / 9 categories | `cfg` (singleton), `ConfigError` |
 | `tui_dashboard.py` | ~350 | Read-only TUI operational view | `main()` |
+| `capabilities.json` | — | Positive Security Model matrix defining agent profiles | Loaded by `policy_engine.py` |
+| `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
 | `nginx/` | — | TLS proxy — the internet-facing trust boundary | `nginx.conf` |
 | `systemd/` | — | Service unit files | `butterclaw.service`, `watcher.service` |
-| `scripts/` | — | Installation automation | `setup.sh` |
-| `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
+| `scripts/` | — | Diagnostics and live-fire test scripts | `test_attack.py`, `test_mcp.py`, `add_rule.py` |
 
 ---
 
@@ -360,20 +319,19 @@ An allowlist would corrupt log entries and reduce the Brain's ability to analyze
 Wiping policies during incident response would leave the system defenseless upon recovery. Credential wipe + policy preservation allows immediate re-authentication and continued enforcement.
 
 **D-08 — Two LLM Calls Instead of One (Dual-Hemisphere Architecture)**
-A single prompt cannot simultaneously optimize for decisive threat response and
-skeptical false-positive review — combining these goals produces hedged output that
-underperforms at both. Separating them into `ask_guardian_agent()` (temperature 0.3,
-action mandate) and `run_self_audit()` (temperature 0.0, skepticism mandate) with a
-30-second temporal gap allows each pass to operate at its natural optimum. The Auditor
-never reverses kinetic actions automatically — reversal is always an operator decision.
+A single prompt cannot simultaneously optimize for decisive threat response and skeptical false-positive review — combining these goals produces hedged output that underperforms at both.
 
 **D-09 — Drift Window is 5 Events, Success-Only**
-Five events is sufficient to reveal a multi-step attack sequence (the typical
-prompt-injection → exfil → persistence chain is 3–4 steps) without flooding the
-prompt context window with noise. The `status="success"` filter ensures the window
-reflects completed agent actions, not attempts — failed tool calls are already
-visible in the Event Ledger TUI and do not contribute to the behavioral context the
-Brain reasons against.
+Five events is sufficient to reveal a multi-step attack sequence without flooding the prompt context window with noise.
+
+**D-10 — Python Bootstrapping Over Bash Pipeline**
+The legacy `install.sh` bash pipeline was entirely replaced by `setup_wizard.py` to prevent Git tree conflicts and OS-specific deployment failures across Windows, Docker, and Baremetal systems.
+
+**D-11 — Domain-Gated Remote LLM Keys**
+To prevent credential exfiltration to untrusted endpoints, Google API keys are hard-gated in `server.py` and strictly attached only when communicating with `generativelanguage.googleapis.com`.
+
+**D-12 — Physical STDIO Firewall**
+Replaced unbounded string buffering with raw byte-level reads to enforce a hard physical memory boundary on incoming payloads. This prevents Out-Of-Memory (OOM) crashes before the JSON parser ever engages.
 
 ---
 
@@ -392,6 +350,6 @@ Brain reasons against.
 
 ## Related Documentation
 
-* [`API.md`](API.md) — Full endpoint reference (49 routes, 4-tier RBAC)
+* [`API.md`](API.md) — Full endpoint reference (50 routes, 4-tier RBAC)
 * [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
 * [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration

@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
+| **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
 | **v0.7.0** | Positive Security Model, Capability Matrix, & Physical Firewall | 2026-08-14 | Capability Matrix (4-tier RBAC), STDIO physical firewall (byte-level memory boundary), dynamic model state wiring, Docker config updates |
 | **v0.6.8** | The Arsenal Hardening Audit | 2026-08-03 | Oopsie Logs "View All" wired up, test script rate limit, demo updated, error handling |
@@ -30,6 +31,96 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.7.2] - The Agentic SOC (ENV Setup Wizard) - Two-Part Update - 2026-09-03
+
+**Files Changed:** `dash.bat` (Modified), `install.sh` (Deleted), `server.py`, `routing.html`, `index.html`, `scripts/add_rule.py`, `docs/API.md`, `docs/ARCHITECTURE.md`
+**Files Added:** `setup_wizard.py`, `dash.sh` 
+**New runtime dependencies:** 0
+
+---
+
+## [0.7.2] - Part 1 - Exoskeleton Bootstrapping & Cross-Platform UX
+
+**Files Changed:** `dash.bat` (Modified), `install.sh` (Deleted), `scripts/add_rule.py`
+**Files Added:** `setup_wizard.py`, `dash.sh`
+**New runtime dependencies:** 0
+
+### Added
+- **Interactive Environment Wizard (`setup_wizard.py`):** Introduced a zero-dependency, Python-native setup wizard to completely automate `.env` configuration. It natively handles Deployment Mode routing (Docker, Baremetal, Systemd), prompts for AI Brain architectures (Local Ollama vs. Remote Gemini API), handles automatic generation of the `bc_` prefixed infrastructure API key, and establishes `COOKIE_SECURE` policies dynamically based on the chosen stack.
+- **Unix Execution Harness (`dash.sh`):** Added a tracked, repository-native Bash script (`#!/bin/bash`) to cleanly launch the TUI dashboard via `docker compose exec butterclaw python tui_dashboard.py` without requiring on-the-fly script forging during installation.
+
+### Fixed
+- **Docker Compose Container Alignment (`dash.bat`, `dash.sh`):** Resolved a container name mismatch where local execution tools were mapping to a deprecated `server` target. Both harnesses now accurately map to the active `butterclaw` service declared in `docker-compose.yml`.
+- **TUI Rendering Artifacts (`dash.bat`, `dash.sh`):** Added the -it flag to Docker execution scripts to provision a proper pseudo-TTY bridge, preventing terminal geometry errors and doubled-line artifacts during real-time UI updates.
+- **OAuth Callbacks & Network Routing (`setup_wizard.py`):** The setup wizard explicitly patches local OAuth redirects by generating the proper `https://localhost` base URL for Docker setups, preventing authentication black holes. It also dynamically wires local `host.docker.internal:11434` network routing for Ollama container bridges.
+
+### Changed
+- **Dynamic Vault Extraction (`add_rule.py`):** Replaced manual API key hardcoding with the `get_auth_key()` function, which securely reads the active `.env` file to extract `BUTTERCLAW_API_KEY` on the fly for automated policy injection. Added graceful error handling to decode and print internal ButterClaw HTTP errors.
+- **Windows TUI Harness Hardening (`dash.bat`):** Upgraded the Windows launcher with the `@echo off` directive for cleaner terminal output when invoking the visual SOC dashboard.
+- **Bootstrapping Pipeline Consolidation:** Made the legacy, error-prone `install.sh` Bash pipeline obsolete. The repository now favors static, tracked execution scripts paired with interactive Python configuration, preventing Git tree conflicts and OS-specific deployment failures.
+- **Documentation Synchronization (`API.md`, `ARCHITECTURE.md`):** Reconciled `API.md` to reflect the true 49-route API surface, including the updated Vault/OAuth namespaces and the corrected 4-tier Role Hierarchy weights. Overhauled `ARCHITECTURE.md` to document the v0.7.x paradigm shifts, mapping out the pure-Python bootstrapping pipeline, the Capability Matrix, SQLite WAL concurrency, and the physical STDIO memory boundaries.
+- **Environment Template Alignment (`.env.example`)**: Fully synced `.env.example` with the active v0.7.x runtime schema, adding documentation for `BUTTERCLAW_COOKIE_SECURE`, `BUTTERCLAW_BASE_URL`, and modern LLM brain routing targets.
+
+## [v0.7.2] - Part 2 - Gate 04 Dry-Run Visibility & Dedicated Toggle Endpoint
+
+**Files Changed:** `server.py`, `routing.html`, `index.html`, `docs/API.md`, `docs/ARCHITECTURE.md`
+**New runtime dependencies:** 0
+
+### Problem
+Gate 04 (Gibson Kill Switch) was built with `DRY_RUN=true` but the UI had
+no awareness of it — the badge showed `ARMED` in red regardless of backend
+state. Toggling it in the UI silently no-op'd on the backend with no docker
+log entry, no dedicated route, and errors swallowed by a bare except block.
+
+### Changes
+
+**`server.py`**
+- `GET /api/settings` — added `"dry_run": DRY_RUN` to response body so the
+  frontend can sync container build state on every poll cycle
+- `POST /api/settings` (gates block) — added `🛡️ [GATE UPDATE]` logger
+  immediately after `gate_states.update()` so bulk gate saves now appear in
+  the docker log
+- New route `POST /api/gates/<gate_id>/toggle` (min role: admin)
+  - Validates gate ID against `VALID_GATE_KEYS`; rejects unknown gates with
+    `404 UNKNOWN_GATE` and missing/invalid `active` bool with `400 BAD_REQUEST`
+  - Writes `🛡️ [GATE TOGGLE] <gate_id> → ARMED/DISARMED` to docker log on
+    every call
+  - Appends `[DRY RUN — no execution will occur]` to log line when
+    `DRY_RUN=true` so intent is recorded without triggering execution path
+  - Emits additional `⚠️ [GATE TOGGLE] kill_sw ARMED — Gibson sequence is
+    now live` warning when kill_sw is armed in a live (non-dry) container
+  - Returns `{ ok, gate, active, dry_run }` so the frontend can confirm
+    backend acknowledgment
+
+**`routing.html`**
+- Added module-level `dry_run = false` flag; synced from backend on every
+  `HEALTH_CHECK_INTERVAL` poll and before first render on `init()`
+- `updateGateBadge()` — new amber `ARMED (DRY)` branch (Tailwind
+  `text-amber-600 / bg-amber-100 / border-amber-300`) takes priority over
+  red `ARMED` for dangerous gates when `dry_run=true`; correctly reflects
+  that the hardware trigger is inert regardless of armed/disarmed state
+- Gate toggle click handler — dangerous gates with `dry_run=true` now
+  early-return with an 1800ms badge flash (`DRY RUN — NO-OP`) instead of
+  silently firing a settings POST that the backend would ignore
+- `saveGateStates()` — dangerous gates now call `POST /api/gates/<id>/toggle`
+  before the generic settings POST; fetch errors surfaced via
+  `console.warn('[gates] ...')` instead of being silently swallowed
+- New `syncGatesFromSettings()` async helper — GETs `/api/settings` on the
+  same `HEALTH_CHECK_INTERVAL` as `checkConnection`, `mcpCheckStatus`, and
+  `ledgerFetch`; re-renders gates only when state or `dry_run` actually
+  changed (avoids unnecessary DOM churn)
+
+**`docs/API.md`**
+- Added row for `POST /api/gates/<id>/toggle` to MCP Endpoints table
+- MCP Endpoints section heading and summary table: 6 → 7 routes
+- Route totals: 49 → 50 throughout (intro paragraph + summary table)
+
+**`docs/ARCHITECTURE.md`**
+- `server.py` route count: 29 → 30 in component map and source code map
+- Footer cross-reference to `API.md`: 49 → 50 routes
 
 ---
 

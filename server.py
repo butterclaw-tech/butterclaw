@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.1 — Positive Security Model & Capability Matrix
+ButterClaw v0.7.2
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -15,6 +15,8 @@ Changelog:
   [v0.6.7] The Arsenal Hardening (Sanitizer-Aware Signatures)
   [v0.6.8] The Arsenal Hardening Stability Patch
   [v0.7.0] Positive Security Model & Capability Matrix Binding
+  [v0.7.1] Full Policy Hotfix
+  [v0.7.2] ENV Setup Wizard
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -67,7 +69,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -1345,7 +1347,7 @@ def oauth_revoke(provider_name):
 @app.route('/api/settings', methods=['GET'])
 @require_auth(min_role="operator")
 def settings_get():
-    with _state_lock: return jsonify({"level": current_level, "shield_enabled": shield_enabled, "routing_mode": routing_mode, "model": model_name, "endpoint": remote_endpoint, "gates": dict(gate_states), "mcp_transport": mcp_transport_mode, "mcp_sse_url": mcp_sse_url, "mcp_sse_token_set": bool(mcp_sse_token)})
+    with _state_lock: return jsonify({"level": current_level, "shield_enabled": shield_enabled, "routing_mode": routing_mode, "model": model_name, "endpoint": remote_endpoint, "gates": dict(gate_states), "dry_run": DRY_RUN, "mcp_transport": mcp_transport_mode, "mcp_sse_url": mcp_sse_url, "mcp_sse_token_set": bool(mcp_sse_token)})
 
 @app.route('/api/settings', methods=['POST'])
 @require_auth(min_role="admin")
@@ -1390,6 +1392,7 @@ def settings_post():
             if unknown_keys: errors.append(f"Unknown gate keys: {', '.join(sorted(unknown_keys))}. ")
             else:
                 with _state_lock: gate_states.update({k: bool(v) for k, v in new_gates.items()})
+                print(f"🛡️ [GATE UPDATE] Gate states updated: { {k: bool(v) for k, v in new_gates.items()} }")
 
     if "mcp_transport" in data:
         new_transport = str(data["mcp_transport"]).lower().strip()
@@ -1408,6 +1411,24 @@ def settings_post():
 
     if errors: return jsonify({"status": "partial", "errors": errors}), 400
     return jsonify({"status": "ok"})
+
+@app.route('/api/gates/<gate_id>/toggle', methods=['POST'])
+@require_auth(min_role="admin")
+def gate_toggle(gate_id):
+    data = request.json or {}
+    if gate_id not in VALID_GATE_KEYS:
+        return jsonify({"error": f"Unknown gate: {gate_id}", "code": "UNKNOWN_GATE"}), 404
+    if "active" not in data or not isinstance(data["active"], bool):
+        return jsonify({"error": "'active' (boolean) is required", "code": "BAD_REQUEST"}), 400
+    with _state_lock:
+        gate_states[gate_id] = data["active"]
+        current_dry = DRY_RUN
+    state_label = "ARMED" if data["active"] else "DISARMED"
+    dry_label   = " [DRY RUN — no execution will occur]" if current_dry else ""
+    print(f"🛡️ [GATE TOGGLE] {gate_id} → {state_label}{dry_label}")
+    if gate_id == "kill_sw" and data["active"] and not current_dry:
+        print(f"⚠️  [GATE TOGGLE] kill_sw ARMED — Gibson sequence is now live")
+    return jsonify({"ok": True, "gate": gate_id, "active": data["active"], "dry_run": current_dry})
 
 @app.route('/api/shield', methods=['POST'])
 @require_auth(min_role="admin")

@@ -1,6 +1,6 @@
 # 📡 ButterClaw API Reference
 
-ButterClaw features a comprehensive REST API with **49 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
+ButterClaw features a comprehensive REST API with **50 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
 
 ---
 
@@ -17,11 +17,11 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ## Role Hierarchy
 
 | Role | Privilege Level | Description | Rate Limit |
-| --- | --- | --- | --- |
-| **infrastructure** | -1 (highest) | Internal machine-to-machine superuser. Used by auto-healing components and the Watcher daemon. Never issued to human operators. Restored from `BUTTERCLAW_API_KEY` env var via `bootstrap_infrastructure_keys_auto_heal()` on startup. | 1000 req/min |
-| **admin** | 0 | Full system access — key management, config, vault, all write operations | Configurable (`AUTH_RATE_ADMIN`) |
-| **operator** | 1 | Threat analysis, chain execution, OAuth flows, dry-run policy testing | Configurable (`AUTH_RATE_OPERATOR`) |
-| **viewer** | 2 (lowest) | Read-only access to logs, events, status endpoints, SSE stream | Configurable (`AUTH_RATE_VIEWER`) |
+|---|---|---|---|
+| **infrastructure** | 4 (highest) | Internal machine-to-machine superuser. Used by auto-healing components and the Watcher daemon. Never issued to human operators. Restored from `BUTTERCLAW_API_KEY` env var via `bootstrap_infrastructure_keys_auto_heal()` on startup. | 1000 req/min |
+| **admin** | 3 | Full system access — key management, config, vault, all write operations | Configurable (`AUTH_RATE_ADMIN`) |
+| **operator** | 2 | Threat analysis, chain execution, OAuth flows, dry-run policy testing | Configurable (`AUTH_RATE_OPERATOR`) |
+| **viewer** | 1 (lowest) | Read-only access to logs, events, status endpoints, SSE stream | Configurable (`AUTH_RATE_VIEWER`) |
 
 > **Note:** The `infrastructure` role cannot be created via the API — it is bootstrapped from the `BUTTERCLAW_API_KEY` environment variable at startup and does not appear in `GET /api/auth/keys` listings.
 
@@ -32,7 +32,7 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ### Auth Endpoints (v0.6.0) — 7 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `POST` | `/api/auth/login` | public | Exchange API key for session token |
 | `POST` | `/api/auth/logout` | any | Clear session cookie and invalidate token |
 | `GET` | `/api/auth/whoami` | any | Current identity, role, and key metadata |
@@ -46,7 +46,7 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ### Policy Endpoints (v0.6.1) — 8 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `GET` | `/api/policies` | viewer | List all policies (paginated) |
 | `POST` | `/api/policies` | admin | Create new DRIFT policy rule |
 | `GET` | `/api/policies/<id>` | viewer | Get single policy rule |
@@ -65,7 +65,7 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ### Alert Endpoints (v0.6.2) — 13 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `GET` | `/api/alerts/channels` | viewer | List all configured alert channels |
 | `POST` | `/api/alerts/channels` | admin | Create new alert channel |
 | `PUT` | `/api/alerts/channels/<id>` | admin | Update channel configuration |
@@ -89,7 +89,7 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ### Core Endpoints — 5 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `POST` | `/api/analyze` | operator | Submit threat payload for Guardian Brain analysis |
 | `GET` | `/api/health` | public | System health, version, instance info, component status |
 | `GET` | `/api/config` | admin | Resolved configuration (secrets redacted) |
@@ -97,17 +97,15 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 | `GET` | `/api/logs` | viewer | Query analysis log history (paginated) |
 
 **`POST /api/analyze` request body:**
-```json
+​```json
 {
   "threat_type": "string",
   "raw_data": "string (max 4096 chars after sanitization)"
 }
-
-```
+​```
 
 **`POST /api/analyze` response:**
-
-```json
+​```json
 {
   "verdict": "BENIGN | SUSPICIOUS | CRITICAL",
   "confidence": 0.0,
@@ -116,28 +114,28 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
   "chain": [],
   "policy_overrides": []
 }
-
-```
+​```
 
 ---
 
-### MCP Endpoints (v0.5.0+) — 6 routes
+### MCP Endpoints (v0.5.0+) — 7 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `GET` | `/api/mcp/tools` | viewer | List available MCP tools from active transport |
 | `POST` | `/api/mcp/restart` | admin | Restart the MCP process (stdio transport only) |
 | `GET` | `/api/mcp/status` | viewer | MCP process health and transport type |
 | `GET` | `/api/events` | viewer | Query the `mcp_events` Event Ledger (paginated) |
 | `GET` | `/api/events/count` | viewer | Total event ledger entry count |
 | `GET` | `/api/settings` | viewer | Server runtime settings (Paranoia level, DRY_RUN state, active transport) |
+| `POST` | `/api/gates/<id>/toggle` | admin | Arm or disarm a named logic gate. Returns `dry_run` flag. No-ops safely when `DRY_RUN=true`. |
 
 ---
 
 ### Vault & OAuth Endpoints (v0.5.x) — 10 routes
 
 | Method | Endpoint | Min Role | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `POST` | `/api/rotate-keys` | admin | Manual Gibson Kill Switch — wipes vault + destroys all API keys. Blocked if `DRY_RUN=true`. |
 | `GET` | `/api/vault/status` | viewer | Vault health (keyring reachable, row count, encryption status) |
 | `GET` | `/api/vault/credentials` | operator | List stored credential names (values never returned) |
@@ -156,29 +154,28 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 ## Route Count Summary
 
 | Module | Routes | Introduced |
-| --- | --- | --- |
+|---|---|---|
 | Auth | 7 | v0.6.0 |
 | Policy | 8 | v0.6.1 |
 | Alert | 13 | v0.6.2 |
 | Core | 5 | v0.1–v0.4 |
-| MCP | 6 | v0.5.0 |
+| MCP | 7 | v0.5.0 |
 | Vault & OAuth | 10 | v0.5.x |
-| **Total** | **49** | — |
+| **Total** | **50** | — |
 
 ---
 
 ## Error Responses
 
-```json
+​```json
 {
   "error": "human-readable message",
   "code": "MACHINE_READABLE_CODE"
 }
-
-```
+​```
 
 | Status | Meaning |
-| --- | --- |
+|---|---|
 | `400` | Bad request — missing or malformed fields |
 | `401` | Unauthorized — missing or invalid token |
 | `403` | Forbidden — insufficient role, or blocked by pre_brain policy |
@@ -191,6 +188,6 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 
 ## Related Documentation
 
-* [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, data flow
-* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, data flow
+- [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration

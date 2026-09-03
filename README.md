@@ -18,11 +18,15 @@
   <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
   </a>
   <a href="CHANGELOG.md">
-  <img src="https://img.shields.io/badge/version-0.7.1-navy.svg">
+  <img src="https://img.shields.io/badge/version-0.7.2-navy.svg">
   </a>
   <a href="https://butterclaw.tech">
   <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
   </a>
+</p>
+
+<p align="center">
+  <img src="assets/setup_wizard.png" alt="ButterClaw Environment CLI Setup Wizard">
 </p>
 
 <p align="center">
@@ -142,49 +146,20 @@ All 7 patterns are sanitizer-aware and validated against raw and stripped engine
 
 ## Quick Start
 
-Requires: [Docker](https://docs.docker.com/get-docker/) · [Ollama](https://ollama.com/) running on the host · a consumer GPU (CPU fallback works, slower)
-
-### Option A: One-Click Autonomous Install (<60s)
-
-```bash
-curl -sSL [https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh](https://raw.githubusercontent.com/butterclaw-tech/butterclaw/main/install.sh) | bash
-
-```
-
-### Option B: Manual Docker Compose Stack
+Requires: [Docker](https://docs.docker.com/get-docker/) · [Ollama](https://ollama.com/) running on the host · Python 3.8+
 
 ```bash
 git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw
 
-# 1. Pull and optimize the model
-ollama pull gemma4:e4b
-ollama create butterclaw-optimized -f Modelfile.example
+# 1. Run the Interactive Wizard (Auto-generates your .env and infrastructure keys)
+python setup_wizard.py
 
-# 2. Configure
-cp .env.example .env
-# Edit .env — set BUTTERCLAW_INSTANCE_ID and BUTTERCLAW_ALERT_NTFY_TOPIC at minimum
-
-# 3. Generate Local TLS Certificates (for nginx)
-mkdir -p nginx/certs
-docker run --rm -v "${PWD}/nginx/certs:/certs" alpine/openssl req -x509 -nodes \
-  -days 365 -newkey rsa:2048 \
-  -keyout /certs/butterclaw.key -out /certs/butterclaw.crt -subj "/CN=localhost"
-
-# 4. Ignite the Exoskeleton
+# 2. Ignite the Exoskeleton (if deploying via Docker)
 docker compose up -d --build
 
-# 5. Grab your Bootstrap Admin API Key (look for the 🔐 [AUTH] line)
-docker compose logs -f butterclaw-server
-
-```
-
-On first boot, look for the 🔑 `[AUTH]` line in `docker compose logs -f butterclaw-server` — that's your bootstrap admin API key. Shown once.
-
-```bash
-# Launch the live TUI dashboard
+# 3. Launch the live TUI dashboard
 ./dash
-
 ```
 
 Dashboard → **https://localhost** · ntfy UI → **http://localhost:2586**
@@ -203,7 +178,6 @@ The real-time, double-buffered terminal dashboard. Displays live telemetry, acti
 
 ```bash
 ./dash
-
 ```
 
 **2. Web UI (Nginx → https://localhost)**
@@ -236,6 +210,9 @@ python scripts/add_rule.py
 # 2. Fire the simulated attack suite against the Arsenal
 python scripts/test_attack.py
 
+# 3. Run a live kinetic integration test against the API gateway
+python scripts/test_mcp.py
+
 ```
 
 ```text
@@ -259,7 +236,7 @@ input. CI-compatible — exits with code 1 on any failure.
 * **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
 * **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
 * **4-Tier User RBAC** — HMAC-SHA256 API keys and session tokens for dashboard access.
-* **49 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
+* **50 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
 
 ---
 
@@ -268,7 +245,7 @@ input. CI-compatible — exits with code 1 on any failure.
 | Doc | Contents |
 | --- | --- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Dual-hemisphere reasoning, behavioral drift, design decisions D-01 through D-09 |
-| [`docs/API.md`](docs/API.md) | All 49 endpoints, roles, request/response shapes |
+| [`docs/API.md`](docs/API.md) | All 50 endpoints, roles, request/response shapes |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker, systemd, bare-metal, nginx TLS, backup/restore |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | OWASP ASI mapping, threat model |
 | [`CHANGELOG.md`](CHANGELOG.md) | Full version history from v0.1.0 |
@@ -278,7 +255,7 @@ input. CI-compatible — exits with code 1 on any failure.
 
 ## Contributing & Co-Maintainers
 
-ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and is actively seeking security-focused co-maintainers — particularly those working with the **Model Context Protocol (MCP)** — to help scale the v0.7 stdio transport layer. Grab a `good first issue` or read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
+ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and is actively seeking security-focused co-maintainers — particularly those working with the **Model Context Protocol (MCP)** — to help scale the stdio transport layer. Grab a `good first issue` or read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ## 🤝 Community Contributors
 Contributors who ship features get credited here - not just in the git log.
@@ -298,7 +275,7 @@ Apache 2.0 — see [`LICENSE`](LICENSE).
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.7.1 — The Agentic SOC (Full Policy Hotfix) 🦞</strong><br>
+<strong>🦞 ButterClaw v0.7.2 — The Agentic SOC (ENV Setup Wizard) 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>

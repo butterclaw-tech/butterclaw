@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VPS Routing | ButterClaw 🦞</title>
+  <title>Brain Routing | ButterClaw 🦞</title>
 
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self';
@@ -307,7 +307,7 @@
         </a>
         <a href="routing.html"
            class="flex items-center space-x-3 bg-slate-100 text-dark px-4 py-3 rounded-xl font-medium transition">
-          <span>⚙️</span><span>VPS Brain Routing</span>
+          <span>⚙️</span><span>Brain Routing</span>
         </a>
         <a href="#eventLedgerSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
@@ -362,14 +362,14 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.7.1</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.7.2</div>
     </div>
   </aside>
 
   <main class="flex-1 overflow-y-auto p-8 lg:p-12 scroll-smooth">
     <header class="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div class="ml-10 md:ml-0">
-        <h2 class="text-3xl font-extrabold text-dark tracking-tight">VPS Brain Routing</h2>
+        <h2 class="text-3xl font-extrabold text-dark tracking-tight">Brain Routing</h2>
         <p class="text-slate-500 mt-1">Connect your local agent to your cloud reasoning engine.</p>
       </div>
       <button id="testPingBtn"
@@ -981,7 +981,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.7.1</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.7.2</p>
     </div>
   </div>
 
@@ -2387,6 +2387,7 @@
     const sidebar          = document.getElementById('sidebar');
 
     let currentMode = 'local';
+    let dry_run = false; // true when backend built with DRY_RUN=true; synced via syncGatesFromSettings
 
     const GATES = [
       { id: 'sig_scan',   num: '01', name: 'Signature Scan',     desc: 'Checks for known CVE strings',        active: true,  dangerous: false },
@@ -2424,6 +2425,12 @@
       row.appendChild(leftDiv);
       row.appendChild(badge);
       row.addEventListener('click', () => {
+        if (gate.dangerous && dry_run) {
+          const orig = badge.textContent;
+          badge.textContent = 'DRY RUN — NO-OP';
+          setTimeout(() => { badge.textContent = orig; }, 1800);
+          return;
+        }
         gate.active = !gate.active;
         updateGateBadge(badge, gate);
         saveGateStates();
@@ -2433,7 +2440,10 @@
 
     function updateGateBadge(badge, gate) {
       if (gate.dangerous) {
-        if (gate.active) {
+        if (dry_run) {
+          badge.className = 'text-amber-600 font-extrabold text-[10px] tracking-widest bg-amber-100 border border-amber-300 px-2 py-1 rounded-md animate-pulse';
+          badge.textContent = 'ARMED (DRY)';
+        } else if (gate.active) {
           badge.className = 'text-red-600 font-extrabold text-[10px] tracking-widest bg-red-200 border border-red-300 px-2 py-1 rounded-md animate-pulse';
           badge.textContent = 'ARMED';
         } else {
@@ -2454,16 +2464,55 @@
     function saveGateStates() {
       const states = {};
       GATES.forEach(g => { states[g.id] = g.active; });
-      try {
-        authFetch(API_BASE + '/api/settings', {
+
+      // Dangerous gates get a dedicated endpoint so the backend can log the
+      // intent, enforce its own DRY_RUN guard, and write to the docker stream.
+      GATES.filter(g => g.dangerous).forEach(g => {
+        authFetch(API_BASE + '/api/gates/' + g.id + '/toggle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gates: states })
-        }).catch((e) => { if (e.message === 'auth_required') return; });
-      } catch (e) {
-        if (e.message === 'auth_required') return;
-        /* offline graceful */
-      }
+          body: JSON.stringify({ active: g.active })
+        }).then(res => {
+          if (!res.ok) console.warn('[gates] toggle rejected:', g.id, res.status);
+        }).catch(e => {
+          if (e.message !== 'auth_required') console.warn('[gates] toggle error:', g.id, e);
+        });
+      });
+
+      // Settings blob still persists all gate states for bookkeeping.
+      authFetch(API_BASE + '/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gates: states })
+      }).then(res => {
+        if (!res.ok) console.warn('[gates] settings save failed:', res.status);
+      }).catch(e => {
+        if (e.message !== 'auth_required') console.warn('[gates] settings save error:', e);
+      });
+    }
+
+    // [v0.7.2] Poll gate states + dry_run on the same HEALTH_CHECK_INTERVAL
+    // as checkConnection / mcpCheckStatus / ledgerFetch so the UI stays honest.
+    async function syncGatesFromSettings() {
+      try {
+        const res = await authFetch(API_BASE + '/api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        let changed = false;
+        if (data.gates) {
+          GATES.forEach(g => {
+            if (typeof data.gates[g.id] === 'boolean' && g.active !== data.gates[g.id]) {
+              g.active = data.gates[g.id];
+              changed = true;
+            }
+          });
+        }
+        if (typeof data.dry_run === 'boolean' && dry_run !== data.dry_run) {
+          dry_run = data.dry_run;
+          changed = true;
+        }
+        if (changed) renderGates();
+      } catch (e) { /* offline graceful */ }
     }
 
     function renderGates() {
@@ -2620,7 +2669,12 @@
           if (data.routing_mode) setRoutingMode(data.routing_mode);
           if (data.model) modelSelect.value = data.model;
           if (data.endpoint && data.routing_mode === 'remote') endpointInput.value = data.endpoint;
-          if (data.gates) { GATES.forEach(g => { if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id]; }); renderGates(); }
+          if (data.gates) {
+            GATES.forEach(g => { if (typeof data.gates[g.id] === 'boolean') g.active = data.gates[g.id]; });
+            // dry_run must be read before renderGates so updateGateBadge sees the correct value
+            if (typeof data.dry_run === 'boolean') dry_run = data.dry_run;
+            renderGates();
+          }
           // [v0.5.0] Sync transport selector from settings
           if (data.mcp_transport) { setMcpTransportMode(data.mcp_transport); }
           if (data.mcp_sse_url) { mcpSSEUrlInput.value = data.mcp_sse_url; }
@@ -2636,6 +2690,10 @@
       setInterval(mcpCheckStatus, HEALTH_CHECK_INTERVAL);
       ledgerFetch();
       setInterval(ledgerFetch, HEALTH_CHECK_INTERVAL);
+
+      // [v0.7.2] Gate state + dry_run sync — keeps Active Logic Gates honest
+      syncGatesFromSettings();
+      setInterval(syncGatesFromSettings, HEALTH_CHECK_INTERVAL);
       
       // Hash-based scroll support
       if (window.location.hash === '#mcpSection') {
