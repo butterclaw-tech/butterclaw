@@ -1,5 +1,5 @@
 """
-ButterClaw v0.5.0 — OAuth Provider Registry
+ButterClaw v0.6.4 — OAuth Provider Registry
 =====================================================================
 Skeleton configuration for OAuth-capable API providers.
 Maps provider names to their OAuth endpoints, scopes, and metadata.
@@ -61,7 +61,7 @@ OAUTH_PROVIDERS = {
         "token_url": "https://oauth2.googleapis.com/token",
         "revoke_url": "https://oauth2.googleapis.com/revoke",
         "scopes": [
-            "https://www.googleapis.com/auth/generative-language"
+            "email"
         ],
         "notes": "Google Cloud OAuth is functional. Requires a GCP project with "
                  "Generative Language API enabled. client_id and client_secret "
@@ -74,7 +74,8 @@ OAUTH_PROVIDERS = {
         "auth_method": "oauth2",
         "authorize_url": "https://github.com/login/oauth/authorize",
         "token_url": "https://github.com/login/oauth/access_token",
-        "revoke_url": None,  # GitHub uses DELETE /applications/{client_id}/token
+        "revoke_url": "https://api.github.com/applications/{client_id}/token",
+        "revoke_method": "delete_app_token",
         "scopes": ["repo", "read:user"],
         "notes": "GitHub OAuth is functional. Useful for future integrations "
                  "(e.g., auto-commit audit logs to a private repo)."
@@ -101,7 +102,8 @@ def list_providers():
 
 def list_oauth_capable():
     """Return names of providers that support OAuth."""
-    return [name for name, cfg in OAUTH_PROVIDERS.items() if cfg["oauth_supported"]]
+    return [name for name, provider_cfg in OAUTH_PROVIDERS.items()
+            if provider_cfg["oauth_supported"]]
 
 
 def list_api_key_only():

@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.6.3 — Production Container
+# ButterClaw v0.8.0 — Production Container
 # =============================================
 # Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
@@ -38,18 +38,64 @@ COPY mcp_transport.py .
 COPY oauth_config.py .
 COPY index.html .
 COPY routing.html .
+COPY watcher.py .
+COPY tui_dashboard.py .
+
+# --- NEW v0.8.0 SPATIAL SOC FILES ---
+COPY memory_engine.py .
+COPY dream_engine.py .
+COPY loop_engine.py .
+COPY memory_api.py .
+COPY event_ingester.py .
+COPY topology_manager.py .
+COPY watcher_daemon.py .
+COPY dreamer_daemon.py .
+COPY archiver_daemon.py .
+COPY tui_execution_harness.py .
+# ------------------------------------
+
+COPY default_signatures.json .
+COPY capabilities.json .
+COPY mcp_stdio_transport.json .
 
 # Copy health check script
 COPY scripts/healthcheck.py /app/scripts/healthcheck.py
 
-# Create data directory for DB volume mount
-RUN mkdir -p /data && chown butterclaw:butterclaw /data
+# Create data directory for DB volume mount and grant access to /app
+RUN mkdir -p /data && chown -R butterclaw:butterclaw /data /app
+
+# Install supervisor and create configuration file
+RUN pip install --no-cache-dir supervisor && \
+    mkdir -p /etc/supervisor/conf.d && \
+    echo "[supervisord]" > /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "nodaemon=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "user=butterclaw" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "[program:server]" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python /app/server.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "[program:watcher]" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python /app/watcher.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stderr_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "stdout_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf
 
 # Default env vars (can be overridden by .env / docker-compose)
 ENV BUTTERCLAW_HOST=0.0.0.0
 ENV BUTTERCLAW_PORT=5000
 ENV BUTTERCLAW_DB_PATH=/data/butterclaw.db
-ENV BUTTERCLAW_OLLAMA_URL=http://ollama:11434
+# Force keyring credentials to save inside the persistent volume
+ENV XDG_DATA_HOME=/data
+# ENV BUTTERCLAW_OLLAMA_URL=http://ollama:11434
 ENV BUTTERCLAW_INSTANCE_ID=butterclaw-docker
 
 # Health check
@@ -61,4 +107,5 @@ USER butterclaw
 
 EXPOSE 5000
 
-CMD ["python", "server.py"]
+# Start server + watcher via supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/butterclaw.conf"]

@@ -1,11 +1,11 @@
 """
-ButterClaw v0.6.0 — Authentication & Authorization Module
+ButterClaw v0.7.1 — Authentication & Authorization Module
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
 Provides:
   - HMAC-SHA256 API key generation, hashing, and verification
-  - Role-based access control (admin > operator > viewer)
+  - Role-based access control (infra > admin > operator > viewer)
   - Session tokens (HMAC-signed, httpOnly cookies, 1-hour TTL)
   - @require_auth() decorator for Flask route protection
   - Per-API-key rate limiting with configurable thresholds
@@ -30,6 +30,7 @@ import sqlite3
 import os
 import threading
 import logging
+import queue
 from functools import wraps
 from collections import defaultdict, deque
 
@@ -37,29 +38,61 @@ from flask import request, jsonify, Response
 
 logger = logging.getLogger("butterclaw.auth")
 
+# Keep this line so the diagnostic tests still know where they are!
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# try:
+#     from config import cfg
+#     DB_PATH = cfg.DB_PATH
+# except ImportError:
+#     DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+try:
+    from config import cfg
+    DB_PATH = cfg.DB_PATH
+    SESSION_TTL = cfg.SESSION_TTL
+    ROLE_RATE_LIMITS = {
+        "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+        "admin":          cfg.AUTH_RATE_ADMIN,
+        "operator":       cfg.AUTH_RATE_OPERATOR,
+        "viewer":         cfg.AUTH_RATE_VIEWER,
+    }
+except ImportError:
+    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+    SESSION_TTL = 3600
+    ROLE_RATE_LIMITS = {
+        "infrastructure": 1000,
+        "admin":          100,
+        "operator":       60,
+        "viewer":         30,
+    }
+
 # =============================================
 # CONSTANTS
 # =============================================
 
-# Role hierarchy — lower number = higher privilege
+# [S-01] Role hierarchy fixed. Infrastructure role added to prevent ghost-key rejection.
+# Lower number = higher privilege
 ROLE_HIERARCHY = {
+    "infrastructure": -1,  # Internal machine-to-machine superuser
     "admin": 0,
     "operator": 1,
     "viewer": 2,
 }
 
-# Session token TTL (seconds)
-SESSION_TTL = 3600  # 1 hour
+# Session token TTL (seconds)   < -- Commented out; securely initialized in the step above
+# SESSION_TTL = cfg.SESSION_TTL
 
 # API key prefix for identification (not security — just UX)
 KEY_PREFIX = "bc_"
 
-# Per-role rate limits (requests per minute on /api/analyze)
-ROLE_RATE_LIMITS = {
-    "admin": 30,
-    "operator": 15,
-    "viewer": 5,
-}
+# Per-role rate limits (requests per minute on /api/analyze)   < -- Commented out; securely initialized in the step above
+# ROLE_RATE_LIMITS = {
+#     "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+#     "admin": cfg.AUTH_RATE_ADMIN,
+#     "operator": cfg.AUTH_RATE_OPERATOR,
+#     "viewer": cfg.AUTH_RATE_VIEWER,
+# }
 
 # Default rate limit for unauthenticated (shouldn't happen if auth is enforced)
 DEFAULT_RATE_LIMIT = 10
@@ -71,34 +104,9 @@ RATE_LIMIT_WINDOW = 60
 # DATABASE
 # =============================================
 
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# FIND:
-#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-# REPLACE WITH:
-#try:
-#    from config import cfg
-#    DB_PATH = cfg.DB_PATH
-#except ImportError:
-#    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'butterclaw.db')
-
-# Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-
-
-def _get_auth_db():
-    """Thread-safe connection to the ButterClaw database."""
+def init_auth_db():
+    """One-time table initialization called at startup."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
     conn.execute('''
         CREATE TABLE IF NOT EXISTS api_keys (
             key_id      TEXT PRIMARY KEY,
@@ -112,15 +120,17 @@ def _get_auth_db():
         )
     ''')
     conn.commit()
-    return conn
+    conn.close()
 
+def _get_auth_db():
+    """Thread-safe connection to the ButterClaw database."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # =============================================
 # SESSION SIGNING KEY
 # =============================================
-# Derived from the OS keyring master key via HMAC.
-# This means Gibson destruction of the keyring also
-# invalidates all sessions — correct behavior.
 
 _session_key_cache = None
 _session_key_lock = threading.Lock()
@@ -146,8 +156,6 @@ def _get_session_signing_key():
             master_key = keyring.get_password(KEYRING_SERVICE, KEYRING_USER)
 
             if not master_key:
-                # No master key yet — buttervault._get_cipher() creates one on first call.
-                # We can't derive a session key without it.
                 logger.warning("⚠️ No master key in keyring. Sessions unavailable until Vault initializes.")
                 return None
 
@@ -168,7 +176,7 @@ def _get_session_signing_key():
 def invalidate_session_cache():
     """
     Clear the cached session signing key.
-    Call this after Gibson so existing sessions can't verify.
+    Call this BEFORE Gibson deletes the database.
     """
     global _session_key_cache
     with _session_key_lock:
@@ -206,22 +214,15 @@ def hash_api_key(plaintext_key, salt=None):
     return key_hash, salt
 
 
-def create_api_key(role="viewer", label=None):
+def create_api_key(role="viewer", label=None, predefined_key=None):
     """
     Generate, hash, and store a new API key.
     Returns the plaintext key (shown once) and the key_id.
-
-    Args:
-        role: One of 'admin', 'operator', 'viewer'
-        label: Optional human-readable label (e.g., "Dashboard", "CI/CD")
-
-    Returns:
-        dict: {"key": plaintext, "key_id": id, "role": role, "label": label}
     """
     if role not in ROLE_HIERARCHY:
         raise ValueError(f"Invalid role: {role}. Must be one of: {', '.join(ROLE_HIERARCHY.keys())}")
 
-    plaintext = generate_api_key()
+    plaintext = predefined_key if predefined_key else generate_api_key() 
     key_id = f"key_{secrets.token_hex(8)}"  # 16-char hex ID
     key_hash, salt = hash_api_key(plaintext)
 
@@ -251,8 +252,6 @@ def create_api_key(role="viewer", label=None):
 def verify_api_key(plaintext_key):
     """
     Verify a plaintext API key against all stored hashes.
-    Returns the key record dict if valid, None if invalid.
-
     Uses constant-time comparison to prevent timing attacks.
     """
     if not plaintext_key or not plaintext_key.startswith(KEY_PREFIX):
@@ -269,7 +268,6 @@ def verify_api_key(plaintext_key):
     for row in rows:
         candidate_hash, _ = hash_api_key(plaintext_key, salt=row["salt"])
         if hmac.compare_digest(candidate_hash, row["key_hash"]):
-            # Update last_used timestamp (fire-and-forget)
             _update_last_used(row["key_id"])
             return dict(row)
 
@@ -309,9 +307,7 @@ def delete_api_key(key_id):
 
 
 def list_api_keys():
-    """
-    List all API keys (metadata only — never returns hashes or salts).
-    """
+    """List all API keys (metadata only — never returns hashes or salts)."""
     conn = _get_auth_db()
     try:
         rows = conn.execute(
@@ -327,8 +323,10 @@ def destroy_all_api_keys():
     """
     Nuclear option — called by Gibson.
     Deletes all API key hashes from the database.
-    Also invalidates the session signing key cache.
     """
+    # [S-06] Invalidate cache FIRST to prevent race conditions during DB wipe
+    invalidate_session_cache()
+    
     conn = _get_auth_db()
     try:
         conn.execute("DELETE FROM api_keys")
@@ -336,25 +334,40 @@ def destroy_all_api_keys():
     finally:
         conn.close()
 
-    invalidate_session_cache()
     logger.warning("☢️ ALL API keys destroyed (Gibson).")
 
 
-def _update_last_used(key_id):
-    """Update the last_used timestamp for a key (best-effort, non-blocking)."""
-    def _do_update():
+# =============================================
+# BACKGROUND WORKER FOR LAST_USED UPDATES
+# =============================================
+# [R-05] Replaced thread-per-request with a bounded queue worker
+_last_used_queue = queue.Queue(maxsize=1000)
+
+def _last_used_worker():
+    while True:
+        key_id = _last_used_queue.get()
+        if key_id is None: break
         try:
             conn = _get_auth_db()
-            conn.execute(
-                "UPDATE api_keys SET last_used = ? WHERE key_id = ?",
-                (_iso_now(), key_id)
-            )
-            conn.commit()
-            conn.close()
+            try:
+                conn.execute(
+                    "UPDATE api_keys SET last_used = ? WHERE key_id = ?",
+                    (_iso_now(), key_id)
+                )
+                conn.commit()
+            finally:
+                conn.close()
         except Exception:
-            pass  # Non-critical — don't block auth for a timestamp update
+            pass
 
-    threading.Thread(target=_do_update, daemon=True).start()
+threading.Thread(target=_last_used_worker, daemon=True).start()
+
+def _update_last_used(key_id):
+    """Queue the last_used timestamp for a key (non-blocking)."""
+    try:
+        _last_used_queue.put_nowait(key_id)
+    except queue.Full:
+        pass  # Drop update under extreme load rather than crash
 
 
 # =============================================
@@ -364,15 +377,7 @@ def _update_last_used(key_id):
 def create_session_token(key_record):
     """
     Create an HMAC-signed session token from a verified API key record.
-
     The token is a base64-encoded JSON payload with an HMAC-SHA256 signature.
-    Format: base64(payload).base64(signature)
-
-    Args:
-        key_record: dict from verify_api_key() with key_id, role, etc.
-
-    Returns:
-        str: The signed session token, or None if signing key unavailable.
     """
     signing_key = _get_session_signing_key()
     if signing_key is None:
@@ -396,13 +401,7 @@ def create_session_token(key_record):
 
 
 def verify_session_token(token):
-    """
-    Verify and decode a session token.
-
-    Returns:
-        dict: {"key_id": ..., "role": ...} if valid
-        None: if invalid, expired, or tampered
-    """
+    """Verify and decode a session token."""
     signing_key = _get_session_signing_key()
     if signing_key is None:
         return None
@@ -487,19 +486,6 @@ def is_rate_limited_for_key(key_id, role):
 def require_auth(min_role="viewer"):
     """
     Flask route decorator that enforces authentication and authorization.
-
-    Checks (in order):
-      1. Authorization: Bearer <api_key> header
-      2. X-Session-Token header (for dashboard AJAX)
-      3. butterclaw_session cookie (for dashboard page loads)
-
-    If authenticated, sets request.auth_context = {"key_id": ..., "role": ...}
-
-    Args:
-        min_role: Minimum required role ('admin', 'operator', 'viewer')
-
-    Returns 401 if no valid credentials found.
-    Returns 403 if authenticated but insufficient role.
     """
     if min_role not in ROLE_HIERARCHY:
         raise ValueError(f"Invalid min_role: {min_role}")
@@ -588,19 +574,10 @@ def require_auth(min_role="viewer"):
 # =============================================
 
 def register_auth_routes(app):
-    """
-    Register authentication endpoints on the Flask app.
-    Called from server.py during setup.
-    """
+    """Register authentication endpoints on the Flask app."""
 
     @app.route('/api/auth/login', methods=['POST'])
     def auth_login():
-        """
-        Exchange an API key for a session token.
-        Sets an httpOnly cookie and returns the token in the body.
-
-        Body: {"api_key": "bc_..."}
-        """
         data = request.json
         if not data or "api_key" not in data:
             return jsonify({"error": "Missing 'api_key' in request body"}), 400
@@ -631,7 +608,7 @@ def register_auth_routes(app):
             max_age=SESSION_TTL,
             httponly=True,
             samesite="Strict",
-            secure=False,  # Set True when behind TLS reverse proxy (v0.6.3)
+            secure=getattr(cfg, "COOKIE_SECURE", True),
             path="/",
         )
 
@@ -640,7 +617,6 @@ def register_auth_routes(app):
 
     @app.route('/api/auth/logout', methods=['POST'])
     def auth_logout():
-        """Clear the session cookie."""
         response = jsonify({"status": "logged_out"})
         response.delete_cookie("butterclaw_session", path="/")
         return response, 200
@@ -648,7 +624,6 @@ def register_auth_routes(app):
     @app.route('/api/auth/whoami', methods=['GET'])
     @require_auth(min_role="viewer")
     def auth_whoami():
-        """Return the current authenticated identity."""
         ctx = request.auth_context
         return jsonify({
             "key_id": ctx["key_id"],
@@ -659,18 +634,12 @@ def register_auth_routes(app):
     @app.route('/api/auth/keys', methods=['GET'])
     @require_auth(min_role="admin")
     def auth_list_keys():
-        """List all API keys (admin only). Never returns hashes."""
         keys = list_api_keys()
         return jsonify({"keys": keys, "count": len(keys)}), 200
 
     @app.route('/api/auth/keys', methods=['POST'])
     @require_auth(min_role="admin")
     def auth_create_key():
-        """
-        Create a new API key (admin only).
-        Body: {"role": "operator", "label": "Dashboard"}
-        Response includes the plaintext key — shown ONCE, never stored.
-        """
         data = request.json or {}
         role = data.get("role", "viewer")
         label = data.get("label")
@@ -682,7 +651,6 @@ def register_auth_routes(app):
             }), 400
 
         # Prevent non-admin from creating admin keys
-        # (redundant with @require_auth but defense in depth)
         caller_role = request.auth_context["role"]
         if ROLE_HIERARCHY[role] < ROLE_HIERARCHY[caller_role]:
             return jsonify({
@@ -705,8 +673,6 @@ def register_auth_routes(app):
     @app.route('/api/auth/keys/<key_id>', methods=['DELETE'])
     @require_auth(min_role="admin")
     def auth_delete_key(key_id):
-        """Revoke an API key (admin only). Disables without deleting."""
-        # Prevent self-revocation
         if key_id == request.auth_context["key_id"]:
             return jsonify({"error": "Cannot revoke your own API key"}), 400
 
@@ -717,7 +683,6 @@ def register_auth_routes(app):
     @app.route('/api/auth/keys/<key_id>/purge', methods=['DELETE'])
     @require_auth(min_role="admin")
     def auth_purge_key(key_id):
-        """Permanently delete an API key record (admin only)."""
         if key_id == request.auth_context["key_id"]:
             return jsonify({"error": "Cannot delete your own API key"}), 400
 
@@ -731,12 +696,6 @@ def register_auth_routes(app):
 # =============================================
 
 def bootstrap_admin_key():
-    """
-    First-run bootstrap: creates an admin API key if none exist.
-    Called from server.py on startup or via CLI.
-
-    Returns the plaintext key if created, None if keys already exist.
-    """
     existing = list_api_keys()
     admin_keys = [k for k in existing if k["role"] == "admin" and k["enabled"]]
 
@@ -759,12 +718,50 @@ def bootstrap_admin_key():
     return result["key"]
 
 
+def bootstrap_infrastructure_keys():
+    existing = list_api_keys()
+    infra_keys = [k for k in existing if k["role"] == "infrastructure" and k["enabled"]]
+
+    if infra_keys:
+        logger.info(f"🔑 {len(infra_keys)} infrastructure key(s) already exist. Skipping bootstrap.")
+        return None
+
+    new_key = KEY_PREFIX + secrets.token_hex(32)
+
+    key_id = f"key_{secrets.token_hex(8)}"
+    key_hash, salt = hash_api_key(new_key)
+    now = _iso_now()
+
+    conn = _get_auth_db()
+    try:
+        conn.execute(
+            "INSERT INTO api_keys (key_id, key_hash, salt, role, label, created_at, enabled) VALUES (?, ?, ?, ?, ?, ?, 1)",
+            (key_id, key_hash, salt, "infrastructure", "infrastructure-bootstrap", now)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(f"🔑 Infrastructure API key created: {key_id}")
+    return new_key
+
+
+def bootstrap_infrastructure_keys_auto_heal():
+    env_key = os.environ.get("BUTTERCLAW_API_KEY")
+    if not env_key:
+        return None
+
+    if verify_api_key(env_key):
+        return None
+
+    # [S-01] Role matches the hierarchy now
+    create_api_key(role="infrastructure", label="Infrastructure Watcher (.env)", predefined_key=env_key)
+    logger.info("⚙️ [AUTO-HEAL] Infrastructure API Key restored from environment.")
+    return True
+
 # =============================================
 # ROUTE CLASSIFICATION MAP
 # =============================================
-# Reference for server.py integration.
-# This dict maps every endpoint to its required minimum role.
-# Used by the integration guide — not consumed at runtime.
 
 ROUTE_CLASSIFICATION = {
     # --- Public (no auth) ---
@@ -811,9 +808,8 @@ ROUTE_CLASSIFICATION = {
 # =============================================
 
 def _iso_now():
-    """Current UTC timestamp in ISO 8601 format."""
     import datetime
-    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # =============================================
@@ -823,17 +819,14 @@ def _iso_now():
 if __name__ == "__main__":
     print("🦞 ButterClaw Auth Module — Diagnostic Boot\n")
 
-    # 1. Create admin key
     print("1. Creating admin key...")
     admin = create_api_key(role="admin", label="Diagnostic Admin")
     print(f"   ✅ Created: {admin['key_id']} → {admin['key'][:20]}...")
 
-    # 2. Create operator key
     print("2. Creating operator key...")
     operator = create_api_key(role="operator", label="Diagnostic Operator")
     print(f"   ✅ Created: {operator['key_id']} → {operator['key'][:20]}...")
 
-    # 3. Verify admin key
     print("3. Verifying admin key...")
     verified = verify_api_key(admin["key"])
     if verified and verified["role"] == "admin":
@@ -841,7 +834,6 @@ if __name__ == "__main__":
     else:
         print("   ❌ Verification failed!")
 
-    # 4. Verify operator key
     print("4. Verifying operator key...")
     verified_op = verify_api_key(operator["key"])
     if verified_op and verified_op["role"] == "operator":
@@ -849,7 +841,6 @@ if __name__ == "__main__":
     else:
         print("   ❌ Verification failed!")
 
-    # 5. Test invalid key
     print("5. Testing invalid key...")
     invalid = verify_api_key("bc_totally_fake_key_12345")
     if invalid is None:
@@ -857,7 +848,6 @@ if __name__ == "__main__":
     else:
         print("   ❌ Invalid key was accepted!")
 
-    # 6. Session token round-trip
     print("6. Testing session token...")
     token = create_session_token(verified)
     if token:
@@ -869,7 +859,6 @@ if __name__ == "__main__":
     else:
         print("   ⚠️ Session token creation skipped (no master key in keyring)")
 
-    # 7. Revoke operator key
     print("7. Revoking operator key...")
     if revoke_api_key(operator["key_id"]):
         revoked_check = verify_api_key(operator["key"])
@@ -880,14 +869,12 @@ if __name__ == "__main__":
     else:
         print("   ❌ Revocation failed!")
 
-    # 8. List keys
     print("8. Listing all keys...")
     all_keys = list_api_keys()
     for k in all_keys:
         status = "active" if k["enabled"] else "revoked"
         print(f"   {k['key_id']} | {k['role']:8} | {status} | {k['label']}")
 
-    # 9. Rate limiter
     print("9. Testing rate limiter...")
     test_key = "test_rate_key"
     limited = False
@@ -899,7 +886,6 @@ if __name__ == "__main__":
     if not limited:
         print("   ❌ Rate limiter failed to trigger!")
 
-    # 10. Gibson
     print("10. Testing Gibson (destroy all keys)...")
     destroy_all_api_keys()
     post_gibson = list_api_keys()
@@ -908,4 +894,4 @@ if __name__ == "__main__":
     else:
         print(f"   ❌ {len(post_gibson)} keys survived Gibson!")
 
-    print("\n🦞 Diagnostic complete.")
+    print("\n🦞 Diagnostic complete. Background worker exiting...")
