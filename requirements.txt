@@ -1,8 +1,0 @@
-flask==3.0.2
-flask-cors==4.0.0
-werkzeug==3.0.1
-requests==2.31.0
-cryptography==42.0.5
-keyring==24.3.0
-keyrings.alt==5.0.0
-psutil==6.0.0
