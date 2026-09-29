@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.6 — Configuration Module
+ButterClaw v0.8.0 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -53,7 +53,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.6.6"
+CONFIG_VERSION = "0.8.0"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.
@@ -277,6 +277,11 @@ class ButterClawConfig:
         # ── Identity ──
         self.INSTANCE_ID = _env_str("INSTANCE_ID", "butterclaw-local")
 
+        # ── Dual Memory Engine & Loop Proposer (v0.8.0) ──
+        self.LOOP_DRY_RUN = _env_bool("LOOP_DRY_RUN", True)
+        self.LIVE_CRYSTALLIZATION_ENABLED = _env_bool("LIVE_CRYSTALLIZATION_ENABLED", True)
+        self.ATTRACTOR_DECAY_DAYS = _env_int("ATTRACTOR_DECAY_DAYS", 30)
+
         # ── Validate ──
         self._validate()
 
@@ -368,6 +373,13 @@ class ButterClawConfig:
                 f"(must be >= 1)"
             )
 
+        # Attractor Decay
+        if self.ATTRACTOR_DECAY_DAYS < 1:
+            errors.append(
+                f"Invalid attractor decay days: {self.ATTRACTOR_DECAY_DAYS} "
+                f"(must be >= 1)"
+            )
+
         # OAuth TTL
         if self.OAUTH_STATE_TTL < 1:
             errors.append(
@@ -430,6 +442,9 @@ class ButterClawConfig:
                 "google_api_key": "***" if redact_secrets and self.GOOGLE_API_KEY else self.GOOGLE_API_KEY,
                 "confidence_threshold": self.CONFIDENCE_THRESHOLD,
                 "dry_run": self.DRY_RUN,
+                "loop_dry_run": self.LOOP_DRY_RUN,
+                "live_crystallization": self.LIVE_CRYSTALLIZATION_ENABLED,
+                "attractor_decay_days": self.ATTRACTOR_DECAY_DAYS,
             },
             "mcp": {
                 "transport": self.MCP_TRANSPORT,
@@ -493,6 +508,9 @@ class ButterClawConfig:
             "GOOGLE_API_KEY": "***" if self.GOOGLE_API_KEY else "",
             "CONFIDENCE_THRESHOLD": self.CONFIDENCE_THRESHOLD,
             "DRY_RUN": self.DRY_RUN,
+            "LOOP_DRY_RUN": self.LOOP_DRY_RUN,
+            "LIVE_CRYSTALLIZATION_ENABLED": self.LIVE_CRYSTALLIZATION_ENABLED,
+            "ATTRACTOR_DECAY_DAYS": self.ATTRACTOR_DECAY_DAYS,
             "MCP_TRANSPORT": self.MCP_TRANSPORT,
             "MCP_SSE_URL": self.MCP_SSE_URL,
             "MCP_SSE_TOKEN": "***" if self.MCP_SSE_TOKEN else "",
@@ -562,8 +580,8 @@ if __name__ == "__main__":
           repr(cfg))
 
     # ── Test 2: Version matches ──
-    _test(2, "Config version is 0.6.6",
-          CONFIG_VERSION == "0.6.6",
+    _test(2, "Config version is 0.8.0",
+          CONFIG_VERSION == "0.8.0",
           f"CONFIG_VERSION = {CONFIG_VERSION}")
 
     # ── Test 3: BASE_DIR is a real directory ──
@@ -645,9 +663,10 @@ if __name__ == "__main__":
         "BASE_DIR", "DB_PATH", "MCP_SCRIPT", "HOST", "PORT", "DEBUG",
         "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL", 
         "OLLAMA_CHAT_PATH", "MODEL_NAME", "GOOGLE_API_KEY",
-        "CONFIDENCE_THRESHOLD", "DRY_RUN", "MCP_TRANSPORT", "MCP_SSE_URL",
-        "MCP_SSE_TOKEN", "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", 
-        "AUTH_RATE_OPERATOR", "AUTH_RATE_VIEWER", "SESSION_TTL", 
+        "CONFIDENCE_THRESHOLD", "DRY_RUN", "LOOP_DRY_RUN", "LIVE_CRYSTALLIZATION_ENABLED", 
+        "ATTRACTOR_DECAY_DAYS", "MCP_TRANSPORT", "MCP_SSE_URL", "MCP_SSE_TOKEN", 
+        "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", "AUTH_RATE_OPERATOR", 
+        "AUTH_RATE_VIEWER", "SESSION_TTL", 
         "ALERT_DELIVERY_TIMEOUT", "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF", 
         "AUTH_FAILURE_THRESHOLD", "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", 
         "INSTANCE_ID",

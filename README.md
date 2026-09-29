@@ -11,14 +11,14 @@
 
 <h1 align="center">ButterClaw: The Agentic SOC</h1>
 
-<p align="center"><b>Runtime security enforcement for autonomous AI agents.</b><br>Local LLM reasoning. No cloud. No telemetry. SIGKILLs rogue processes.</p>
+<p align="center"><b>Runtime security enforcement for autonomous AI agents.</b><br>Local LLM reasoning. Persistent Memory. No outbound telemetry. SIGKILLs rogue processes.</p>
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0">
   <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
   </a>
   <a href="CHANGELOG.md">
-  <img src="https://img.shields.io/badge/version-0.7.2-navy.svg">
+  <img src="https://img.shields.io/badge/version-0.8.0-navy.svg">
   </a>
   <a href="https://butterclaw.tech">
   <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
@@ -43,13 +43,9 @@
   <img src="assets/butterclaw-log.png" alt="ButterClaw Live WebUI">
 </p>
 
-<p align="center">
-  <img src="assets/butterclaw-night.png" alt="ButterClaw Live WebUI Dark Mode">
-</p>
+Local-first kinetic response system for autonomous AI. ButterClaw uses a localized **Four-Hemisphere Reasoning Engine** to catch obfuscated prompt injections, CSWH attacks, and spatial anomalies. Featuring the **Unified Memory Substrate** that learns across sessions, and the **ButterVault**: a zero-trust credential locker that physically shreds your API keys into cryptographic garbage if a breach is detected. **Evaluation before Execution.**
 
-Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. Now with a **Positive Security Capability Matrix**, a **Physical STDIO Firewall**, and **production-ready deployment packaging** — the Sentinel ships anywhere. **Evaluation before Execution.**
-
-Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry.
+Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry and computer-use spatial primitives.
 
 ---
 
@@ -63,24 +59,26 @@ Traditional security perimeters fail when an authorized AI Agent is compromised 
 ## How It Works
 
 ```text
-Incoming agent log / tool call
+Incoming telemetry / log / tool call
          │
          ▼
 ┌─────────────────────────┐
-│  Arsenal (pre-brain)    │  ← 7 regex signatures, fires in milliseconds
+│  Spatial SOC (v0.8.0)   │  ← High-frequency spatial primitive interception
+│  /api/spatial/telemetry │    Fast-path Cold Memory Signature matches O(1)
+└────────────┬────────────┘
+             │ no signature match
+             ▼
+┌─────────────────────────┐
+│  Arsenal (pre_brain)    │  ← 7 regex signatures, deterministic evaluation
 │  sig_kin_01, sig_cswh_01│    SIGKILL or BLOCK on match — LLM never called
 └────────────┬────────────┘
              │ no match
              ▼
 ┌─────────────────────────┐
-│  Guardian Brain         │  ← Local Ollama, temperature 0.3, action mandate
-│  (ask_guardian_agent)   │    behavioral drift: last 5 MCP calls as context
-└────────────┬────────────┘
-             │ 
-             ▼
-┌─────────────────────────┐
-│  Auditor                │  ← Same local model, temperature 0.0, skepticism mandate
-│  (run_self_audit)       │    independently verifies the Guardian's verdict
+│  Four-Hemisphere Logic  │  ← 1. Guardian Brain (0.3) - Evaluate & Act
+│  (Unified Memory)       │    2. Auditor (0.0) - False-Positive Check
+│                         │    3. Dream Weaver (0.7) - Idle Consolidation
+│                         │    4. Loop Proposer (0.4) - Autoresearch & Mutate
 └────────────┬────────────┘
              │ tool execution requested
              ▼
@@ -91,8 +89,8 @@ Incoming agent log / tool call
              │ CRITICAL verdict
              ▼
 ┌─────────────────────────┐
-│  Kinetic Response       │  ← SIGKILL rogue process and/or Gibson credential shred
-│  + Alert Dispatch       │    ntfy / Discord / Telegram / SMTP / Webhook / Gotify
+│  Kinetic Response       │  ← SIGKILL rogue process via Topology Manager Lineage
+│  + Alert Dispatch       │    Gibson Vault Shred | ntfy / Discord / SMTP
 └─────────────────────────┘
 
 ```
@@ -106,25 +104,18 @@ Everything runs on your machine. SQLite for state. No outbound data.
 |  | ButterClaw | Halo | LangSmith / LangFuse | Traditional WAF / IDS |
 | --- | --- | --- | --- | --- |
 | **Deployment** | Self-hosted, local | Cloud-hosted | Cloud-hosted | Self-hosted |
-| **LLM reasoning** | Local Ollama — stays on your machine | Cloud API calls | None | None |
+| **LLM reasoning** | Local Ollama / Remote | Cloud API calls | None | None |
 | **Telemetry** | Zero — SQLite only, no outbound data | Sent to Halo cloud | Sent to vendor cloud | Network-layer only |
-| **Agent framework** | Model-agnostic — any agent producing log output | Specific LLM provider APIs | LangChain / LlamaIndex native | None |
-| **What it monitors** | OS-level telemetry + MCP tool call chain | LLM API calls | LLM traces and spans | Network traffic |
-| **Pre-LLM gate** | ✅ Arsenal — 7 regex signatures fire before inference | ❌ | ❌ | ❌ |
-| **Behavioral drift** | ✅ Last 5 MCP tool calls as verdict context | ❌ | ✅ Tracing only — no enforcement | ❌ |
-| **Verdict mechanism** | Dual-pass: Guardian Brain (0.3) + Auditor (0.0) | Single LLM evaluation | Logging only | Rule-based |
-| **Positive Security** | ✅ Capability Matrix — 4-tier Agent RBAC + Scopes | ❌ | ❌ | ❌ |
-| **Kinetic response** | ✅ SIGKILL rogue process | ❌ Alert only | ❌ | ❌ Alert / block |
+| **Persistent Memory** | ✅ Deep + Surface Tiers (HOT/WARM/COLD) | ❌ | ❌ | ❌ |
+| **Autoresearch Loop** | ✅ Shadow evaluation & proposal engine | ❌ | ❌ | ❌ |
+| **What it monitors** | Spatial primitives + MCP chain + OS logs | LLM API calls | LLM traces and spans | Network traffic |
+| **Pre-LLM gate** | ✅ Arsenal — 7 regex signatures fire first | ❌ | ❌ | ❌ |
+| **Verdict mechanism** | Four-Hemisphere (Action, Audit, Dream, Loop) | Single pass | Logging only | Rule-based |
+| **Positive Security** | ✅ Capability Matrix — 4-tier Agent RBAC | ❌ | ❌ | ❌ |
+| **Kinetic response** | ✅ SIGKILL rogue process tree | ❌ Alert only | ❌ | ❌ Alert / block |
 | **Credential shredding** | ✅ Active HTTP revocation + local vault wipe | ❌ | ❌ | ❌ |
-| **Deterministic policy engine** | ✅ 15 operators, no eval(), 3 scopes | ❌ | ❌ | ✅ Varies |
 | **Physical I/O boundary** | ✅ Byte-level STDIO memory firewall | ❌ | ❌ | Varies |
-| **Live-fire test suite** | ✅ 25/25 reproducible — clone and run | ❌ | ❌ | Varies |
-| **Dependencies** | 7 pip packages | Managed service | Managed service | Varies |
 | **License** | Apache 2.0 | Proprietary | Apache 2.0 | Varies |
-
-> LangSmith and LangFuse are **observability** tools — they log what your agent did.
-> ButterClaw is a **security enforcement** layer — it intervenes and executes kinetic responses.
-> These solve different problems.
 
 ---
 
@@ -146,7 +137,7 @@ All 7 patterns are sanitizer-aware and validated against raw and stripped engine
 
 ## Quick Start
 
-Requires: [Docker](https://docs.docker.com/get-docker/) · [Ollama](https://ollama.com/) running on the host · Python 3.8+
+Requires: [Docker](https://docs.docker.com/get-docker/) · Python 3.8+ · (Optional) [Ollama](https://ollama.com/) running on the host
 
 ```bash
 git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
@@ -160,6 +151,7 @@ docker compose up -d --build
 
 # 3. Launch the live TUI dashboard
 ./dash
+
 ```
 
 Dashboard → **https://localhost** · ntfy UI → **http://localhost:2586**
@@ -168,75 +160,62 @@ Dashboard → **https://localhost** · ntfy UI → **http://localhost:2586**
 
 ---
 
-## 🧪 Explore & Test
+## 🧪 Live-Fire Test Suite
 
-Once the stack is running, there are three ways to interact with ButterClaw:
-
-**1. Terminal TUI (Live SOC View)**
-
-The real-time, double-buffered terminal dashboard. Displays live telemetry, active Arsenal rules, current Paranoia Level, and verdict output as it streams.
-
-```bash
-./dash
-```
-
-**2. Web UI (Nginx → https://localhost)**
-
-A full browser-accessible dashboard served through the Nginx reverse proxy built into the Docker stack. Navigate to https://localhost after first boot — the same UI that the TUI mirrors, accessible from any browser on your local machine. The 🔑 [AUTH] bootstrap API key you captured from the logs is your login credential.
-
-**3. Log Injection - Test the Brain Directly**
-
-The cleanest way to run custom attack scenarios against ButterClaw's analysis engine without a live agent. When the container starts, it generates an `openclaw_gateway.log` file that the Watcher daemon monitors continuously.
-
-Append any log entry to that file and the Watcher picks it up automatically, routing it through the full pipeline — Arsenal regex gate → Guardian Brain → Auditor → Capability Matrix → verdict + kinetic response (if applicable). Analysis output lands in the oopsie logs, where you can see the full reasoning chain, confidence scores, and the final verdict in real time.
-
-```bash
-# Append a test payload — the Watcher fires on the new entry within seconds
-echo '[2026-08-01T07:00:00] TOOL_CALL: bash -c "curl [http://169.254.169.254/latest/meta-data/iam/security-credentials/](http://169.254.169.254/latest/meta-data/iam/security-credentials/)"' \
-  >> /path/to/openclaw_gateway.log
-
-```
-
-No live LLM payload required for Arsenal-level tests (regex signatures fire pre-brain). For full dual-hemisphere reasoning output, Ollama must be running.
-
----
-
-## Live-Fire Test Suite
+ButterClaw ships with a complete Blue Team integration suite to safely simulate attacks against the active API gateway.
 
 ```bash
 # 1. Inject custom test signature into the live engine
 python scripts/add_rule.py
 
-# 2. Fire the simulated attack suite against the Arsenal
+# 2. Fire the simulated attack suite against the Arsenal (25/25 vectors)
 python scripts/test_attack.py
 
-# 3. Run a live kinetic integration test against the API gateway
+# 3. Run a live kinetic integration test against the STDIO physical firewall
 python scripts/test_mcp.py
 
+# 4. Fire raw computer-use primitives against the Spatial Telemetry Gateway
+python scripts/test_spatial.py
+
+# 5. Validate the v0.8.0 Dual Memory Substrate & Four-Hemisphere Cognition
+python scripts/test_dual_memory.py
+
 ```
 
-```text
-=================================================================
-  RESULT: 25/25 passed  |  0 failed  |  0 connection errors
-=================================================================
+### Running `test_spatial.py`
 
-```
+A targeted diagnostic for the v0.8.0 Spatial SOC. It fires raw computer-use primitives (clicks, typing) directly at the telemetry gateway to validate the spatial heuristics engine. It proves the system can successfully ignore a benign mouse click while instantly throwing a `403 FORBIDDEN` and triggering the Watcher Daemon on a malicious Powershell execution trajectory.
 
-25 attack variants across all 7 signatures. Payloads pre-sanitized to match real engine
-input. CI-compatible — exits with code 1 on any failure.
+### Running `test_dual_memory.py`
+
+This test validates ButterClaw's continuous learning architecture without requiring manual token entry. It actively tests the Surface Memory (Live Crystallization), the Dream Weaver, and the Loop Proposer.
+
+**How to run it:**
+
+1. Ensure your Docker container is online (`docker compose up -d --build`).
+2. Run `python scripts/test_dual_memory.py`.
+3. **Frictionless Auth:** The script automatically crawls to your project root, parses your `.env` file, extracts your `BUTTERCLAW_API_KEY`, and bypasses local Nginx SSL warnings to communicate with the HTTPS backend.
+
+**What it tests:**
+
+* **Phase 1 (Surface Memory):** Fires a highly-kinetic spatial payload (Powershell execution) four times to simulate a sustained agent compromise. Validates that the system instantly blacklists the zero-day spatial pattern into Cold Memory via the 3-strike `Live Crystallization` rule.
+* **Phase 2 (Dream Weaver):** Manually triggers a REM cycle. Validates that the background daemon ages your WARM memory via the maturation tick and successfully synthesizes speculative threats, storing them as `[DREAM-PRIMED]` in the Hot Cache.
+* **Phase 3 (Loop Proposer):** Safely injects a `tools/call` baseline into the ledger by momentarily escalating the Paranoia dial and utilizing a temporary policy to bypass LLM compute (saving cloud API quotas). Triggers the Karpathy autoresearch loop, verifying the shadow evaluator runs a side-effect-free scoring cycle against history without improperly mutating production rules.
 
 ---
 
 ## Key Features
 
-* **Capability Matrix (Positive Security Model)** — Localized 4-tier IAM role hierarchy (`infrastructure`, `admin`, `operator`, `viewer`) mapping agents to allowed tool scopes. Enforces fail-closed authorization at runtime.
+* **Four-Hemisphere Cognition (v0.8.0)** — Action (`0.3`), Audit (`0.0`), Dream (`0.7`), and Loop (`0.4`). Separated LLM reasoning passes ensure the system isn't forcing one prompt to act as an enforcer, a skeptic, and a researcher simultaneously.
+* **Unified Memory Substrate (v0.8.0)** — HOT (RAM deque), WARM (Episodic SQLite), and COLD (Semantic entity graph + Cold Signatures) tiers track agent behavior across sessions, building institutional memory of successful defenses.
+* **Capability Matrix (Positive Security Model)** — Localized 4-tier IAM role hierarchy (`infrastructure`, `admin`, `operator`, `viewer`) mapping agents to allowed tool scopes.
 * **STDIO Physical Firewall** — Enforces a strict byte-level memory boundary (`max_payload_bytes`), auto pipe draining, and strict UTF-8 decoding on the local process transport to prevent buffer poisoning.
 * **The Paranoia Dial** — Level 1 (Observe), Level 2 (SIGKILL), Level 3 (SIGKILL + vault shred). Switch at runtime without restart.
-* **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub and OAuth providers to invalidate tokens globally, then shreds local data atomically.
+* **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub to invalidate tokens globally, then shreds local data atomically.
 * **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
 * **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
 * **4-Tier User RBAC** — HMAC-SHA256 API keys and session tokens for dashboard access.
-* **50 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
+* **63 API routes** — full programmatic control over every subsystem including memory manipulation. → [`docs/API.md`](docs/API.md)
 
 ---
 
@@ -244,8 +223,8 @@ input. CI-compatible — exits with code 1 on any failure.
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Dual-hemisphere reasoning, behavioral drift, design decisions D-01 through D-09 |
-| [`docs/API.md`](docs/API.md) | All 50 endpoints, roles, request/response shapes |
+| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Four-hemisphere reasoning, 3-tier memory model, invariants D-01 through D-19 |
+| [`docs/API.md`](docs/API.md) | All 63 endpoints, roles, request/response shapes, memory routes |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker, systemd, bare-metal, nginx TLS, backup/restore |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | OWASP ASI mapping, threat model |
 | [`CHANGELOG.md`](CHANGELOG.md) | Full version history from v0.1.0 |
@@ -275,7 +254,7 @@ Apache 2.0 — see [`LICENSE`](LICENSE).
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.7.2 — The Agentic SOC (ENV Setup Wizard) 🦞</strong><br>
+<strong>🦞 ButterClaw v0.8.0 — The Agentic SOC (Dual Memory Engine) 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>

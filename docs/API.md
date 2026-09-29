@@ -1,6 +1,6 @@
 # 📡 ButterClaw API Reference
 
-ButterClaw features a comprehensive REST API with **50 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
+ButterClaw features a comprehensive REST API with **63 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
 
 ---
 
@@ -151,6 +151,63 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 
 ---
 
+### Spatial Telemetry Endpoint (v0.8.0 Part 1) — 1 route
+
+| Method | Endpoint | Min Role | Description |
+|---|---|---|---|
+| `POST` | `/api/spatial/telemetry` | operator | High-speed ingest and active tollbooth for raw spatial coordinates/keystrokes from AI agents. Evaluates the proposed action through the Memory Engine (Cold Memory signature match, then spatial heuristics) before it lands in the telemetry ledger. A `BLOCK` verdict propagates taint down the agent's process tree via the Topology Manager and hands a kill request to the Watcher Daemon. |
+
+**`POST /api/spatial/telemetry` request body:**
+​```json
+{
+  "session_id": "string",
+  "action_type": "mouse_click | keyboard_type | scroll | navigate",
+  "payload": {},
+  "screenshot_ref": "string (optional)"
+}
+​```
+
+**`POST /api/spatial/telemetry` response:**
+​```json
+{
+  "status": "allowed | blocked",
+  "verdict": "ALLOW | BLOCK",
+  "reason": "string"
+}
+​```
+
+---
+
+### Memory / Dream / Loop Endpoints (v0.8.0 Part 2) — 12 routes
+
+Management surface for the unified Deep + Surface Memory Engine and its two new hemispheres, the Dream Weaver (idle-triggered consolidation + REM scenario synthesis) and the Loop Proposer (Karpathy-style autoresearch loop). Registered by `memory_api.py`'s `register_memory_routes(app, dream_engine, loop_engine)`.
+
+| Method | Endpoint | Min Role | Description |
+|---|---|---|---|
+| `GET` | `/api/memory/hot` | viewer | Live Tier-1 hot-cache entries (not yet flushed to episodic or expired) |
+| `GET` | `/api/memory/episodic` | viewer | Paginated Tier-2 warm episodic reader (`?limit=&offset=`) |
+| `DELETE` | `/api/memory/episodic/<memory_id>` | admin | Hard-delete a single episodic record. Returns `404` if the ID never existed. |
+| `GET` | `/api/memory/semantic` | viewer | Tier-3 cold semantic entity graph — nodes and weighted edges |
+| `POST` | `/api/memory/flush` | operator | Force-flush all live hot-cache entries into the episodic store now |
+| `GET` | `/api/memory/signatures` | viewer | Cold Memory attractors — from `dreamer_daemon.py`'s offline batch synthesis and the Memory Engine's own scoped live crystallization (tagged `live:` in `threat_category`) |
+| `GET` | `/api/dream/log` | viewer | Paginated `dream_log` reader — every consolidation/REM cycle that has run |
+| `POST` | `/api/dream/trigger` | operator | Manually start a dream cycle now, bypassing the idle-threshold wait. Still fully subject to the Dream Weaver's hardcoded dry-run (I-13) and live-traffic yield (I-14). Returns `409` if a cycle is already running. |
+| `GET` | `/api/loop/experiments` | viewer | Paginated `loop_experiments` reader (`?limit=&status=`) — every proposal scored this run |
+| `POST` | `/api/loop/trigger` | operator | Manually run one Loop Proposer cycle now. Subject to the same `LOOP_DRY_RUN`/I-15 gating as a scheduled cycle — does not grant any additional authority. |
+| `GET` | `/api/loop/prompts` | viewer | List all staged `prompt_overrides` |
+| `POST` | `/api/loop/prompts/<prompt_key>` | admin | Stage (create or overwrite) a prompt override — the highest-trust write in this module. Currently affects the Guardian Brain's and Auditor's persona preamble only (`guardian_brain_preamble`, `auditor_preamble`); the paranoia-dial mode instructions, gate context, and strict JSON response schema are never overridable. |
+
+**`POST /api/loop/prompts/<prompt_key>` request body:**
+​```json
+{
+  "prompt_value": "string"
+}
+​```
+
+> **Note on `POST /api/memory/flush`, `/api/dream/trigger`, `/api/loop/trigger`:** none of these three routes can trigger a kinetic action — no route in this module calls `topology_manager`, `watcher_daemon`, or `alert_dispatcher`. They only ever move data between memory tiers, run a consolidation pass, or score a proposal.
+
+---
+
 ## Route Count Summary
 
 | Module | Routes | Introduced |
@@ -161,7 +218,9 @@ Public endpoints (`/api/health`, `GET /`, `/api/oauth/callback`) require no auth
 | Core | 5 | v0.1–v0.4 |
 | MCP | 7 | v0.5.0 |
 | Vault & OAuth | 10 | v0.5.x |
-| **Total** | **50** | — |
+| Spatial Telemetry | 1 | v0.8.0 (Part 1) |
+| Memory / Dream / Loop | 12 | v0.8.0 (Part 2) |
+| **Total** | **63** | — |
 
 ---
 

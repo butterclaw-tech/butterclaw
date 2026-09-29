@@ -8,6 +8,10 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 
 ```text
 ┌─────────────────────────────────────────────────┐
+│  Spatial SOC & Unified Memory Substrate (v0.8.0)│
+│  4-hemisphere cognition, dual memory engine,    │
+│  spatial telemetry gateway, autoresearch loop   │
+├─────────────────────────────────────────────────┤
 │  Deployment Layer (v0.7.2+)                     │
 │  setup_wizard.py, Docker, systemd, nginx        │
 ├─────────────────────────────────────────────────┤
@@ -80,12 +84,56 @@ flowchart TD
 
 ---
 
+## Spatial Telemetry & Memory Data Flow (v0.8.0)
+
+A second, independent data path runs alongside the log-based flow above. It never
+touches `ask_guardian_agent()` or the DRIFT policy engine — spatial verdicts are
+decided entirely inside the Memory Engine, and a `BLOCK` triggers process
+termination directly, without an LLM call or a Paranoia Dial check in the loop.
+
+```mermaid
+flowchart TD
+    AG[AI Agent] -->|coordinates, keystrokes| GW["POST /api/spatial/telemetry\n(memory_api.py + spatial_telemetry_gateway)"]
+    GW --> REG[Register agent_id / session_id\nin SQLite topology]
+    REG --> EVAL[Memory Engine\nevaluate_spatial_intent]
+
+    EVAL --> FAST{Cold Memory\nsignature match?}
+    FAST -->|yes, O(1)| BLOCK[BLOCK verdict]
+    FAST -->|no| SLOW[Spatial Heuristics\nkinetic velocity · spatial jitter · entropy]
+    SLOW -->|threat_score ≥ 0.75| BLOCK
+    SLOW -->|clean| ALLOW[ALLOW verdict]
+
+    ALLOW --> ING[Event Ingester\nRAM queue → batched SQLite write]
+    BLOCK --> ING
+
+    BLOCK --> STORE["memory_engine.store()\nthreat_type=Spatial Telemetry"]
+    STORE --> EPISODIC[(memory_episodic)]
+    STORE -->|repeats 3x, same session| CRYSTAL[Live Crystallization]
+    CRYSTAL --> SIGDB
+
+    BLOCK --> TAINT[Topology Manager\napply_kinetic_taint — recursive CTE]
+    TAINT -->|quarantine agent + child PIDs| WATCH[Watcher Daemon\nsuspend → kill via psutil]
+    TAINT --> EVID[Preserve Evidence\nRAM disk → /data/evidence_locker]
+
+    subgraph OFFLINE[Offline / Idle-Triggered]
+        DREAMER[Dreamer Daemon\nN-gram attractor synthesis\nfrom tainted sessions] --> SIGDB[(memory_signatures)]
+        ARCHIVER[Archiver Daemon\nretention + RAM sweep] --> EPISODIC
+        DREAM[Dream Engine — Dream Weaver\nidle ≥ 15 min: maturation tick\n+ optional REM synthesis] --> EPISODIC
+        LOOP[Loop Engine — Loop Proposer\nevery 6 hrs: replay mcp_events,\nscore, commit/revert] --> SIGDB
+        LOOP -->|policy artifact type| POLDB[(policies)]
+    end
+
+    SIGDB -.->|5s TTL refresh| FAST
+```
+
+---
+
 ## Component Map
 
 | Component | File | Role | NOT Responsible For | Failure Mode |
 | --- | --- | --- | --- | --- |
 | **Config** | `config.py` | Singleton env-driven configuration, 26 fields across 9 categories | Runtime decisions; validation logic | Missing required keys → `ConfigError` at boot, not at runtime |
-| **Server** | `server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster, 30 routes. Uses SQLite WAL mode for concurrency. | Log ingestion; credential storage; policy authoring | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
+| **Server** | `server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster. Uses SQLite WAL mode for concurrency. As of v0.8.0, also constructs and starts the Dream Engine and Loop Engine, registers `memory_api.py`'s routes, and resolves the Guardian Brain / Auditor persona preamble through `memory_engine.get_prompt_override()`. | Log ingestion; credential storage; policy authoring; memory tier storage (delegated to `memory_engine.py`) | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
 | **Auth** | `auth.py` | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed session tokens, rate limiting, 7 routes | Credential encryption; log ingestion; policy evaluation | Gibson destroys all key hashes + invalidates session cache simultaneously |
 | **Policy Engine** | `policy_engine.py` | DRIFT policy runtime — pre_brain / post_brain / pre_tool scopes. Manages Hit Counters via non-blocking `queue.Queue` background worker. | Making trust decisions; storing credentials; LLM inference | Misconfigured allow-all rule logs only — never crashes; policy errors surface in audit log |
 | **Alert Dispatcher** | `alert_dispatcher.py` | Multi-channel alert fanout bounded by a `ThreadPoolExecutor` (max 10 workers). | Determining threat severity; storing history; rate limiting per channel | Per-channel failures are independent — a broken webhook never blocks the verdict pipeline |
@@ -96,6 +144,16 @@ flowchart TD
 | **Watcher** | `watcher.py` | Log tail daemon — monitors `openclaw_gateway.log`, sanitizes lines, POSTs to `/api/analyze` | Parsing log structure; interpreting semantics; auth decisions | Server offline → enqueues up to 100 entries in `retry_queue.json` (persisted on SIGTERM); singleton enforced via PID lock |
 | **TUI Dashboard** | `tui_dashboard.py` | Read-only terminal operational view, launched via cross-platform harnesses (`dash.sh`, `dash.bat`). | Any write or control operations; auth enforcement | Crash does not affect server — read-only |
 | **nginx** | `nginx/` | TLS termination, reverse proxy — the only internet-facing component | Auth; policy; any application logic | Trust boundary: all inbound traffic is untrusted until auth middleware in server.py accepts it |
+| **Memory Engine** (v0.8.0) | `memory_engine.py` | Unified Deep (HOT/WARM/COLD episodic + semantic) and Surface (spatial telemetry, Cold Memory signatures) memory substrate. `store()`/`retrieve_context()` inject read-only recalled context into the Guardian Brain prompt; `evaluate_spatial_intent()` gates every spatial telemetry event. | Kinetic action of any kind; LLM inference; policy rule storage | `memory_signatures` table missing → Cold Memory fast-path logs and continues; deep tier is unaffected |
+| **Dream Engine** (v0.8.0) | `dream_engine.py` | Idle-triggered (≥ 15 min) consolidation daemon — the "Dream Weaver" hemisphere. Runs `run_maturation_tick()` every cycle and optionally synthesizes speculative threat scenarios from the semantic graph via an injected `llm_caller`. | Any kinetic action — `DREAM_DRY_RUN=True` is a hardcoded, un-overridable constant (I-13-mem) | LLM unreachable → consolidation still runs; scenario synthesis is silently skipped, logged |
+| **Loop Engine** (v0.8.0) | `loop_engine.py` | Karpathy-style autoresearch loop — the "Loop Proposer" hemisphere. Proposes one signature or policy change, replays the last N `mcp_events` through a side-effect-free shadow evaluator, scores baseline vs. candidate, commits or reverts. | Writing to `.py` files (I-15-mem, enforced at runtime via `_reject_python_targets`); auto-approving prompt changes | `policy_engine.py` import failure takes `loop_engine.py` — and `server.py`'s boot — down with it (unguarded, matching every other v0.8.0 module import) |
+| **Memory API** (v0.8.0) | `memory_api.py` | 12 Flask routes for memory/dream/loop management, registered via `register_memory_routes(app, dream_engine, loop_engine)` | Any write to `policies` or `memory_signatures` outside the Loop Engine's own scoring cycle | — |
+| **Event Ingester** (v0.8.0) | `event_ingester.py` | High-speed asynchronous batch writer — buffers spatial telemetry in a bounded RAM queue (max 1000), flushes to SQLite in transactions of 50 or every 0.5s | Evaluating threat — pure I/O, never blocks the gateway | Queue full → telemetry dropped, logged; never raises back to the caller |
+| **Topology Manager** (v0.8.0) | `topology_manager.py` | OS-level process lineage tracking via a recursive SQLite CTE. Propagates taint down an agent's full process tree; preserves screenshot evidence from the hot RAM disk | Evaluating threat; deciding whether to kill — only executes taint/evidence steps already decided | — |
+| **Watcher Daemon** (v0.8.0) | `watcher_daemon.py` | The kinetic actuator for spatial verdicts — suspends then kills a process tree via `psutil`, including OS-level children never tracked in ButterClaw's own SQLite topology (e.g. a bare `bash`/`curl` spawned outside the agent's registered PID) | Evaluating threat; identifying which PIDs to target | Orchestrator's own PID is cached at init and hardcoded-refused as a kill target, regardless of what the topology query returns |
+| **Dreamer Daemon** (v0.8.0) | `dreamer_daemon.py` | Offline, always-on (2s poll) consolidation loop — distills tainted/ended session trajectories into Cold Memory attractors via sliding N-grams and terminal-cascade slicing. Distinct from `dream_engine.py`: no idle detection, no LLM call, surface-tier only. | Idle detection; LLM calls; live (same-session) crystallization | — |
+| **Archiver Daemon** (v0.8.0) | `archiver_daemon.py` | Retention + RAM-disk sweeping — secures tainted-session screenshots to `/data/evidence_locker` before the 60-second volatile purge clears them, and monthly-archives + incrementally vacuums aged telemetry | — | — |
+| **TUI Execution Harness** (v0.8.0) | `tui_execution_harness.py` | Pseudo-TTY wrapper that bootstraps and monitors an agent process, registering it into the SQLite topology and routing its spatial actions through the Memory Engine | — | Graceful `cleanup()` on exit or interrupt — surgically kills the orphaned child and marks the session `TERMINATED`, no zombie PIDs |
 
 ---
 
@@ -112,6 +170,8 @@ ButterClaw operates across **seven trust zones**. Components communicate across 
 | **Physical Transport** | mcp_transport.py | Hardware Level | Enforces strict byte-size limits and UTF-8 validation before payloads hit the JSON parser, preventing buffer poisoning. |
 | **Credential Plane** | buttervault.py + OS keyring | Trusted | Master key never touches disk or environment variables. Only ButterVault and session key derivation in auth.py access the keyring |
 | **Policy Plane** | policy_engine.py | Trusted | Policies are configuration, not secrets. They survive Gibson by design. No `eval()`, `exec()`, or dynamic code execution — 15 safe operators only |
+| **Memory Plane** (v0.8.0) | memory_engine.py (deep tier), dream_engine.py | Trusted, read-only enrichment | Never triggers kinetic action directly — Deep Memory context is injected into the Guardian Brain prompt as enrichment only (I-12-mem). Only `sha256(raw_data)` persists; raw payloads never stored (I-10-mem). Dream Engine's `DREAM_DRY_RUN` is a hardcoded constant, not config-overridable, same pattern as Gibson's `DRY_RUN` check (I-13-mem) |
+| **Spatial Telemetry Plane** (v0.8.0) | memory_engine.py (surface tier), topology_manager.py, watcher_daemon.py | Untrusted input, trusted enforcement | Raw agent coordinates/keystrokes are untrusted data. A `BLOCK` verdict from the Memory Engine authorizes Topology Manager + Watcher Daemon to act **directly** — this is a separate, faster kinetic pathway from the Paranoia-Dial-mediated one below (see Four-Hemisphere Reasoning), with no LLM call and no Paranoia Dial check in the loop |
 
 ---
 
@@ -151,6 +211,68 @@ Unbounded string buffering is strictly prohibited in local MCP transport. All in
 
 ---
 
+## Memory & Cognition Invariants (v0.8.0)
+
+These govern `memory_engine.py`, `dream_engine.py`, and `loop_engine.py` specifically.
+They are numbered as a **separate series from the Core System Invariants above**
+(suffixed `-mem` in this document to avoid ambiguity) because they originated in the
+standalone v0.8 memory-engine design spec before that work was integrated into this
+architecture doc. **I-10-mem is not I-10 above** — they refer to unrelated
+properties (raw-data hashing vs. STDIO byte limits) and the numbering collision is
+a known documentation quirk, not an error; do not conflate them.
+
+**I-10-mem — No Raw Data Persists**
+No code path in `memory_engine.py` ever writes raw payload content to disk. Only
+`sha256(raw_data)` is stored, in both the deep tier (`memory_episodic.raw_data_hash`)
+and where the surface tier recomputes a hash to count same-session repeat
+occurrences for live crystallization.
+
+**I-11-mem — Memory Survives Gibson**
+`memory_episodic`, `memory_semantic`, `memory_signatures`, `dream_log`, and
+`loop_experiments` all survive the Gibson sequence, by the same reasoning as
+D-07 (policies survive Gibson): wiping learned behavioral memory during incident
+response would leave the system with no institutional knowledge upon recovery.
+
+**I-12-mem — Memory Context Is Read-Only**
+`retrieve_context()` and `format_context_for_prompt()` inject recalled memory into
+the Guardian Brain prompt as enrichment only. No code path in `memory_engine.py`
+triggers kinetic action; a memory record can inform the Brain's verdict but cannot
+itself cause a process termination or vault action.
+
+**I-13-mem — REM Dreaming Is Hardcoded Dry-Run**
+`dream_engine.py`'s `DREAM_DRY_RUN` is a literal Python constant (`= True`), not
+read from `cfg.DRY_RUN` or any environment variable — the same hardcoded-guard
+pattern as Gibson's `DRY_RUN` check (I-03). It cannot be flipped by an operator
+toggling the live-traffic dry-run gate; dreaming must never be able to take a real
+action, under any configuration.
+
+**I-14-mem — Dream Cycle Yields to Live Traffic**
+The Dream Engine re-checks for new `telemetry_events`/`mcp_events` activity between
+every step of a consolidation/REM cycle and aborts immediately (`status="interrupted"`
+in `dream_log`) if live traffic reappears — it never competes with a real request for
+the database or the LLM backend.
+
+**I-15-mem — Loop Proposer Cannot Touch Code**
+`loop_engine.py` may only propose changes to three artifact types: signature
+patterns (`default_signatures.json`), policy rules (the `policies` table via
+`policy_engine`'s own CRUD), and prompt text (`memory_engine.prompt_overrides`,
+staged only — see I-16-mem). No code path can write to a `.py` file. Enforced
+twice: structurally (no "write arbitrary file" operation exists in the public API)
+and at runtime (`_reject_python_targets()` raises on any `.py`-shaped target).
+
+**I-16-mem — Prompt Overrides Are Narrow and Human-Gated**
+A staged `prompt_overrides` row can only ever replace the identity/persona
+**preamble** sentence of the Guardian Brain's or Auditor's system prompt — never
+the mechanically-assembled paranoia-dial mode instructions, active-gate context, or
+strict JSON response schema that the rest of `server.py`'s parsing logic depends on.
+Writing a prompt override requires `admin` role (`POST /api/loop/prompts/<key>`);
+`loop_engine.py` itself never calls `set_prompt_override()` — every prompt proposal
+is forced to `status="needs_review"` regardless of `LOOP_DRY_RUN`, since there is no
+deterministic replay score for prompt quality the way there is for a regex or
+policy condition match.
+
+---
+
 ## Data Flow Walkthroughs
 
 ### Flow A — Live Log → Verdict → Action (Happy Path)
@@ -179,6 +301,37 @@ Unbounded string buffering is strictly prohibited in local MCP transport. All in
 6. `policy_rules` and `policy_events` are **not touched** — policies survive Gibson by design
 7. System is in credential-wiped state: no valid sessions, no valid API keys, vault cryptographically poisoned
 
+### Flow C — Spatial Telemetry → Memory Verdict → Kinetic Block (v0.8.0)
+
+This flow never calls `ask_guardian_agent()` — it is a fully separate, faster
+kinetic pathway decided entirely inside the Memory Engine.
+
+1. An AI agent's coordinates/keystrokes reach `POST /api/spatial/telemetry` (min role: `operator`)
+2. The gateway registers the `agent_id`/`session_id` into the SQLite topology if not already present (`INSERT OR IGNORE`)
+3. `memory_engine.evaluate_spatial_intent()` runs: **Fast Path** — check the proposed action's abstracted trajectory against the Cold Memory signature cache (O(1), refreshed every 5s); **Slow Path** (only if no signature match) — `SpatialHeuristics.evaluate_trajectory()` scores kinetic velocity, spatial jitter, and string entropy against the last 10 seconds of that session's telemetry
+4. `Event Ingester` logs the attempt to a RAM queue **before** any kinetic action is taken — the incident is on the record even if the process dies mid-block
+5. On `BLOCK`: the verdict is written to `memory_episodic` via `store()` (so it enters the same maturation/semantic lifecycle as every other verdict); if this exact trajectory has now recurred 3+ times within this same session, it crystallizes into a new Cold Memory signature (I-15-mem's live-crystallization path, tagged `live:` in `threat_category`)
+6. `Topology Manager.apply_kinetic_taint()` propagates taint down the agent's full process tree via a recursive CTE and returns the PIDs to terminate
+7. `Watcher Daemon.submit_kill_request()` suspends (freezing the process tree so it cannot fork children to evade termination), then kills each PID — including OS-level children never tracked in ButterClaw's own topology
+8. `Topology Manager.preserve_evidence()` moves any screenshots for the blocked session from the volatile RAM disk to `/data/evidence_locker` before the Archiver Daemon's 60-second sweep would otherwise delete them
+
+### Flow D — Dream Cycle (v0.8.0)
+
+1. `dream_engine.py`'s worker thread polls every `poll_interval_seconds` (default 60s); if the system has been idle ≥ `idle_threshold_minutes` (default 15), a cycle starts
+2. **Consolidation:** `memory_engine.run_maturation_tick()` recomputes `activation_strength` for every episodic record, promotes matured ones to the semantic graph, prunes stale ones, and decays low-confidence Cold Memory signatures
+3. The engine re-checks for live traffic (I-14-mem); if activity reappeared since the cycle started, it aborts immediately with `status="interrupted"`
+4. **REM synthesis** (only if an `llm_caller` was wired at construction): the top entities from the semantic graph are sent to the LLM asking it to imagine one plausible novel scenario combining two or more of them; the response is written to memory via `store(..., source="dream")` — never anything that resembles a real verdict (`verdict="SIMULATED"`, `confidence=0.0`)
+5. The cycle's stats are logged to `dream_log`, retrievable via `GET /api/dream/log`; `POST /api/dream/trigger` (operator role) can force step 2 onward immediately, still fully subject to I-13-mem/I-14-mem
+
+### Flow E — Loop Proposer Cycle (v0.8.0)
+
+1. `loop_engine.py`'s worker thread fires every `cycle_interval_hours` (default 6); `POST /api/loop/trigger` (operator role) can force this immediately
+2. The last `replay_window` (default 50) `tools/call` rows are loaded from `mcp_events` and converted into policy-engine-shaped evaluation contexts
+3. A proposal is generated — either from an injected `llm_caller` (constrained to signature-pattern changes only) or the built-in heuristic proposer (finds the signature scoring worst against the replay window and proposes a tighter anchor)
+4. The candidate is scored against the SAME replay contexts using a **side-effect-free shadow evaluator** — it reuses `policy_engine`'s own public `POLICY_OPERATORS`/`SCOPE_FIELDS`, but never mutates the live `COMPILED_SIGNATURES` list or the `policies` table while scoring; a concurrent real request is never evaluated against an untested candidate
+5. `baseline_score`, `candidate_score`, and `delta_score` are recorded via `memory_engine.record_loop_experiment()`
+6. **Gate:** if `LOOP_DRY_RUN` is true (the default — see I-15-mem), the experiment is recorded as `dry_run_only` and nothing changes; if false and `delta_score` clears `commit_threshold`, the change is committed directly to `default_signatures.json` or via `policy_engine.update_policy()`; prompt-type proposals are always `needs_review` regardless of `LOOP_DRY_RUN` (I-16-mem)
+
 ---
 
 ## Paranoia Dial — Response Levels
@@ -191,14 +344,33 @@ Unbounded string buffering is strictly prohibited in local MCP transport. All in
 
 > **Note:** `DRY_RUN=true` hard-blocks Level 3 destruction. Not overridable at runtime.
 
+> **Two independent kinetic pathways (v0.8.0):** the Paranoia Dial above governs
+> process termination decided by the **Guardian Brain** — an LLM verdict, gated by
+> `chain` + Paranoia level. Spatial telemetry verdicts (Flow C above) are a
+> **second, entirely separate pathway**: the Memory Engine decides `BLOCK`
+> directly from Cold Memory signature matches or spatial heuristics, with no LLM
+> call and no Paranoia Dial check anywhere in the loop — Topology Manager and
+> Watcher Daemon act immediately on that verdict. Both pathways can independently
+> terminate a process; neither one gates the other.
+
 ---
 
-## Dual-Hemisphere Reasoning
+## Four-Hemisphere Reasoning
 
-ButterClaw's LLM evaluation layer is not a single model call — it is two independent
-passes with opposing mandates, different temperatures, and different system prompts.
-The metaphor "dual-hemisphere" describes this functional split: one hemisphere is
-decisive and action-oriented, the other is skeptical and corrective.
+ButterClaw's LLM evaluation layer is not a single model call — as of v0.7.x it was two
+independent passes with opposing mandates, different temperatures, and different
+system prompts (the original "dual-hemisphere" architecture: one hemisphere decisive
+and action-oriented, the other skeptical and corrective). v0.8.0 adds two more,
+extending the metaphor to four hemispheres — one per Guardian Brain request, one
+30 seconds after every CRITICAL verdict, one on system idle, and one on a fixed
+schedule:
+
+| Hemisphere | Temp | Fires When | Mandate |
+| --- | --- | --- | --- |
+| Guardian Brain | `0.3` | Every request that clears `pre_brain` | Evaluate and propose action |
+| Auditor | `0.0` | 30s after every CRITICAL verdict | Was I wrong? |
+| Dream Weaver (v0.8.0) | `0.7` | Idle ≥ 15 min | What haven't I seen? |
+| Loop Proposer (v0.8.0) | `0.4` | Every 6 hours | How can I get better? |
 
 ### Hemisphere 1 — The Guardian Brain (`ask_guardian_agent()`)
 
@@ -236,13 +408,51 @@ the TUI Dashboard with an amber 🤔 indicator. No automatic reversal of kinetic
 occurs — the Auditor is a diagnostic instrument, not an undo mechanism. Reversing a
 Gibson sequence is a deliberate operator decision, not an automated one.
 
-### Why Two Calls, Not One
+### Hemisphere 3 — The Dream Weaver (`dream_engine.py`, v0.8.0)
 
-A single LLM call cannot simultaneously optimize for decisive action and skeptical
-review — these goals produce opposing prompt pressure. Combining them into one call
-typically produces hedged, low-confidence verdicts that underperform at both tasks.
-Separating them into two calls with explicit mandates, different temperatures, and a
-30-second temporal gap allows each hemisphere to operate at its natural optimum.
+**Mandate:** Consolidate what's been learned, and imagine what hasn't been seen yet.
+**Temperature:** `0.7` — the only hemisphere run warm, since scenario synthesis
+benefits from creative recombination rather than deterministic output.
+**Fires:** After the system has been idle ≥ 15 minutes (default), or on-demand via
+`POST /api/dream/trigger`.
+
+The Dream Weaver's cycle has two parts. First, unconditionally: `run_maturation_tick()`
+ages every episodic record's `activation_strength`, promotes matured ones into the
+semantic graph, prunes stale ones, and decays low-confidence Cold Memory signatures —
+consolidation work that exists independently of any LLM call. Second, only if an
+`llm_caller` is wired: it samples the most-observed entities from the semantic graph
+and asks the model to imagine one plausible novel attack scenario combining two or
+more of them — patterns the system has learned individually but never seen chained
+together. The result is written to memory as `source="dream"`, `verdict="SIMULATED"`,
+surfacing as a `[DREAM-PRIMED]` tag when later recalled into the Guardian Brain's
+context (I-12-mem: read-only enrichment, never a real verdict).
+
+### Hemisphere 4 — The Loop Proposer (`loop_engine.py`, v0.8.0)
+
+**Mandate:** Look at what's actually happened, and propose one concrete improvement.
+**Temperature:** `0.4` — moderate; consistent enough to produce a single well-formed
+proposal, warm enough to consider more than the most obvious fix.
+**Fires:** Every 6 hours (default), or on-demand via `POST /api/loop/trigger`.
+
+Adapted from Karpathy's autoresearch loop (`read → edit code → train 5min → eval →
+keep/revert`) with the "training" step replaced by a pure evaluation pass over the
+system's own history: `snapshot baseline_score → propose one signature or policy
+change → replay the last 50 mcp_events → compare scores → dry-run gate → commit or
+revert`. No model weights are ever touched — the eval corpus **is** the event ledger.
+Unlike the Dream Weaver's hardcoded dry-run, the Loop Proposer's dry-run
+(`LOOP_DRY_RUN`) is meant to be flipped once an operator trusts its proposal quality
+(see I-15-mem/I-16-mem for what it is permanently barred from touching regardless).
+
+### Why Four Calls, Not One
+
+A single LLM call cannot simultaneously optimize for decisive action, skeptical
+review, speculative imagination, and self-improvement — these are four different,
+often opposing, prompt pressures. Combining any two of them into one call typically
+produces hedged, low-confidence output that underperforms at every task it's asked to
+do at once. Separating them into four calls — each with an explicit mandate, its own
+temperature, and its own trigger condition (per-request, post-verdict, idle, and
+scheduled) — lets each hemisphere operate at its natural optimum instead of
+compromising for the others.
 
 ---
 
@@ -256,6 +466,14 @@ in isolation.
 
 On every call to `ask_guardian_agent()` and `run_self_audit()`, the server queries the
 Event Ledger for the 5 most recent successful MCP tool calls. These events are formatted into a `timeline_context` string and prepended to the user prompt sent to both LLM hemispheres. The model uses this window to answer the implicit question: *does the current event represent a departure from this agent's recent behavioral pattern?*
+
+> **Note (v0.8.0):** the Loop Proposer also reads `mcp_events`, but for a
+> fundamentally different purpose — not as live per-request context prepended to a
+> prompt, but as a **replay corpus** for scoring a proposed signature/policy change
+> after the fact (up to the last 50 `tools/call` rows, default). It never sees a
+> `timeline_context` string and never influences a live Guardian Brain or Auditor
+> verdict; it only evaluates whether a candidate change would have scored better or
+> worse against history.
 
 ---
 
@@ -275,6 +493,16 @@ Event Ledger for the 5 most recent successful MCP tool calls. These events are f
 | `oauth_config.py` | ~150 | OAuth provider registry (GitHub + generic), token revocation logic | `get_provider_config()` |
 | `config.py` | ~300 | Singleton config loader, `cfg` object, 26 fields / 9 categories | `cfg` (singleton), `ConfigError` |
 | `tui_dashboard.py` | ~350 | Read-only TUI operational view | `main()` |
+| `memory_engine.py` (v0.8.0) | ~1,900 | Unified Deep + Surface memory substrate — HOT/WARM/COLD tiers, activation maturation, spatial telemetry, Cold Memory signatures, `loop_experiments`/`prompt_overrides` tables | `store()`, `retrieve_context()`, `reconsolidate()`, `run_maturation_tick()`, `evaluate_spatial_intent()`, `ingest_telemetry_event()` |
+| `dream_engine.py` (v0.8.0) | ~450 | Idle-triggered consolidation + REM scenario synthesis — the Dream Weaver hemisphere | `DreamEngine.start()`, `.trigger_now()`, `._run_dream_cycle()` |
+| `loop_engine.py` (v0.8.0) | ~720 | Karpathy-style autoresearch loop — the Loop Proposer hemisphere | `LoopEngine.run_cycle()`, `SignatureArtifactAdapter`, `PolicyArtifactAdapter`, `PromptArtifactAdapter` |
+| `memory_api.py` (v0.8.0) | ~230 | 12 Flask routes for memory/dream/loop management | `register_memory_routes(app, dream_engine, loop_engine)` |
+| `event_ingester.py` (v0.8.0) | ~110 | High-speed async batch writer for spatial telemetry | `EventIngester.log_event()` |
+| `topology_manager.py` (v0.8.0) | ~110 | Process lineage tracking, taint propagation, evidence preservation | `TopologyManager.apply_kinetic_taint()`, `.preserve_evidence()` |
+| `watcher_daemon.py` (v0.8.0) | ~125 | Kinetic actuator — suspends and kills process trees via `psutil` | `WatcherDaemon.submit_kill_request()` |
+| `dreamer_daemon.py` (v0.8.0) | ~150 | Offline N-gram Cold Memory signature synthesis from tainted sessions | `DreamerConsolidationLoop.start_dreaming()` |
+| `archiver_daemon.py` (v0.8.0) | ~170 | Retention, RAM-disk sweeping, evidence securing | `ArchiverDaemon.start_archiving()` |
+| `tui_execution_harness.py` (v0.8.0) | ~215 | Pseudo-TTY agent bootstrap + spatial channel interception | `TUIExecutionHarness.bootstrap_agent()`, `.intercept_spatial_channel()` |
 | `capabilities.json` | — | Positive Security Model matrix defining agent profiles | Loaded by `policy_engine.py` |
 | `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
 | `nginx/` | — | TLS proxy — the internet-facing trust boundary | `nginx.conf` |
@@ -319,7 +547,7 @@ An allowlist would corrupt log entries and reduce the Brain's ability to analyze
 Wiping policies during incident response would leave the system defenseless upon recovery. Credential wipe + policy preservation allows immediate re-authentication and continued enforcement.
 
 **D-08 — Two LLM Calls Instead of One (Dual-Hemisphere Architecture)**
-A single prompt cannot simultaneously optimize for decisive threat response and skeptical false-positive review — combining these goals produces hedged output that underperforms at both.
+A single prompt cannot simultaneously optimize for decisive threat response and skeptical false-positive review — combining these goals produces hedged output that underperforms at both. *(v0.8.0 extended this same reasoning to a third and fourth hemisphere — Dream Weaver and Loop Proposer — each with its own mandate and trigger condition rather than folding more goals into the original two; see Four-Hemisphere Reasoning above.)*
 
 **D-09 — Drift Window is 5 Events, Success-Only**
 Five events is sufficient to reveal a multi-step attack sequence without flooding the prompt context window with noise.
@@ -333,6 +561,27 @@ To prevent credential exfiltration to untrusted endpoints, Google API keys are h
 **D-12 — Physical STDIO Firewall**
 Replaced unbounded string buffering with raw byte-level reads to enforce a hard physical memory boundary on incoming payloads. This prevents Out-Of-Memory (OOM) crashes before the JSON parser ever engages.
 
+**D-13 — One Merged Memory Engine, Not Two (v0.8.0)**
+Two independent v0.8 memory-engine designs existed in parallel: a Copilot-authored Deep Memory Engine (episodic/semantic consolidation) and a Gemini-authored Surface Memory Engine (spatial telemetry/signatures). Rather than choosing one, they were merged into a single `memory_engine.py` — the deep tier had no notion of raw telemetry, and the surface tier had no persistence beyond its signature cache and assumed tables (`telemetry_events`, `memory_signatures`) that didn't yet exist anywhere in the codebase. Merging let telemetry flow into the same episodic/semantic lifecycle as every other verdict, rather than maintaining two disconnected memory substrates.
+
+**D-14 — Canonical Schema Wins, Even Retroactively**
+When the merged memory engine's `memory_signatures` schema (`signature_id`/`hit_count`/...) turned out to differ from the schema `server.py`'s `init_db()` and `dreamer_daemon.py` had already committed to (`sig_id`/`behavioral_hash`/`confidence_score`/`discovered_at`), the memory engine was rebuilt to match the schema already in use, not the other way around — because `server.py` initializes the database first, its schema silently wins any `CREATE TABLE IF NOT EXISTS` race regardless of which was "more correct" in isolation.
+
+**D-15 — Live Crystallization Is Scoped to One Session**
+Zero-day heuristic hits are only crystallized into a permanent Cold Memory signature after 3+ repeats **within the same session** — never counted across unrelated sessions. Three different users independently tripping the same overzealous heuristic is treated as three coincidences, not one confirmed attack pattern; only sustained repetition from a single source earns a permanent, O(1)-fast-pathed blacklist entry.
+
+**D-16 — Two Different Dry-Run Postures, By Design**
+`dream_engine.py`'s `DREAM_DRY_RUN` is a hardcoded Python constant — dreaming must never take a real action, full stop, matching Gibson's `DRY_RUN` pattern (I-03). `loop_engine.py`'s `LOOP_DRY_RUN` is deliberately configurable (env-driven, defaults true) — the Loop Proposer's proposals are explicitly meant to go live once an operator trusts the proposal quality, per the original v0.8 design intent. The two safety postures look similar but encode different intentions and must not be unified into one pattern.
+
+**D-17 — Shadow Evaluation, Never Live Mutation, for Scoring**
+`loop_engine.py` scores a candidate signature/policy change using its own isolated evaluator (reusing `policy_engine`'s public `POLICY_OPERATORS`/`SCOPE_FIELDS` matching primitives) rather than temporarily swapping the live `COMPILED_SIGNATURES` list or writing a candidate into the live `policies` table and reverting. A real concurrent request must never be evaluated against an untested hypothesis, even for the fraction of a second a scoring pass would take.
+
+**D-18 — Prompt Overrides Cover Persona Only, Never the Contract**
+A staged `prompt_overrides` row can only replace the identity/persona preamble sentence of the Guardian Brain's or Auditor's system prompt. The paranoia-dial mode instructions, active-gate context, and strict JSON response schema remain hardcoded and unconditional — an admin-approved-but-careless prompt change must never be able to silently break `server.py`'s response parsing or drop a safety instruction.
+
+**D-19 — `register_X_routes(app)` Over Flask Blueprints**
+`memory_api.py` follows the same `register_memory_routes(app)` pattern `auth.py` established (a plain function taking the live Flask `app` object), rather than introducing Flask's `Blueprint` object as a one-off pattern not used anywhere else in the codebase — despite the original v0.8 design notes calling for "Blueprint routes." Functionally equivalent; consistent with what's already here.
+
 ---
 
 ## Extension Points
@@ -345,11 +594,15 @@ Replaced unbounded string buffering with raw byte-level reads to enforce a hard 
 | **Policy Operators** | Operator registry in `policy_engine.py` | Add to dispatch table — no `eval()`, must be an explicit handler |
 | **Signature Patterns** | `default_signatures.json` | Requires restart to recompile |
 | **RBAC Roles** | `ROLE_HIERARCHY` in `auth.py` | `infrastructure` is machine-to-machine only — do not issue to human operators |
+| **Prompt Personas** (v0.8.0) | `prompt_overrides` table via `POST /api/loop/prompts/<key>` | Only the identity/persona preamble is swappable per hemisphere (`guardian_brain_preamble`, `auditor_preamble`); the operational scaffolding around it is not — see D-18 |
+| **Loop Artifact Types** (v0.8.0) | `SignatureArtifactAdapter` / `PolicyArtifactAdapter` / `PromptArtifactAdapter` in `loop_engine.py` | Adding a fourth artifact type means adding a new adapter with its own `score()`/`commit()` — never bypass `_reject_python_targets()` (I-15-mem) |
+| **Dream Scenario Synthesis** (v0.8.0) | `llm_caller` callback injected into `DreamEngine` | Swap the model/prompt used for REM synthesis without touching `dream_engine.py`'s consolidation logic |
+| **Memory Tiers** (v0.8.0) | `memory_engine.py`'s `_SCHEMA` + tier-specific helper functions | A fourth tier would need its own `CREATE TABLE IF NOT EXISTS` (idempotent, matches existing pattern) and its own `store()`/`retrieve` pair — the existing tiers never assume there are exactly three |
 
 ---
 
 ## Related Documentation
 
-* [`API.md`](API.md) — Full endpoint reference (50 routes, 4-tier RBAC)
+* [`API.md`](API.md) — Full endpoint reference (63 routes, 4-tier RBAC)
 * [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
 * [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration

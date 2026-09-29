@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.7.0 — Production Container
+# ButterClaw v0.8.0 — Production Container
 # =============================================
 # Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
@@ -40,6 +40,20 @@ COPY index.html .
 COPY routing.html .
 COPY watcher.py .
 COPY tui_dashboard.py .
+
+# --- NEW v0.8.0 SPATIAL SOC FILES ---
+COPY memory_engine.py .
+COPY dream_engine.py .
+COPY loop_engine.py .
+COPY memory_api.py .
+COPY event_ingester.py .
+COPY topology_manager.py .
+COPY watcher_daemon.py .
+COPY dreamer_daemon.py .
+COPY archiver_daemon.py .
+COPY tui_execution_harness.py .
+# ------------------------------------
+
 COPY default_signatures.json .
 COPY capabilities.json .
 COPY mcp_stdio_transport.json .
