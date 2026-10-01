@@ -20,14 +20,14 @@ ButterClaw uses a tuned profile of `gemma4:e4b` optimised for security log analy
 Two steps are required — first pull the base model from the Ollama registry, then build
 the ButterClaw-optimised variant from `Modelfile.example`:
 
-​```bash
+```bash
 # Step 1 — pull the base model from the Ollama registry
 ollama pull gemma4:e4b
 
 # Step 2 — build the ButterClaw-optimised variant
 # Applies: 16k context window, temperature 0.3, top_p 0.9
 ollama create butterclaw-optimized -f Modelfile.example
-​```
+```
 
 **Modelfile.example parameters:**
 
@@ -65,7 +65,7 @@ The `docker-compose.yml` defines three services:
 
 ### Start the Stack
 
-​```bash
+```bash
 # Copy and edit config
 cp butterclaw.yml.example butterclaw.yml
 nano butterclaw.yml
@@ -79,7 +79,7 @@ docker compose up -d
 # Verify health
 docker compose ps
 curl -s https://localhost/api/health | python3 -m json.tool
-​```
+```
 
 ### nginx Configuration Files
 
@@ -161,7 +161,7 @@ python3 -m butterclaw.watcher --replay
 
 A single systemd unit file is provided: `systemd/butterclaw.service`.
 
-​```bash
+```bash
 # 1. Set up the virtual environment and install the package
 cd /opt/butterclaw
 python3 -m venv .venv
@@ -174,7 +174,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now butterclaw
 sudo systemctl status butterclaw
 journalctl -u butterclaw -f
-​```
+```
 
 ### systemd Security Hardening
 
@@ -196,7 +196,7 @@ journalctl -u butterclaw -f
 
 ## 6. Backup
 
-​```bash
+```bash
 # Run backup manually
 bash scripts/backup.sh
 
@@ -205,7 +205,7 @@ echo "0 3 * * * /opt/butterclaw/scripts/backup.sh" | crontab -
 
 # Override database path
 BUTTERCLAW_DB_PATH=/custom/path/butterclaw.db bash scripts/backup.sh
-​```
+```
 
 **What `backup.sh` includes:**
 
@@ -244,13 +244,13 @@ MCP transport status, active policy count, component health map.
 The auth gateway supports **4 roles**. When diagnosing access issues, check the role
 of the key in use:
 
-​```bash
+```bash
 # List all non-infrastructure API keys (requires admin Bearer token)
 curl -s -H "Authorization: Bearer <admin_key>" https://localhost/api/auth/keys
 
 # Check identity and role of the current token
 curl -s -H "Authorization: Bearer <any_key>" https://localhost/api/auth/whoami
-​```
+```
 
 > The `infrastructure` role (privilege level -1) is bootstrapped automatically from the
 > `BUTTERCLAW_API_KEY` environment variable at startup via
@@ -260,7 +260,7 @@ curl -s -H "Authorization: Bearer <any_key>" https://localhost/api/auth/whoami
 
 ### Watcher Diagnostics
 
-​```bash
+```bash
 # Check if watcher is running
 cat /opt/butterclaw/watcher.pid
 
@@ -269,17 +269,17 @@ python3 -c "import json; q = json.load(open('retry_queue.json')); print(f'{len(q
 
 # Replay the gateway log against the live API
 python3 -m butterclaw.watcher --replay
-​```
+```
 
 ### Docker Stack Diagnostics
 
-​```bash
+```bash
 docker compose ps
 docker compose logs -f butterclaw       # Flask API + Guardian Brain
 docker compose logs -f nginx            # TLS proxy
 docker compose logs -f butterclaw-ntfy  # ntfy push server (port 2586)
 docker compose exec butterclaw bash
-​```
+```
 
 ---
 
@@ -288,13 +288,13 @@ docker compose exec butterclaw bash
 The Docker stack bundles a self-hosted ntfy server as `butterclaw-ntfy` on port `2586`.
 This is the backend for the `ntfy` alert channel type — no external ntfy.sh account required.
 
-​```bash
+```bash
 # Subscribe to alerts via ntfy CLI
 ntfy subscribe http://localhost:2586/butterclaw
 
 # Or open the ntfy web UI
 open http://localhost:2586
-​```
+```
 
 When creating an ntfy channel via `POST /api/alerts/channels`, set:
 - `type`: `ntfy`
