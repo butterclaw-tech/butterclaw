@@ -1,7 +1,6 @@
 # =============================================
-# ButterClaw v0.8.0 — Production Container
+# ButterClaw v0.8.1 — Production Container
 # =============================================
-# Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
 # No root: runs as butterclaw user
 
@@ -18,48 +17,28 @@ RUN groupadd -r butterclaw && \
 
 WORKDIR /app
 
-# ── Dependencies stage ──
-FROM base AS deps
+# ── Application stage ──
+# 1. Copy and install dependencies first (caches this heavy layer)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ── Application stage ──
-FROM deps AS app
+# 2. Copy the packaging files and source code
+COPY pyproject.toml .
+COPY README.md .
+COPY src/ ./src/
 
-# Copy application code
-COPY server.py .
-COPY config.py .
-COPY auth.py .
-COPY policy_engine.py .
-COPY alert_dispatcher.py .
-COPY buttervault.py .
-COPY butterclaw_mcp.py .
-COPY mcp_transport.py .
-COPY oauth_config.py .
-COPY index.html .
-COPY routing.html .
-COPY watcher.py .
-COPY tui_dashboard.py .
-
-# --- NEW v0.8.0 SPATIAL SOC FILES ---
-COPY memory_engine.py .
-COPY dream_engine.py .
-COPY loop_engine.py .
-COPY memory_api.py .
-COPY event_ingester.py .
-COPY topology_manager.py .
-COPY watcher_daemon.py .
-COPY dreamer_daemon.py .
-COPY archiver_daemon.py .
-COPY tui_execution_harness.py .
-# ------------------------------------
-
+# Copy root JSON/HTML artifacts
 COPY default_signatures.json .
 COPY capabilities.json .
 COPY mcp_stdio_transport.json .
+COPY index.html .
+COPY routing.html .
 
-# Copy health check script
-COPY scripts/healthcheck.py /app/scripts/healthcheck.py
+# Copy scripts directory (for healthcheck, test_attack, etc.)
+COPY scripts/ ./scripts/
+
+# Install ButterClaw as a package (handles dependencies and links the module)
+RUN pip install --no-cache-dir .
 
 # Create data directory for DB volume mount and grant access to /app
 RUN mkdir -p /data && chown -R butterclaw:butterclaw /data /app
@@ -72,7 +51,7 @@ RUN pip install --no-cache-dir supervisor && \
     echo "user=butterclaw" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "[program:server]" >> /etc/supervisor/conf.d/butterclaw.conf && \
-    echo "command=python /app/server.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python -m butterclaw.server" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
@@ -81,7 +60,7 @@ RUN pip install --no-cache-dir supervisor && \
     echo "stdout_logfile_maxbytes=0" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "[program:watcher]" >> /etc/supervisor/conf.d/butterclaw.conf && \
-    echo "command=python /app/watcher.py" >> /etc/supervisor/conf.d/butterclaw.conf && \
+    echo "command=python -m butterclaw.watcher" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "autostart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "autorestart=true" >> /etc/supervisor/conf.d/butterclaw.conf && \
     echo "stderr_logfile=/dev/stderr" >> /etc/supervisor/conf.d/butterclaw.conf && \
@@ -95,7 +74,6 @@ ENV BUTTERCLAW_PORT=5000
 ENV BUTTERCLAW_DB_PATH=/data/butterclaw.db
 # Force keyring credentials to save inside the persistent volume
 ENV XDG_DATA_HOME=/data
-# ENV BUTTERCLAW_OLLAMA_URL=http://ollama:11434
 ENV BUTTERCLAW_INSTANCE_ID=butterclaw-docker
 
 # Health check

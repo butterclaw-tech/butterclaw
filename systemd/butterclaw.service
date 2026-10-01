@@ -1,17 +1,19 @@
 # =============================================
-# ButterClaw v0.7.0 — systemd Service Unit
+# ButterClaw v0.8.1 — systemd Service Unit
 # =============================================
 # Install:
+#   cd /opt/butterclaw
+#   python3 -m venv .venv
+#   ./.venv/bin/pip install .
 #   sudo cp systemd/butterclaw.service /etc/systemd/system/
 #   sudo cp .env /etc/butterclaw.env
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable butterclaw
-#   sudo systemctl start butterclaw
+#   sudo systemctl enable --now butterclaw
 #
 # Logs: journalctl -u butterclaw -f
 
 [Unit]
-Description=ButterClaw Kinetic SOC (v0.7.0 stdio transport)
+Description=ButterClaw, The Agentic SOC
 Documentation=https://github.com/butterclaw-tech/butterclaw
 After=network.target local-fs.target
 Wants=network-online.target
@@ -28,7 +30,8 @@ WorkingDirectory=/opt/butterclaw
 EnvironmentFile=/opt/butterclaw/.env
 
 # Execute the stdio transport listener
-ExecStart=/opt/butterclaw/venv/bin/python -m butterclaw.core.daemon --transport stdio
+# ExecStart=/opt/butterclaw/venv/bin/python -m butterclaw.core.daemon --transport stdio
+ExecStart=/opt/butterclaw/.venv/bin/python -m butterclaw.server
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Grant ONLY the specific capabilities needed to monitor and kill rogue agents

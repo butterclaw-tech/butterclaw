@@ -1,6 +1,8 @@
 """
-ButterClaw v0.6.4 — Log Watcher
+ButterClaw v0.6.4 — Log Watcher, migrated to src layout
 =================================================
+[v0.8.0] - configured for src layout
+
 [v0.6.3.1] - Full Docker Updated v0.6.3 version with minor logic flow bug fixes.
 | `watcher.py` | ~5 | ~5 | Auth compliance (Bearer tokens), boot warning logic fix. |
 - monitors bridged 'openclaw_gateway.log' in base directory
@@ -27,6 +29,10 @@ import atexit
 import json
 import signal
 from collections import deque
+from pathlib import Path
+from butterclaw.config import GATEWAY_LOG_PATH, RETRY_QUEUE_PATH
+import tempfile
+import os
 
 # =============================================
 # [M2] STRUCTURED LOGGING
@@ -39,9 +45,17 @@ logger = logging.getLogger("butterclaw.watcher")  # PATCHED I6: basicConfig move
 # =============================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
+# Delegate path math to config.py so it always hits /app in Docker
+LOG_FILE = GATEWAY_LOG_PATH
+PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
+
+#LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
+# Write the PID to a safe, cross-platform temporary directory (e.g., /tmp in Linux)
+#PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
+
+# PID_FILE = os.path.join(BASE_DIR, "watcher.pid") -> pre-src layout
+
 VPS_ENDPOINT = "http://127.0.0.1:5000/api/analyze"
-PID_FILE = os.path.join(BASE_DIR, "watcher.pid")
 
 # [L1] Retry queue persistent storage path
 RETRY_QUEUE_PATH = os.path.join(
@@ -255,7 +269,7 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO
     )
-    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.6.4")
+    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.8.0")
     parser.add_argument("--replay", action="store_true", help="Process entire log file from start")
     args = parser.parse_args()
 
@@ -269,7 +283,7 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    logger.info("🦞 ButterClaw Watcher v0.6.4 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    logger.info("🦞 ButterClaw Watcher v0.8.0 online. 👁️ Staring intensely at %s...", LOG_FILE)
     
     if not os.environ.get("BUTTERCLAW_API_KEY"):
         logger.warning("⚠️ BUTTERCLAW_API_KEY environment variable not found. Server will likely reject payloads (401).")

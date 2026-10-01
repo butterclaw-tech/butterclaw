@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0
+ButterClaw v0.8.1
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -42,17 +42,17 @@ import json
 import subprocess
 import sys
 
-from config import cfg
+from butterclaw.config import cfg
 _server_start_time = time.time()
 
-import buttervault
-import oauth_config
-import auth
-from auth import require_auth, register_auth_routes, bootstrap_admin_key, is_rate_limited_for_key
+import butterclaw.buttervault as buttervault
+import butterclaw.oauth_config as oauth_config
+import butterclaw.auth as auth
+from butterclaw.auth import require_auth, register_auth_routes, bootstrap_admin_key, is_rate_limited_for_key
 
 # [v0.6.1] Policy Engine Import
 try:
-    import policy_engine
+    import butterclaw.policy_engine as policy_engine
     POLICY_ENGINE_ENABLED = True
 except ImportError:
     POLICY_ENGINE_ENABLED = False
@@ -60,7 +60,7 @@ except ImportError:
 
 # [v0.6.2] Alert Dispatcher Import
 try:
-    import alert_dispatcher
+    import butterclaw.alert_dispatcher as alert_dispatcher
     ALERT_DISPATCHER_ENABLED = True
 except ImportError:
     ALERT_DISPATCHER_ENABLED = False
@@ -70,7 +70,7 @@ except ImportError:
 # APP SETUP
 # =============================================
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -757,14 +757,14 @@ mcp_manager = create_mcp_manager()
 # =============================================
 # [v0.8.0] SPATIAL DEFENSE DAEMONS
 # =============================================
-from memory_engine import MemoryEngine, get_prompt_override
-from event_ingester import EventIngester
-from topology_manager import TopologyManager
-from watcher_daemon import WatcherDaemon
-from dreamer_daemon import DreamerConsolidationLoop
-from archiver_daemon import ArchiverDaemon
-from dream_engine import DreamEngine
-from loop_engine import LoopEngine
+from butterclaw.memory_engine import MemoryEngine, get_prompt_override
+from butterclaw.event_ingester import EventIngester
+from butterclaw.topology_manager import TopologyManager
+from butterclaw.watcher_daemon import WatcherDaemon
+from butterclaw.dreamer_daemon import DreamerConsolidationLoop
+from butterclaw.archiver_daemon import ArchiverDaemon
+from butterclaw.dream_engine import DreamEngine
+from butterclaw.loop_engine import LoopEngine
 # NOTE: loop_engine.py itself does `import policy_engine as pe` unconditionally
 # (its shadow evaluator and PolicyArtifactAdapter need policy_engine's public
 # POLICY_OPERATORS/SCOPE_FIELDS/create_policy/update_policy). Unlike the
@@ -1001,7 +1001,7 @@ loop_engine.start()
 # the live dream_engine/loop_engine instances just constructed above, not
 # just their classes — same reason the Dream Weaver / Loop Proposer wiring
 # itself lives down here rather than in the SPATIAL DEFENSE DAEMONS block.
-from memory_api import register_memory_routes
+from butterclaw.memory_api import register_memory_routes
 register_memory_routes(app, dream_engine, loop_engine)
 
 # =============================================
@@ -1220,16 +1220,18 @@ def run_self_audit(original_threat):
 # =============================================
 # FRONTEND DASHBOARD ROUTES
 # =============================================
+from butterclaw.config import PROJECT_ROOT
+
 # This function handles BOTH the root URL and /index.html
 @app.route('/')
 @app.route('/index.html')
 def serve_index():
-    return send_from_directory(BASE_DIR, 'index.html')
+    return send_from_directory(PROJECT_ROOT, 'index.html')
 
 # This separate function handles ONLY /routing.html
 @app.route('/routing.html')
 def serve_routing():
-    return send_from_directory(BASE_DIR, 'routing.html')
+    return send_from_directory(PROJECT_ROOT, 'routing.html')
 
 # =============================================
 # API ROUTES

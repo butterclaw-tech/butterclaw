@@ -4,11 +4,13 @@ __pycache__
 *.pyc
 *.pyo
 *.db
+src/*.egg-info
 data/
 .env
 backups/
 nginx/certs/
 *.md
+!README.md
 LICENSE
 .dockerignore
 docker-compose*.yml

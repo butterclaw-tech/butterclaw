@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.5 — The ButterVault
+ButterClaw v0.8.1 — The ButterVault
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
@@ -20,14 +20,7 @@ import datetime
 # Set up Vault-specific logging
 logger = logging.getLogger("butterclaw.vault")
 
-# Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT
 
 # OS Native Keyring Identifiers
 KEYRING_SERVICE = "butterclaw_sentinel"
@@ -296,7 +289,7 @@ def butter_keys(provider=None):
     try:
         import requests as http_req
         import base64
-        from oauth_config import OAUTH_PROVIDERS
+        from butterclaw.oauth_config import OAUTH_PROVIDERS
         
         tokens_to_revoke = []
         conn = _get_db()
@@ -374,7 +367,7 @@ def butter_keys(provider=None):
 
     # Destroy API key hashes — invalidates all auth
     try:
-        import auth
+        import butterclaw.auth as auth
         auth.destroy_all_api_keys()
     except ImportError:
         pass  # auth module not present (pre-v0.6.0 compat)

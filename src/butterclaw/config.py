@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Configuration Module
+ButterClaw v0.8.1 — Configuration Module
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -25,7 +25,7 @@ Design decisions:
   - Diagnostic mode: `python config.py` prints resolved config
 
 Usage:
-  from config import cfg
+  from butterclaw.config import cfg
 
   db_path = cfg.DB_PATH
   port = cfg.PORT
@@ -45,7 +45,22 @@ Integration points (server.py, auth.py, policy_engine.py,
 import os
 import sys
 import logging
+from pathlib import Path
 
+# Anchors to repo root: <root>/src/butterclaw/config.py -> <root>
+# PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Anchor to the Current Working Directory (/app in Docker, repo root locally)
+# Allows an environment variable override just in case.
+PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path.cwd())).resolve()
+
+# Canonical Root File Paths
+CAPABILITIES_PATH = PROJECT_ROOT / "capabilities.json"
+DEFAULT_SIGNATURES_PATH = PROJECT_ROOT / "default_signatures.json"
+RETRY_QUEUE_PATH = PROJECT_ROOT / "retry_queue.json"
+DB_PATH = PROJECT_ROOT / "butterclaw.db"
+GATEWAY_LOG_PATH = PROJECT_ROOT / "openclaw_gateway.log"
+EVIDENCE_LOCKER_DIR = PROJECT_ROOT / "data" / "evidence_locker"
 logger = logging.getLogger("butterclaw.config")
 
 
@@ -211,14 +226,15 @@ class ButterClawConfig:
         self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
         # ── Load .env file (won't override existing env vars) ──
-        dotenv_path = os.path.join(self.BASE_DIR, ".env")
+        #dotenv_path = os.path.join(self.BASE_DIR, ".env")
+        dotenv_path = str(PROJECT_ROOT / ".env")
         self._dotenv_loaded = _load_dotenv(dotenv_path)
         self._dotenv_path = dotenv_path if os.path.isfile(dotenv_path) else None
 
         # ── Paths ──
         self.DB_PATH = _env_str(
             "DB_PATH",
-            os.path.join(self.BASE_DIR, "butterclaw.db"),
+            str(PROJECT_ROOT / "butterclaw.db"),
         )
         self.MCP_SCRIPT = _env_str(
             "MCP_SCRIPT",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.0 — Spatial API Test - Tests All 4 Spatial Primitives + Cold Memory Detection
+ButterClaw v0.8.1 — Spatial API Test - Tests All 4 Spatial Primitives + Cold Memory Detection
 """
 
 import requests
@@ -8,24 +8,31 @@ import time
 import random
 import uuid
 import os
+import sys
+from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_auth_key():
-    """Zero-dependency environment scraper to extract the API key."""
-    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-    try:
-        with open(env_path, 'r') as f:
+    """Environment scraper to extract the API key via the package config."""
+    # 1. Check environment (config.py automatically loads the .env into os.environ)
+    api_key = os.environ.get("BUTTERCLAW_API_KEY")
+    if api_key:
+        return api_key
+
+    # 2. Bulletproof fallback using the canonical root anchor
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        with open(env_path, 'r', encoding="utf-8") as f:
             for line in f:
+                line = line.strip()
                 if line.startswith('BUTTERCLAW_API_KEY='):
                     return line.split('=', 1)[1].strip().strip('"').strip("'")
-    except FileNotFoundError:
-        pass
     return None
 
 API_KEY = get_auth_key()
 
 if not API_KEY:
-    print("❌ Error: BUTTERCLAW_API_KEY not found in .env")
-    exit(1)
+    print("❌ Error: BUTTERCLAW_API_KEY not found in environment or .env")
+    sys.exit(1)
 
 URL = "http://localhost/api/spatial/telemetry"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}

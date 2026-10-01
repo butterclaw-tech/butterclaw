@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.1 — Alert Dispatcher
+ButterClaw v0.8.1 — Alert Dispatcher
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -48,7 +48,7 @@ import smtplib
 from email.mime.text import MIMEText
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from config import cfg
+from butterclaw.config import cfg
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("butterclaw.alert")
@@ -134,15 +134,16 @@ AUTH_FAILURE_WINDOW = cfg.AUTH_FAILURE_WINDOW
 # =============================================
 # DATABASE
 # =============================================
-
 # Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+#try:
+#    from butterclaw.config import cfg
+#    DB_PATH = cfg.DB_PATH
+#except ImportError:
+#    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+
+from butterclaw.config import DB_PATH
 
 _db_lock = threading.Lock()
 
@@ -1205,7 +1206,7 @@ def bootstrap_infrastructure_alerts():
 
 def register_alert_routes(app):
     try:
-        from auth import require_auth
+        from butterclaw.auth import require_auth
     except ImportError:
         logger.warning("auth module not available — alert routes will be unprotected")
         def require_auth(min_role="viewer"):
@@ -1394,9 +1395,12 @@ if __name__ == "__main__":
     print("=" * 60)
 
     results = {"passed": 0, "failed": 0}
+
+    # Define BASE_DIR locally just for the test scope
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     test_db = os.path.join(BASE_DIR, 'butterclaw_test_alert.db')
 
-    import alert_dispatcher
+    import butterclaw.alert_dispatcher as alert_dispatcher
     alert_dispatcher.DB_PATH = test_db
     globals()['DB_PATH'] = test_db
 

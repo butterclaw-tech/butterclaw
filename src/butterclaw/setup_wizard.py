@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw Setup Wizard — ButterClaw v0.8.0
+ButterClaw Setup Wizard — ButterClaw v0.8.1 - modern src layout
 Interactively generates a .env configuration file.
 
 Usage:
@@ -19,6 +19,10 @@ import textwrap
 import datetime
 from typing import Optional
 from pathlib import Path
+from butterclaw.config import PROJECT_ROOT
+
+ENV_EXAMPLE_PATH = PROJECT_ROOT / "env.example"
+ENV_TARGET_PATH = PROJECT_ROOT / ".env"
 
 
 # ---------------------------------------------------------------------------
@@ -677,10 +681,10 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
 
     elif deploy == "baremetal":
         _safe_print(f"  {bold(str(step)+'.')} Install Python dependencies:")
-        _safe_print(f"       {dim('pip install -r requirements.txt')}")
+        _safe_print(f"       {dim('pip install -e .')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Start the server:")
-        _safe_print(f"       {dim('python server.py')}")
+        _safe_print(f"       {dim('python -m butterclaw.server.py')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Your {yellow('bootstrap admin API key')} is safely stored in your .env file.")
         _safe_print(f"       {dim('Keep it secret. Keep it safe.')}")

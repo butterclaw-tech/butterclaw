@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
+| **v0.8.1** | The Package Architecture Update | 2026-10-01 | Formal `src/` layout migration, `pyproject.toml` packaging, universal `/app` path anchoring, and database splintering resolution. |
 | **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-29 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
 | **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
@@ -32,6 +33,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.8.1] - The Package Architecture Update (src/ Layout) - 2026-10-01
+
+**Files Changed:** `.dockerignore`, `Dockerfile`, `alert_dispatcher.py`, `auth.py`, `buttervault.py`, `butterclaw_mcp.py`, `config.py`, `server.py`, `setup_wizard.py`, `loop_engine.py`, `mcp_transport.py`, `policy_engine.py`, `watcher.py`, `index.html`, `routing.html`, `scripts/add_rule.py`, `scripts/test_mcp.py`, `scripts/test_dual_memory.py`, `scripts/test_spatial.py`, `test_spatial_fuzzer.py`, `docs/ARCHITECTURE.md`, `docs/DEPLOYMENT.md`, `systemd/butterclaw.service`, `CONTRIBUTING.md`, `CHANGELOG.md`, `README.md`
+**Files Added:** `pyproject.toml`
+**New runtime dependencies:** 0
+
+### Added
+- **Global Package Registration:** Formalized ButterClaw as an installed Python package via `pyproject.toml`, eliminating flat-folder execution and allowing global namespace imports (`from butterclaw import ...`) across all environments.
+- **Universal Configuration Anchor:** Upgraded `config.py` to act as the single source of truth for all filesystem paths, firmly anchoring the application to `/app` when running inside the Docker container. 
+
+### Changed
+- **`src/` Layout Migration:** Relocated all application code into a professional `src/butterclaw/` directory structure, successfully decoupling the source code from its physical installation directory.
+- **Absolute Import Refactor:** Purged brittle `import module as mod` alias patterns across the daemons and engines, replacing them with strict absolute imports to eradicate circular dependency and resolution crashes.
+- **Diagnostic Scoping:** Quarantined `BASE_DIR` fallback logic strictly to the `if __name__ == "__main__":` diagnostic blocks at the bottom of core files, preventing test environments from polluting production path resolution.
+- **Utility Script Pathing:** Standardized all live-fire and diagnostic scripts (`add_rule.py`, `test_mcp.py`, `test_dual_memory.py`, `test_spatial.py`) to extract API keys dynamically via the unified `butterclaw.config` module, eliminating brittle `__file__` directory math.
+- **Systemd Service Execution:** Updated the `butterclaw.service` unit file to execute the application using the new virtual environment's isolated Python binary (`.venv/bin/python`).
+- **Documentation Overhaul:** Updated `ARCHITECTURE.md` component maps, `CONTRIBUTING.md` developer setups, and `DEPLOYMENT.md` operational instructions to fully document the new `src/` layout, `.venv` requirements, and `python -m` execution syntax.
+
+### Fixed
+- **Database Splintering (`butterclaw.db`):** Eradicated legacy `try/except ImportError` blocks that were quietly failing inside the container's `site-packages` directory. All SQL reads and writes now perfectly funnel into the singular, shared `/data/butterclaw.db` volume.
+- **Arsenal Fail-Closed Pathing (`policy_engine.py`):** Fixed a path resolution bug that caused the Policy Engine to lock down and run without the Capability Matrix or Zero-Day Arsenal because it was searching the Python system library folder for the JSON artifacts.
+- **Dashboard 404 Void (`server.py`):** Re-anchored Flask's `send_from_directory` routes to the universal `PROJECT_ROOT`, restoring access to `index.html` and `routing.html` on the web server.
+- **Loop Engine Adapter Hijack (`loop_engine.py`):** Implemented facade aliases in the Policy Engine to maintain backward compatibility with the Loop Engine's artifact adapters without breaking the new container path math.
 
 ---
 

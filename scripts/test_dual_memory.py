@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.0 — Dual Memory Engine Integration Test
+ButterClaw v0.8.1 — Dual Memory Engine Integration Test
 Validates the Surface Memory (Live Crystallization), Dream Weaver, and Loop Proposer.
 """
 
@@ -16,18 +16,20 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ---------------------------------------------------------
 # Blue Team Frictionless Auth Setup 💙🐳
 # ---------------------------------------------------------
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
+# ---------------------------------------------------------
+from butterclaw.config import cfg, PROJECT_ROOT
 
 API_KEY = os.environ.get("BUTTERCLAW_API_KEY")
 
-if not API_KEY and os.path.exists(ENV_PATH):
-    with open(ENV_PATH, "r") as f:
-        for line in f:
-            if line.startswith("BUTTERCLAW_API_KEY="):
-                API_KEY = line.strip().split("=", 1)[1].strip("\"'")
-                break
+if not API_KEY:
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("BUTTERCLAW_API_KEY="):
+                    API_KEY = line.split("=", 1)[1].strip().strip("\"'")
+                    break
 
 if not API_KEY:
     print("❌ FATAL: Could not find BUTTERCLAW_API_KEY in environment or .env file.")

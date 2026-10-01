@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.0 — MCP Transport Abstraction Layer
+ButterClaw v0.7.0 — MCP Transport Abstraction Layer - v0.8.1 pathing
 =====================================================================
 Provides transport-agnostic I/O for the MCP server. The protocol
 handler (ButterClawMCPServer) doesn't care how bytes arrive — it
@@ -10,7 +10,7 @@ Two transports:
   - SSETransport:   HTTP POST + Server-Sent Events (network-accessible)
 
 Usage:
-  from mcp_transport import StdioTransport, SSETransport
+  from butterclaw.mcp_transport import StdioTransport, SSETransport
 
   transport = StdioTransport()       # or SSETransport(port=5001)
   transport.start()
@@ -32,7 +32,9 @@ import os
 from abc import ABC, abstractmethod
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
-from config import cfg
+#from butterclaw.config import cfg
+
+from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT
 
 logger = logging.getLogger("butterclaw.transport")
 
@@ -98,13 +100,13 @@ class StdioTransport(BaseTransport):
         
         # Load STDIO Firewall constraints
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_stdio_transport.json")
-            if os.path.exists(config_path):
+            config_path = PROJECT_ROOT / "mcp_stdio_transport.json"
+            if config_path.exists():
                 with open(config_path, "r") as f:
                     data = json.load(f)
                     if "stdio_constraints" in data:
                         self._constraints.update(data["stdio_constraints"])
-                logger.info(f"🛡️ [Transport] STDIO Firewall armed (Max: {self._constraints['max_payload_bytes']} bytes, Strict UTF-8: {self._constraints['enforce_utf8_strict']})")
+                logger.info(f"🛡️️ [Transport] STDIO Firewall armed (Max: {self._constraints['max_payload_bytes']} bytes, Strict UTF-8: {self._constraints['enforce_utf8_strict']})")
         except Exception as e:
             logger.warning(f"⚠️ [Transport] Failed to load stdio constraints, using defaults: {e}")
 

@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — The Claws (MCP Execution Layer)
+ButterClaw v0.8.1 — The Claws (MCP Execution Layer)
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.
@@ -25,6 +25,8 @@ Changelog:
            - SSE transport runs a threaded HTTP server (stdlib, zero new deps)
            - stdio remains the default for local child process mode
            - Protocol logic unchanged — only I/O layer refactored
+  [v0.8.1] The Package Architecture Update (src/ Layout) 
+           - Import updated for src layout refactor
 
 *** KINETIC OS ACTIONS REMAIN IN DRY RUN / SIMULATION MODE ***
 """
@@ -38,7 +40,7 @@ import os
 import platform
 import socket
 
-from mcp_transport import create_transport
+from butterclaw.mcp_transport import create_transport
 
 # =====================================================================
 # LOGGING — strictly stderr to protect the JSON-RPC stdout pipe

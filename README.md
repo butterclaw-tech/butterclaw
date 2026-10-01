@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
   </a>
   <a href="CHANGELOG.md">
-  <img src="https://img.shields.io/badge/version-0.8.0-navy.svg">
+  <img src="https://img.shields.io/badge/version-0.8.1-navy.svg">
   </a>
   <a href="https://butterclaw.tech">
   <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
@@ -143,13 +143,16 @@ Requires: [Docker](https://docs.docker.com/get-docker/) · Python 3.8+ · (Optio
 git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw
 
-# 1. Run the Interactive Wizard (Auto-generates your .env and infrastructure keys)
-python setup_wizard.py
+# 1. Install ButterClaw in editable mode
+pip install -e .
 
-# 2. Ignite the Exoskeleton (if deploying via Docker)
+# 2. Run the Interactive Wizard (Auto-generates your .env and infrastructure keys)
+python -m butterclaw.setup_wizard
+
+# 3. Ignite the Exoskeleton (if deploying via Docker)
 docker compose up -d --build
 
-# 3. Launch the live TUI dashboard
+# 4. Launch the live TUI dashboard
 ./dash
 
 ```
@@ -223,7 +226,7 @@ This test validates ButterClaw's continuous learning architecture without requir
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Four-hemisphere reasoning, 3-tier memory model, invariants D-01 through D-19 |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Four-hemisphere reasoning, 3-tier memory model, invariants D-01 through D-19 |
 | [`docs/API.md`](docs/API.md) | All 63 endpoints, roles, request/response shapes, memory routes |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker, systemd, bare-metal, nginx TLS, backup/restore |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | OWASP ASI mapping, threat model |
@@ -251,10 +254,12 @@ If you ship something that lands, your name goes here. Read [`CONTRIBUTING.md`](
 
 Apache 2.0 — see [`LICENSE`](LICENSE).
 
+ButterClaw Tech © 2026
+
 ---
 
 <p align="center">
-<strong>🦞 ButterClaw v0.8.0 — The Agentic SOC (Dual Memory Engine) 🦞</strong><br>
+<strong>🦞 ButterClaw v0.8.1 — The Agentic SOC (Dual Memory Engine - src Layout) 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>The Sentinel never goes silent. We watch the room.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>

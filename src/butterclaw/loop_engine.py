@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8 — Loop Engine (Karpathy Autoresearch Loop / Loop Proposer)
+ButterClaw v0.8.1 — Loop Engine (Karpathy Autoresearch Loop / Loop Proposer)
 ============================================================================
 The last of the three modules the original v0.8 design called for
 (memory_engine.py + dream_engine.py were built first). Four-Hemisphere role:
@@ -80,8 +80,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import memory_engine as mem
-import policy_engine as pe
+from butterclaw import memory_engine as mem
+from butterclaw import policy_engine as pe
 
 log = logging.getLogger("butterclaw.loop")
 log.setLevel(logging.INFO)

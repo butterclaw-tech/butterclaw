@@ -1,23 +1,36 @@
+#!/usr/bin/env python3
+"""
+ButterClaw v0.8.1 — Test MCP Integration
+Live Kinetic Integration Test. This test serves a highly specific and valuable purpose: 
+it tests the entire end-to-end chain from the Auth Gateway through the Docker bridge 
+and down into the physical STDIO firewall.
+"""
+
 import urllib.request
 import json
 import os
 import sys
+import os
+from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_api_key():
-    """Extracts the live API key directly from the .env file."""
-    # Navigate up one directory from scripts/ to the project root
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-    
-    try:
-        with open(env_path, 'r') as f:
+    """Extracts the live API key directly from the .env file via package config."""
+    # 1. Check environment
+    api_key = os.environ.get("BUTTERCLAW_API_KEY")
+    if api_key:
+        return api_key
+
+    # 2. Check .env via canonical root anchor
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        with open(env_path, 'r', encoding="utf-8") as f:
             for line in f:
+                line = line.strip()
                 if line.startswith('BUTTERCLAW_API_KEY='):
-                    return line.strip().split('=', 1)[1].strip('"\'')
-    except FileNotFoundError:
-        pass
-    
-    # Fallback to OS environment or the default bootstrap key
-    return os.environ.get('BUTTERCLAW_API_KEY', 'dev-bootstrap-key-change-me')
+                    return line.split('=', 1)[1].strip().strip('"\'')
+                    
+    # 3. Fallback to the default bootstrap key
+    return 'dev-bootstrap-key-change-me'
 
 def main():
     api_key = get_api_key()

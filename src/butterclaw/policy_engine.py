@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.1 — Policy Engine
+ButterClaw v0.8.1 — Policy Engine
 ===================================
 Deterministic guardrails for the probabilistic Brain.
 
@@ -41,6 +41,7 @@ import re
 import uuid
 import threading
 import logging
+import butterclaw.config as cfg
 
 logger = logging.getLogger("butterclaw.policy")
 
@@ -70,17 +71,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # =============================================
 # CAPABILITY MATRIX (v0.7.0 POSITIVE SECURITY)
 # =============================================
-CAPABILITIES_FILE = os.path.join(BASE_DIR, "capabilities.json")
+from butterclaw.config import CAPABILITIES_PATH
+
+CAPABILITIES_FILE = CAPABILITIES_PATH # <-- alias for loop_engine
 CAPABILITY_MATRIX = None
 
 def load_capabilities():
     """Loads the positive security model matrix from disk."""
     global CAPABILITY_MATRIX
-    if not os.path.exists(CAPABILITIES_FILE):
-        logger.warning(f"⚠️ No capabilities.json found at {CAPABILITIES_FILE}. Tool execution will default to strict fail-closed.")
+    if not os.path.exists(CAPABILITIES_PATH):
+        logger.warning(f"⚠️ No capabilities.json found at {CAPABILITIES_PATH}. Tool execution will default to strict fail-closed.")
         return
     try:
-        with open(CAPABILITIES_FILE, "r") as f:
+        with open(CAPABILITIES_PATH, "r") as f:
             CAPABILITY_MATRIX = json.load(f)
         logger.info("🛡️ Capability Matrix loaded: Positive security model armed.")
     except Exception as e:
@@ -126,18 +129,20 @@ def validate_tool_skill(active_model, tool_name, matrix):
 # =============================================
 # ZERO-DAY ARSENAL (STATIC SIGNATURES)
 # =============================================
-SIGNATURE_FILE = os.path.join(BASE_DIR, "default_signatures.json")
+from butterclaw.config import DEFAULT_SIGNATURES_PATH
+
+SIGNATURE_FILE = DEFAULT_SIGNATURES_PATH # <-- alias for loop_engine
 COMPILED_SIGNATURES = []
 
 def load_signatures():
     """Loads and pre-compiles the JSON regex signatures into memory."""
     global COMPILED_SIGNATURES
-    if not os.path.exists(SIGNATURE_FILE):
-        logger.warning("⚠️ No default_signatures.json found. Running without zero-day Arsenal.")
+    if not os.path.exists(DEFAULT_SIGNATURES_PATH):
+        logger.warning(f"⚠️ No default_signatures.json found at {DEFAULT_SIGNATURES_PATH}. Running without zero-day Arsenal.")
         return
 
     try:
-        with open(SIGNATURE_FILE, "r") as f:
+        with open(DEFAULT_SIGNATURES_PATH, "r") as f:
             data = json.load(f)
             signatures = data.get("signatures", [])
             
@@ -161,12 +166,7 @@ load_signatures()
 # =============================================
 # DATABASE
 # =============================================
-
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+from butterclaw.config import DB_PATH
 
 _db_lock = threading.Lock()
 

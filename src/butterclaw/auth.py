@@ -1,5 +1,5 @@
 """
-ButterClaw v0.7.1 — Authentication & Authorization Module
+ButterClaw v0.8.1 — Authentication & Authorization Module
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
@@ -33,13 +33,20 @@ import logging
 import queue
 from functools import wraps
 from collections import defaultdict, deque
-
 from flask import request, jsonify, Response
 
 logger = logging.getLogger("butterclaw.auth")
 
-# Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Primary import from unified config
+from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT
+
+SESSION_TTL = getattr(cfg, "SESSION_TTL", 3600)
+ROLE_RATE_LIMITS = {
+    "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+    "admin":          getattr(cfg, "AUTH_RATE_ADMIN", 100),
+    "operator":       getattr(cfg, "AUTH_RATE_OPERATOR", 60),
+    "viewer":         getattr(cfg, "AUTH_RATE_VIEWER", 30),
+}
 
 # try:
 #     from config import cfg
@@ -47,25 +54,25 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # except ImportError:
 #     DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
-try:
-    from config import cfg
-    DB_PATH = cfg.DB_PATH
-    SESSION_TTL = cfg.SESSION_TTL
-    ROLE_RATE_LIMITS = {
-        "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
-        "admin":          cfg.AUTH_RATE_ADMIN,
-        "operator":       cfg.AUTH_RATE_OPERATOR,
-        "viewer":         cfg.AUTH_RATE_VIEWER,
-    }
-except ImportError:
-    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
-    SESSION_TTL = 3600
-    ROLE_RATE_LIMITS = {
-        "infrastructure": 1000,
-        "admin":          100,
-        "operator":       60,
-        "viewer":         30,
-    }
+#try:
+#    from butterclaw.config import cfg
+#    DB_PATH = cfg.DB_PATH
+#    SESSION_TTL = cfg.SESSION_TTL
+#    ROLE_RATE_LIMITS = {
+#        "infrastructure": getattr(cfg, "AUTH_RATE_INFRASTRUCTURE", 1000),
+#        "admin":          cfg.AUTH_RATE_ADMIN,
+#        "operator":       cfg.AUTH_RATE_OPERATOR,
+#        "viewer":         cfg.AUTH_RATE_VIEWER,
+#    }
+#except ImportError:
+#    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
+#    SESSION_TTL = 3600
+#    ROLE_RATE_LIMITS = {
+#        "infrastructure": 1000,
+#        "admin":          100,
+#        "operator":       60,
+#        "viewer":         30,
+#    }
 
 # =============================================
 # CONSTANTS

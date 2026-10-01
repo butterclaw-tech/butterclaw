@@ -1,36 +1,30 @@
 #!/usr/bin/env python3
+"""
+ButterClaw v0.8.1 — Add Rule
+adds a new rule to the Policy Engine via the Nginx gateway.
+"""
 import json
 import os
 import urllib.error
 import urllib.request
 import sys
+from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_auth_key():
-    """
-    Safely extract the ButterClaw API key directly from the .env file.
-    Uses EAFP (Easier to Ask for Forgiveness than Permission) to handle missing files.
-    """
-    # Build safe theoretical paths for the script to scout
-    possible_paths = [
-        ".env",
-        os.path.join(os.path.dirname(__file__), "..", ".env"),
-        os.path.join(os.path.dirname(__file__), ".env"),
-    ]
+    # 1. Check environment (config.py automatically loads the .env into os.environ for us)
+    api_key = os.environ.get("BUTTERCLAW_API_KEY")
+    if api_key:
+        return api_key
 
-    for env_path in possible_paths:
-        try:
-            # Kick the door down! Try to open it without asking for permission first.
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    cleaned = line.strip()
-                    if cleaned.startswith("BUTTERCLAW_API_KEY="):
-                        key = cleaned.split("=", 1)[1].strip().strip("\"'")
-                        if key:
-                            return key
-        except FileNotFoundError:
-            # If the file wasn't there, silently shrug and move to the next path
-            continue
-
+    # 2. Bulletproof fallback using the canonical root anchor
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("BUTTERCLAW_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip("\"'")
+    
     return None
 
 def main():

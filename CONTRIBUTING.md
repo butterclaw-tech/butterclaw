@@ -40,16 +40,23 @@ We are also actively seeking:
 git clone [https://github.com/butterclaw-tech/butterclaw.git](https://github.com/butterclaw-tech/butterclaw.git)
 cd butterclaw
 
-pip install -r requirements.txt   # 7 dependencies — no extras needed
+# 1. Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .\.venv\Scripts\activate
 
-# Pull base model and build the ButterClaw-optimised variant
+# 2. Install ButterClaw in editable mode (resolves dependencies from pyproject.toml)
+pip install -e .
+
+# 3. Pull base model and build the ButterClaw-optimised variant
 ollama pull gemma4:e4b
 ollama create butterclaw-optimized -f Modelfile.example
 
+# 4. Configure environment
 cp .env.example .env
 # Edit .env — set BUTTERCLAW_API_KEY at minimum
 
-python server.py
+# 5. Launch the application as a Python module
+python -m butterclaw.server
 
 ```
 
@@ -66,28 +73,40 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 Every major module ships a self-contained diagnostic suite. Run these before submitting a PR — they require no test framework, just Python:
 
 ```bash
-python config.py           # 21 tests — configuration loading and validation
-python auth.py             # 10 tests — HMAC keys, session tokens, RBAC
-python policy_engine.py    # 16 tests — DRIFT rule evaluation, all 3 scopes
-python alert_dispatcher.py # 14 tests — channel dispatch, event routing
+python -m butterclaw.config           # 21 tests — configuration loading and validation
+python -m butterclaw.auth             # 10 tests — HMAC keys, session tokens, RBAC
+python -m butterclaw.policy_engine    # 16 tests — DRIFT rule evaluation, all 3 scopes
+python -m butterclaw.alert_dispatcher # 14 tests — channel dispatch, event routing
 
 ```
 
-**Note on Policy Engine Testing:** Running `python policy_engine.py` acts as the **Local Cognitive Test**. It loads both `default_signatures.json` (negative security) and `capabilities.json` (positive security) directly into memory to verify logic completely offline without touching the network.
+**Note on Policy Engine Testing:** Running `python -m butterclaw.policy_engine` acts as the **Local Cognitive Test**. It loads both `default_signatures.json` (negative security) and `capabilities.json` (positive security) directly into memory to verify logic completely offline without touching the network.
 
 All 61 tests must pass. If you add a new feature to any of these modules, add a corresponding test to the `__main__` block in that file.
+
+---
+
+> *Note: Always execute these scripts from the root of the repository so the package configuration can correctly locate your local `.env` file and database.*
 
 ### Live Fire Testing
 
 Use the scripts in the `scripts/` directory to run full end-to-end integration tests against the live Docker container bridge and STDIO firewall:
 
 ```bash
-# Inject a test signature into the Arsenal and fire a simulated attack
+# 1. Inject custom test signature into the live engine
 python scripts/add_rule.py
+
+# 2. Fire the simulated attack suite against the Arsenal (25/25 vectors)
 python scripts/test_attack.py
 
-# Fire the Live Kinetic Test payload automatically through the Nginx gateway
+# 3. Run a live kinetic integration test against the STDIO physical firewall
 python scripts/test_mcp.py
+
+# 4. Fire raw computer-use primitives against the Spatial Telemetry Gateway
+python scripts/test_spatial.py
+
+# 5. Validate the v0.8.0 Dual Memory Substrate & Four-Hemisphere Cognition
+python scripts/test_dual_memory.py
 
 ```
 
