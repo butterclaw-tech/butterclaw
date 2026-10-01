@@ -133,13 +133,13 @@ All 26 fields across 9 categories are described in the example config file. Key 
 The Watcher monitors `openclaw_gateway.log` for new lines and forwards them to the
 Flask API for analysis. It runs separately from the Docker stack.
 
-​```bash
+```bash
 # Standard mode — tail from current EOF
 python3 -m butterclaw.watcher
 
 # Replay mode — read log from beginning (useful for testing)
 python3 -m butterclaw.watcher --replay
-​```
+```
 
 **Watcher runtime behaviour:**
 - PID lock file (`watcher.pid`) prevents duplicate instances — a second invocation
