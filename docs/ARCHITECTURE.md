@@ -98,7 +98,7 @@ flowchart TD
     REG --> EVAL[Memory Engine\nevaluate_spatial_intent]
 
     EVAL --> FAST{Cold Memory\nsignature match?}
-    FAST -->|yes, O(1)| BLOCK[BLOCK verdict]
+    FAST -->|"yes, O(1)"| BLOCK[BLOCK verdict]
     FAST -->|no| SLOW[Spatial Heuristics\nkinetic velocity · spatial jitter · entropy]
     SLOW -->|threat_score ≥ 0.75| BLOCK
     SLOW -->|clean| ALLOW[ALLOW verdict]
