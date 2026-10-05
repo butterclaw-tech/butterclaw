@@ -362,7 +362,7 @@ Contributors who ship features get credited here — not just in the git log.
 
 **Telegram Alert Channel** — Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement.
 <p align="center">
-(Contributed by @huanghaiyss)<br></p><br>
+(Contributed by @huanghaiyss)<br></p>
 
 If you ship something that lands, your name goes here. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) to get started.
 
