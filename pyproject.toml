@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "butterclaw"
+version = "0.9.0"
+description = "AI-native network-security monitor with MCP integration, fleet-layer correlation, and Guardian Brain."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.2",
+    "flask-cors>=4.0.0",
+    "werkzeug>=3.0.1",
+    "requests>=2.31.0",
+    "cryptography>=42.0.5",
+    "keyring>=24.3.0",
+    "keyrings.alt>=5.0.0",
+    "psutil>=6.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout",
+    "pytest-asyncio"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ensure the STDIO Firewall configuration is bundled with the package code
+butterclaw = ["mcp_stdio_transport.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# This allows pytest to find your 'src' layout without needing 'pip install -e .' first
+pythonpath = ["src"]           
+addopts = "-ra -q --timeout=30"
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]

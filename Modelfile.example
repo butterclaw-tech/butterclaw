@@ -1,0 +1,9 @@
+# ButterClaw v0.3 - Hardware Optimization Profile
+FROM gemma4:e4b
+
+# 16k context window to handle large 4096-char logs
+PARAMETER num_ctx 16384
+
+# Adaptive reasoning tuning for obfuscated threats
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
