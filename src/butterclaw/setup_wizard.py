@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw Setup Wizard — ButterClaw v0.9.2
+ButterClaw Setup Wizard — ButterClaw v0.9.2 - src layout Mega
 Interactively generates a .env configuration file.
 
 Usage:
@@ -811,7 +811,7 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
     if deploy == "docker":
         _safe_print(f"  {bold(str(step)+'.')} Generate local TLS certificates for nginx:")
         _safe_print(f"       {dim('mkdir -p nginx/certs')}")
-        _safe_print(f"       {dim('docker run --rm -v \"${PWD}/nginx/certs:/certs\" alpine/openssl req -x509 -nodes \\')}")
+        _safe_print("       " + dim('docker run --rm -v "${PWD}/nginx/certs:/certs" alpine/openssl req -x509 -nodes \\'))
         _safe_print(f"       {dim('  -days 365 -newkey rsa:2048 -keyout /certs/butterclaw.key -out /certs/butterclaw.crt -subj \"/CN=localhost\"')}")
         step += 1
 

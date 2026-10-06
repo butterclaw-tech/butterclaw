@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Alert Dispatcher - src layout
+ButterClaw v0.9.2 — Alert Dispatcher - src layout Mega
 ======================================
 Push notifications to external channels when critical events occur.
 
@@ -143,14 +143,11 @@ AUTH_FAILURE_WINDOW = cfg.AUTH_FAILURE_WINDOW
 #except ImportError:
 #    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
-from butterclaw.config import DB_PATH
-
 _db_lock = threading.Lock()
-
 
 def _get_db():
     """Get a database connection with Row factory."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(cfg.DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1401,8 +1398,9 @@ if __name__ == "__main__":
     test_db = os.path.join(BASE_DIR, 'butterclaw_test_alert.db')
 
     import butterclaw.alert_dispatcher as alert_dispatcher
-    alert_dispatcher.DB_PATH = test_db
-    globals()['DB_PATH'] = test_db
+    
+    # Mock the central config singleton for the test scope
+    alert_dispatcher.cfg.DB_PATH = test_db
 
     def test_pass(num, name):
         results["passed"] += 1

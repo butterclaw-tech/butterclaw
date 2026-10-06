@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Visual TUI Dashboard - src layout
+ButterClaw v0.9.2 — Visual TUI Dashboard - src layout Mega
 =========================================
 Real-time terminal monitoring for the Agentic SOC.
 """
@@ -10,9 +10,6 @@ import time
 import sqlite3
 import shutil
 from butterclaw.policy_engine import _get_db, get_policy_event_count, get_policy_events, init_policy_db
-
-# Ensure tables exist before we try to read them!
-init_policy_db()
 
 # ANSI Terminal Escapes for UI layout
 HOME = "\033[H"
@@ -26,6 +23,9 @@ CYAN = "\033[36m"
 REVERSE = "\033[7m"
 
 def render_loop():
+    # Ensure tables exist before we try to read them!
+    init_policy_db()
+
     # Initial full screen clear before the loop starts
     sys.stdout.write("\033[2J")
     

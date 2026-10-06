@@ -1,4 +1,4 @@
-# ButterClaw — Development Compose Override v0.6.6
+# ButterClaw — Development Compose Override v0.9.2
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #
 # This file OVERRIDES the production docker-compose.yml for local development.
@@ -7,7 +7,7 @@
 # Use host.docker.internal (Windows/macOS) or 172.17.0.1 (Linux) for OLLAMA_BASE_URL.
 
 services:
-  butterclaw-server:
+  butterclaw:
     build:
       context: .
       dockerfile: Dockerfile
@@ -16,6 +16,7 @@ services:
       - .:/app                          # hot-reload: source changes reflected immediately
       - /app/__pycache__                # exclude pycache from mount
     environment:
+      - BUTTERCLAW_ROOT=/app
       - BUTTERCLAW_DEBUG=true
       - BUTTERCLAW_LOG_LEVEL=DEBUG
       - BUTTERCLAW_DRY_RUN=true         # hard-blocks Gibson and all destructive actions
@@ -28,6 +29,6 @@ services:
     profiles:
       - production                      # nginx is production-only; excluded from dev stack
 
-  butterclaw-ntfy:
+  ntfy:
     profiles:
       - production                      # ntfy is production-only; excluded from dev stack

@@ -1,5 +1,5 @@
 """
-ButterClaw v0.6.4 — Log Watcher, migrated to src layout
+ButterClaw v0.9.2 — Log Watcher - src layout Mega
 =================================================
 [v0.8.1] - configured for src layout
 
@@ -30,8 +30,7 @@ import json
 import signal
 from collections import deque
 from pathlib import Path
-from butterclaw.config import GATEWAY_LOG_PATH, RETRY_QUEUE_PATH
-#from butterclaw.config import cfg
+from butterclaw.config import cfg, GATEWAY_LOG_PATH, RETRY_QUEUE_PATH
 import tempfile
 import os
 
@@ -45,36 +44,12 @@ logger = logging.getLogger("butterclaw.watcher")  # PATCHED I6: basicConfig move
 # CONFIGURATION
 # =============================================
 
-# Old: LOG_FILE = str(cfg.GATEWAY_LOG_PATH)
 LOG_FILE = str(GATEWAY_LOG_PATH)
 PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
-# Old: RETRY_QUEUE_PATH = str(cfg.RETRY_QUEUE_PATH)
 RETRY_QUEUE_PATH = str(RETRY_QUEUE_PATH)
 
-# DELETE: BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Old: LOG_FILE = GATEWAY_LOG_PATH
-
-#LOG_FILE = str(cfg.GATEWAY_LOG_PATH)
-#PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
-
-#LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
-# Write the PID to a safe, cross-platform temporary directory (e.g., /tmp in Linux)
-#PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
-
-# PID_FILE = os.path.join(BASE_DIR, "watcher.pid") -> pre-src layout
-
-VPS_ENDPOINT = "http://127.0.0.1:5000/api/analyze"
-#VPS_ENDPOINT = f"{cfg.BASE_URL}/api/analyze"
-
-# DELETE THIS ENTIRE BLOCK:
-# [L1] Retry queue persistent storage path
-# RETRY_QUEUE_PATH = os.path.join(
-#     os.environ.get("BUTTERCLAW_DATA_DIR", "/data"),
-#     "retry_queue.json"
-# )
-
-# Retry queue persistent storage path
-#RETRY_QUEUE_PATH = str(cfg.RETRY_QUEUE_PATH)
+# Dynamically resolve the API endpoint inside Docker
+VPS_ENDPOINT = f"{cfg.BASE_URL}/api/analyze"
 
 # [C3] Retry queue for failed POSTs
 RETRY_QUEUE_MAX = 100
@@ -282,7 +257,7 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO
     )
-    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.8.0")
+    parser = argparse.ArgumentParser(description="ButterClaw Log Watcher v0.9.2")
     parser.add_argument("--replay", action="store_true", help="Process entire log file from start")
     args = parser.parse_args()
 
@@ -296,7 +271,7 @@ def main():
         sys.exit(0)
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
-    logger.info("🦞 ButterClaw Watcher v0.8.0 online. 👁️ Staring intensely at %s...", LOG_FILE)
+    logger.info("🦞 ButterClaw Watcher v0.9.2 online. 👁️ Staring intensely at %s...", LOG_FILE)
     
     if not os.environ.get("BUTTERCLAW_API_KEY"):
         logger.warning("⚠️ BUTTERCLAW_API_KEY environment variable not found. Server will likely reject payloads (401).")

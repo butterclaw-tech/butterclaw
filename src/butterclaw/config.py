@@ -1,5 +1,5 @@
 """
-ButterClaw v0.9.2 — Configuration Module - src layout
+ButterClaw v0.9.2 — Configuration Module - src layout Mega
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -52,18 +52,36 @@ from pathlib import Path
 
 # Anchor to the Current Working Directory (/app in Docker, repo root locally)
 # Allows an environment variable override just in case.
-PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path.cwd())).resolve()
+#PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path.cwd())).resolve()
+PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path(__file__).resolve().parents[2])).resolve()
+DB_PATH = Path(os.environ.get("BUTTERCLAW_DB_PATH", PROJECT_ROOT / "butterclaw.db")).resolve()
+FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
+EVIDENCE_LOCKER_DIR = Path(os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if Path("/data").exists() else PROJECT_ROOT / "data")) / "evidence_locker"
+
+# Canonical Root File Paths (Static)
+CAPABILITIES_PATH = Path(os.environ.get("BUTTERCLAW_CAPABILITIES_PATH", PROJECT_ROOT / "capabilities.json")).resolve()
+DEFAULT_SIGNATURES_PATH = Path(os.environ.get("BUTTERCLAW_DEFAULT_SIGNATURES_PATH", PROJECT_ROOT / "default_signatures.json")).resolve()
+
+# Runtime State Paths (Dynamic - persist alongside data)
+DATA_DIR = Path(os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if Path("/data").exists() else PROJECT_ROOT / "data")).resolve()
+RETRY_QUEUE_PATH = Path(os.environ.get("BUTTERCLAW_RETRY_QUEUE_PATH", DATA_DIR / "retry_queue.json")).resolve()
+
+GATEWAY_LOG_PATH = Path(os.environ.get("BUTTERCLAW_GATEWAY_LOG_PATH", PROJECT_ROOT / "openclaw_gateway.log")).resolve()
+
 
 # Canonical Root File Paths
-CAPABILITIES_PATH = PROJECT_ROOT / "capabilities.json"
-DEFAULT_SIGNATURES_PATH = PROJECT_ROOT / "default_signatures.json"
-RETRY_QUEUE_PATH = PROJECT_ROOT / "retry_queue.json"
-DB_PATH = PROJECT_ROOT / "butterclaw.db"
-GATEWAY_LOG_PATH = PROJECT_ROOT / "openclaw_gateway.log"
-EVIDENCE_LOCKER_DIR = PROJECT_ROOT / "data" / "evidence_locker"
+#CAPABILITIES_PATH = PROJECT_ROOT / "capabilities.json"
+#DEFAULT_SIGNATURES_PATH = PROJECT_ROOT / "default_signatures.json"
+#RETRY_QUEUE_PATH = PROJECT_ROOT / "retry_queue.json"
+
+#DB_PATH = PROJECT_ROOT / "butterclaw.db"
+
+#GATEWAY_LOG_PATH = PROJECT_ROOT / "openclaw_gateway.log"
+
+#EVIDENCE_LOCKER_DIR = PROJECT_ROOT / "data" / "evidence_locker"
 
 # Canonical Root File Paths (Fleet Layer)
-FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
+#FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
 
 logger = logging.getLogger("butterclaw.config")
 

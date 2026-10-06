@@ -1,13 +1,13 @@
 """
-ButterClaw v0.9.2 — The ButterVault - src layout
+ButterClaw v0.9.2 — The ButterVault - src layout Mega
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
 Supports complex OAuth 2.0 token dictionary payloads.
 [v0.6.0] The Gibson now hooks into auth.py to destroy API key hashes.
 [v0.6.5] Hardened with strict DRY_RUN safety blocks and connection leak patches.
-[v0.8.1] Migrated codebase to src layout.
-[v0.9.2] Updated missing src migration pathing.
+
+[v0.9.2 files migrated to src for v0.9.0 github with whitepaper bundled v0.9.x versions]
 """
 
 import os
@@ -22,7 +22,7 @@ import datetime
 # Set up Vault-specific logging
 logger = logging.getLogger("butterclaw.vault")
 
-from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT
+from butterclaw.config import cfg, PROJECT_ROOT
 
 # OS Native Keyring Identifiers
 KEYRING_SERVICE = "butterclaw_sentinel"
@@ -30,7 +30,7 @@ KEYRING_USER = "vault_master_key"
 
 def _get_db():
     """Connects to the database and ensures both vault tables exist."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(cfg.DB_PATH, check_same_thread=False)
     # Legacy flat-string API keys
     conn.execute('''
         CREATE TABLE IF NOT EXISTS vault (

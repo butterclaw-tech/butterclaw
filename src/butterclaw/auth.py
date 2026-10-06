@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Authentication & Authorization Module - src layout
+ButterClaw v0.9.2 — Authentication & Authorization Module - src layout Mega
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 
@@ -38,7 +38,7 @@ from flask import request, jsonify, Response
 logger = logging.getLogger("butterclaw.auth")
 
 # Primary import from unified config
-from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT
+from butterclaw.config import cfg, PROJECT_ROOT
 
 SESSION_TTL = getattr(cfg, "SESSION_TTL", 3600)
 ROLE_RATE_LIMITS = {
@@ -113,7 +113,7 @@ RATE_LIMIT_WINDOW = 60
 
 def init_auth_db():
     """One-time table initialization called at startup."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(cfg.DB_PATH, check_same_thread=False)
     conn.execute('''
         CREATE TABLE IF NOT EXISTS api_keys (
             key_id      TEXT PRIMARY KEY,
@@ -131,7 +131,7 @@ def init_auth_db():
 
 def _get_auth_db():
     """Thread-safe connection to the ButterClaw database."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(cfg.DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 

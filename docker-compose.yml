@@ -1,5 +1,5 @@
 # =======================================================
-# ButterClaw v0.9.0
+# ButterClaw v0.9.2 - src layout Mega
 # Local Ollama (Local GPU) - ButterClaw in the Container
 # =======================================================
 # Usage:
@@ -20,6 +20,8 @@ services:
     container_name: butterclaw-server
     restart: unless-stopped
     env_file: .env
+    environment:
+      - BUTTERCLAW_ROOT=/app      # Forces config.py back to the Docker working directory
     volumes:
       - butterclaw-data:/data          # SQLite DB persistence
       # Mount the UI so you can edit HTML without rebuilding

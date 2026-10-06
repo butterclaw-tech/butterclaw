@@ -1,2 +1,2 @@
 #!/bin/bash
-docker compose exec -it butterclaw python tui_dashboard.py
+docker compose exec -it butterclaw python -m butterclaw.tui_dashboard

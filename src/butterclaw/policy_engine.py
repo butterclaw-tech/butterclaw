@@ -1,5 +1,5 @@
 """
-ButterClaw v0.9.0 — Policy Engine - src layout
+ButterClaw v0.9.2 — Policy Engine - src layout Mega
 ===================================
 Deterministic guardrails for the probabilistic Brain.
 
@@ -73,7 +73,7 @@ DEFAULT_PRIORITY = 50
 # Keep this line so the diagnostic tests still know where they are!
 #BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Primary import from unified config
-from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT, CAPABILITIES_PATH, DEFAULT_SIGNATURES_PATH
+from butterclaw.config import cfg, PROJECT_ROOT, CAPABILITIES_PATH, DEFAULT_SIGNATURES_PATH
 
 # =============================================
 # CAPABILITY MATRIX (v0.7.0 POSITIVE SECURITY)
@@ -294,7 +294,7 @@ _db_lock = threading.Lock()
 
 def _get_db():
     """Thread-safe connection to the ButterClaw database. Auto-creates parent directories if missing."""
-    db_dir = os.path.dirname(DB_PATH)
+    db_dir = os.path.dirname(cfg.DB_PATH)
     if db_dir and not os.path.exists(db_dir):
         try:
             os.makedirs(db_dir, exist_ok=True)
@@ -302,7 +302,7 @@ def _get_db():
         except Exception as e:
             logger.error(f"❌ Failed to create database directory {db_dir}: {e}")
             
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(cfg.DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
