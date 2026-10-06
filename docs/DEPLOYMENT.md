@@ -306,8 +306,8 @@ When creating an ntfy channel via `POST /api/alerts/channels`, set:
 
 ## Related Documentation
 
-* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
-* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
-* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
-* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model
+* [`API.md`](API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`RUNBOOK.md`](RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`THREAT_MODEL.md`](THREAT_MODEL.md) — Updated threat model

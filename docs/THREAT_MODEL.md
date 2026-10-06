@@ -49,8 +49,8 @@ ButterClaw mitigates this through a **Dual-Pass Reasoning** architecture that is
 
 ## Related Documentation
 
-* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
-* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
-* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
-* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+* [`API.md`](API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`RUNBOOK.md`](RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)

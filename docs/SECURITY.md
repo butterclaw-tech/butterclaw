@@ -66,8 +66,8 @@ To report a security vulnerability, open a [GitHub Security Advisory](https://gi
 
 ## Related Documentation
 
-* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
-* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
-* [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
-* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
-* [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model
+* [`API.md`](API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`RUNBOOK.md`](RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+* [`THREAT_MODEL.md`](THREAT_MODEL.md) — Updated threat model

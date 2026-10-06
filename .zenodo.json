@@ -6,7 +6,8 @@
   "creators": [
     {
       "name": "Bc77",
-      "affiliation": "ButterClaw Tech"
+      "affiliation": "ButterClaw Tech",
+      "orcid": "0009-0001-2162-1397"
     }
   ],
   "description": "<p>The field of artificial intelligence has long operated under a vocabulary inherited from its earliest paradigms: \"language models,\" \"chatbots,\" and \"agents.\" This paper argues that these terms are not merely imprecise—they are epistemically dangerous. When the ontological frame does not match a system's actual behavior, safety guarantees built on that frame become structurally unsound.</p>\n<p>We propose a principled reframing: large language models are more accurately described as <strong>signal models</strong>, and autonomous AI agents are more precisely understood as <strong>autonomous signal loops</strong>—self-routing information processes that accumulate context, initiate actions, and resolve without continuous human mediation. This reframing surfaces a new safety surface defined by signal boundaries, loop depth, and side-effect potential.</p>\n<p>To address this surface, we introduce <strong>ButterClaw</strong>, a containment-first autonomous Security Operations Center (SOC) designed specifically for agentic infrastructure. Moving beyond static API gateways, ButterClaw implements a <strong>five-hemisphere cognitive architecture</strong> (Guardian Brain, Auditor, Dream Weaver, Loop Proposer, and Fleet Sentinel) that evaluates agent behavior through both probabilistic reasoning and deterministic policy engines.</p>\n<p>This release formalizes ButterClaw's expansion into <strong>Fleet-Scale Awareness</strong>. The system introduces a persistent cross-session trust graph, multi-agent collusion detection, and a unified memory substrate that synthesizes spatial kinetic telemetry into semantic threat attractors. We present the ButterClaw ecosystem as both a practical engineering package and a conceptual ontology for the next generation of resilient AI safety infrastructure.</p>",
@@ -24,6 +25,6 @@
       "resource_type": "software"
     }
   ],
-  "version": "v1.0.0",
+  "version": "v0.9.2",
   "language": "eng"
 }

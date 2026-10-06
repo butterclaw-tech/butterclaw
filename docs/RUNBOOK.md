@@ -255,8 +255,8 @@ Authorization: Bearer <admin-token>
 
 ## Related Documentation
 
-* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
-* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
-* [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
-* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model
+* [`API.md`](API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`THREAT_MODEL.md`](THREAT_MODEL.md) — Updated threat model

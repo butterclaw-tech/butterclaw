@@ -286,7 +286,7 @@ POST /api/fleet/agents/<id>/quarantine/confirm?token=qtok_...
 ## Related Documentation
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, data flow
-- [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+- [`RUNBOOK.md`](RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
 - [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
-- [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — Updated threat model
