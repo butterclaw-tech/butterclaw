@@ -1149,7 +1149,7 @@ register_memory_routes(app, dream_engine, loop_engine)
 
 # ──── v0.9.0 BEGIN ────
 if FLEET_ENABLED:
-    _FLEET_DB_PATH           = os.environ.get("BUTTERCLAW_FLEET_DB_PATH", "./fleet.db")
+    _FLEET_DB_PATH           = str(cfg.FLEET_DB_PATH)
     _FLEET_DRY_RUN           = os.environ.get("BUTTERCLAW_FLEET_SENTINEL_DRY_RUN", "true").strip().lower()                                not in ("false", "0", "no")
     _SENTINEL_MIN_AGENTS     = int(os.environ.get("BUTTERCLAW_SENTINEL_MIN_AGENTS", "2"))
     _SENTINEL_INTERVAL_HOURS = float(os.environ.get("BUTTERCLAW_SENTINEL_INTERVAL_HOURS", "4"))
