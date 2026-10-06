@@ -59,8 +59,8 @@ The definitive `v0.9.0` release consolidates the PEP 517 `src/` layout migration
 
 The Fleet Layer extends ButterClaw's cognition model to a fifth hemisphere — **the Fleet Sentinel** — reasoning across the entire observed fleet to detect coordinated attacks. Simultaneously, the entire codebase has been formalized into a globally installable Python package, decoupling source definitions from runtime installation paths.
 
-**Files Changed:** `.gitignore`, `nginx/butterclaw.conf` → `nginx/butterclaw.prod.conf.example`, `nginx/default.conf` → `nginx/butterclaw.local.conf`, `server.py`, `memory_engine.py`, `policy_engine.py`, `dream_engine.py`, `loop_engine.py`, `config.py`, `memory_api.py`, `default_signatures.json`, `setup_wizard.py`, `.env.example`, `Dockerfile`, `docs/ARCHITECTURE.md`, `docs/API.md`, `CHANGELOG.md`, `README.md`<br>
-**New Files:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`, `scripts/verify_backup.sh`, `whitepaper/src/main.tex`, `whitepaper/ButterClaw_Architecture_Ontology.pdf`, `whitepaper/diagrams/1.png`, `whitepaper/diagrams/2.png`, `whitepaper/LICENSE`, `.zenodo.json`
+**New Files:** `src/butterclaw/fleet_db_init.py`, `src/butterclaw/fleet_registry.py`, `src/butterclaw/trust_graph.py`, `src/butterclaw/correlation_engine.py`, `src/butterclaw/collusion_detector.py`, `src/butterclaw/fleet_memory.py`, `src/butterclaw/fleet_sentinel.py`, `src/butterclaw/fleet_api.py`, `src/butterclaw/hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`, `scripts/verify_backup.sh`, `whitepaper/src/main.tex`, `whitepaper/ButterClaw_Architecture_Ontology.pdf`, `whitepaper/diagrams/1.png`, `whitepaper/diagrams/2.png`, `whitepaper/LICENSE`, `whitepaper/LICENSE.md`, `.zenodo.json`<br>
+**Files Changed:** `.gitignore`, `.env.example`, `Dockerfile`, `nginx/butterclaw.conf`, `nginx/default.conf`, `src/butterclaw/server.py`, `src/butterclaw/memory_engine.py`, `src/butterclaw/policy_engine.py`, `src/butterclaw/dream_engine.py`, `src/butterclaw/loop_engine.py`, `src/butterclaw/config.py`, `src/butterclaw/alert_dispatcher.py`, `src/butterclaw/auth.py`, `src/butterclaw/buttervault.py`, `src/butterclaw/memory_api.py`, `default_signatures.json`, `src/butterclaw/setup_wizard.py`, , `src/butterclaw/archiver_daemon.py`, `src/butterclaw/dreamer_daemon.py`, `src/butterclaw/event_ingester.py`, `src/butterclaw/fleet_db_init.py`, `/scripts/*`, `docs/ARCHITECTURE.md`, `docs/API.md`, `pyproject.toml`, `CHANGELOG.md`, `README.md`
 
 ### Added
 - **Global Package Registration (`pyproject.toml`):** Formalized ButterClaw as an installed Python package, eliminating flat-folder execution and allowing global namespace imports (`from butterclaw import ...`) across all environments. Included `pytest` wiring for the `src` pythonpath.
@@ -99,8 +99,6 @@ The Fleet Layer extends ButterClaw's cognition model to a fifth hemisphere — *
 - **Setup Wizard Memory Amnesia:** Restored the Dual Memory Engine variables (`LIVE_CRYSTALLIZATION_ENABLED`, `ATTRACTOR_DECAY_DAYS`) and `LOOP_DRY_RUN` to `setup_wizard.py` and `.env.example` that were accidentally overwritten during the v0.9.2 update. Corrected a baremetal launch command typo (`-m butterclaw.server.py` → `-m butterclaw.server`).
 - **Watcher Configuration Override:** Fixed a bug where `watcher.py` was ignoring the unified config object, hardcoding the local API port, and aggressively clobbering the `RETRY_QUEUE_PATH` back to a `/data/` fallback.
 - **Mermaid Markdown Crashes:** Fixed three structural bugs in the `ARCHITECTURE.md` flowchart diagrams (subgraph spacing, node shape redeclaration, and unquoted parentheses in edge labels) that prevented GitHub from rendering the visual charts.
-
----
 
 ---
 
@@ -305,9 +303,9 @@ memory_engine.py
 
 ## [0.9.0] - The Fleet Layer (Multi-Agent Awareness) - 2026-09-15
 
-**Files Changed:** `server.py`, `memory_engine.py`, `policy_engine.py`, `default_signatures.json`, `Dockerfile`, `setup_wizard.py`, `.env.example`, `scripts/verify_backup.sh`, `docs/ARCHITECTURE.md`, `docs/API.md`
-**Files Added:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`
-**New runtime dependencies:** 0
+**New runtime dependencies:** 0<br>
+**Files Changed:** `server.py`, `memory_engine.py`, `policy_engine.py`, `default_signatures.json`, `Dockerfile`, `setup_wizard.py`, `.env.example`, `scripts/verify_backup.sh`, `docs/ARCHITECTURE.md`, `docs/API.md`<br>
+**Files Added:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`<br>
 
 The Fleet Layer extends Butterclaw's four-hemisphere cognition model to a fifth hemisphere — the Fleet Sentinel — with persistent cross-session agent tracking, directed trust graph propagation, and two complementary cross-agent detection engines. Where the existing four hemispheres reason about a single agent's behaviour within a session, the Fleet Sentinel reasons across the entire observed fleet to answer: *Are these agents working together against me?*
 
