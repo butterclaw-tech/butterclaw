@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.1 — Test MCP Integration
+ButterClaw v0.9.2 — Test MCP Integration
 Live Kinetic Integration Test. This test serves a highly specific and valuable purpose: 
 it tests the entire end-to-end chain from the Auth Gateway through the Docker bridge 
 and down into the physical STDIO firewall.
@@ -10,6 +10,10 @@ import urllib.request
 import json
 import os
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import os
 from butterclaw.config import cfg, PROJECT_ROOT
 

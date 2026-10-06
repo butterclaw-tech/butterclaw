@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================
-# ButterClaw v0.6.3 — Restore Script
+# ButterClaw v0.9.2 — Restore Script
 # =============================================
 # Restores from a backup archive created by backup.sh
 #
@@ -46,10 +46,17 @@ fi
 tar -xzf "$ARCHIVE" -C "$TEMP_DIR"
 EXTRACTED=$(ls "$TEMP_DIR")
 
-# Restore database
+# Restore main database
 if [ -f "${TEMP_DIR}/${EXTRACTED}/butterclaw.db" ]; then
     cp "${TEMP_DIR}/${EXTRACTED}/butterclaw.db" "$DB_PATH"
-    echo "   ✅ Database restored"
+    echo "   ✅ butterclaw.db restored"
+fi
+
+# Restore fleet database
+FLEET_DB_PATH="${BUTTERCLAW_FLEET_DB_PATH:-${PROJECT_DIR}/fleet.db}"
+if [ -f "${TEMP_DIR}/${EXTRACTED}/fleet.db" ]; then
+    cp "${TEMP_DIR}/${EXTRACTED}/fleet.db" "$FLEET_DB_PATH"
+    echo "   ✅ fleet.db restored"
 fi
 
 # Restore .env

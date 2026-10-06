@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.6.3 — Docker Health Check
+ButterClaw v0.9.2 — Docker Health Check
 Hits /api/health and exits 0 (healthy) or 1 (unhealthy).
 Used by Docker HEALTHCHECK directive.
 """

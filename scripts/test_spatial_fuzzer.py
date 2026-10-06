@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.1 — Spatial API Test - Tests All 4 Spatial Primitives + Cold Memory Detection
+ButterClaw v0.9.2 — Spatial API Test - Tests All 4 Spatial Primitives + Cold Memory Detection
 """
 
 import requests
@@ -9,6 +9,10 @@ import random
 import uuid
 import os
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_auth_key():

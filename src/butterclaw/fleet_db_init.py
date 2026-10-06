@@ -1,5 +1,5 @@
 """
-fleet_db_init.py — Butterclaw v0.9.0
+fleet_db_init.py — Butterclaw v0.9.2 - src layout Mega
 Fleet database schema bootstrap. Runs before server.py binds any routes.
 
 Startup sequence (server.py):
@@ -17,9 +17,13 @@ import logging
 import os
 import sqlite3
 
+# 1. Wire the central config
+from butterclaw.config import cfg
+
 logger = logging.getLogger(__name__)
 
-_FLEET_DB_PATH: str = os.environ.get("BUTTERCLAW_FLEET_DB_PATH", "./fleet.db")
+# Rip out os.environ.get and use the anchored path
+_FLEET_DB_PATH: str = str(cfg.FLEET_DB_PATH)
 _connection: sqlite3.Connection | None = None
 
 _DDL = """

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.1 — Dual Memory Engine Integration Test
+ButterClaw v0.9.2 — Dual Memory Engine Integration Test
 Validates the Surface Memory (Live Crystallization), Dream Weaver, and Loop Proposer.
 """
 
 import os
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import time
 import requests
 import urllib3

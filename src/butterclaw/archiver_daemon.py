@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Archiver Daemon
+ButterClaw v0.9.2 — Archiver Daemon - src layout Mega
 Manages database retention, incremental vacuuming, and RAM disk cleanup.
 """
 
@@ -13,6 +13,9 @@ import tempfile
 import shutil
 from datetime import datetime
 
+# 1. Wire the central config
+from butterclaw.config import cfg, PROJECT_ROOT, EVIDENCE_LOCKER_DIR
+
 def get_hot_screenshot_dir() -> str:
     if platform.system() == "Linux" and os.path.exists("/dev/shm"):
         return "/dev/shm/butterclaw_hot_frames"
@@ -22,14 +25,10 @@ HOT_DIR = get_hot_screenshot_dir()
 
 class ArchiverDaemon:
     def __init__(self, main_db: str = None, archive_dir: str = None):
-        # Apply the ghost-database fix here too!
-        if main_db is None:
-            self.main_db = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
-        else:
-            self.main_db = main_db
-            
-        self.archive_dir = archive_dir or ("/data/archives" if os.path.exists("/data") else "archives")
-        self.evidence_dir = "/data/evidence_locker" if os.path.exists("/data") else "evidence_locker"
+        # 2. Rip out the raw string paths and use the anchored variables
+        self.main_db = main_db if main_db is not None else str(cfg.DB_PATH)
+        self.archive_dir = archive_dir or str(PROJECT_ROOT / "data" / "archives")
+        self.evidence_dir = str(EVIDENCE_LOCKER_DIR)
         
         self.is_running = True
         

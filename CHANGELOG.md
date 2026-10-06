@@ -10,7 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.9.2** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-05 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
+| **v0.9.0** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-06 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
 | **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-12 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
 | **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
@@ -36,14 +36,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ---
 
-## [0.9.2] - The Fleet Layer & Package Architecture Mega Release - 2026-10-05
+## [0.9.2] (Last-Minute Polish)
+
+### Changed
+- **Docker Context Resolution:** Added `BUTTERCLAW_ROOT` environment overrides to ensure the `src/` layout maps cleanly to host volumes without colliding with Python's internal system directory permissions.
+- **Strict Python 3.11 Compliance:** Patched an f-string backslash syntax issue in `setup_wizard.py` to ensure flawless execution on newer Python interpreters.
+- **Database Lock Deferral:** Moved SQLite init_policy_db() inside the TUI execution loop to prevent premature database locks during container boot.
+- **State Persistence:** Centralized all module database paths (`auth`, `policy_engine`, `buttervault`, `alert_dispatcher`) to strictly inherit from the `cfg` singleton, completely eliminating split-brain ephemeral storage risks.
+
+### Auxiliary & Daemon Hardening (v0.9.2)
+
+*   **Wired Daemons to Central Config:** Unified `archiver_daemon.py`, `dreamer_daemon.py`, and `event_ingester.py` to route through the central `cfg` singleton (e.g., `str(cfg.DB_PATH)` and `str(EVIDENCE_LOCKER_DIR)`), completely eliminating hardcoded `/data` path fallbacks.
+*   **Secured Fleet DB Anchor:** Replaced the raw `os.environ` lookup in `fleet_db_init.py` with `str(cfg.FLEET_DB_PATH)`, preventing split-brain database targeting in containerized environments.
+*   **Patched Backup Archiver:** Updated `scripts/backup.sh` to correctly reflect the new `src/` layout import (`from butterclaw.config import cfg`) and bumped the embedded archive marker to `v0.9.2`.
+*   **Host-Execution for Standalone Scripts:** Injected dynamic `sys.path` resolution into all `scripts/*.py` utility files, guaranteeing seamless terminal execution from the host machine without requiring manual `PYTHONPATH` overrides.
+
+---
+
+## [0.9.2] - The Fleet Layer & Package Architecture Mega Release - 2026-10-06
 
 The definitive `v0.9.0` release consolidates the PEP 517 `src/` layout migration, the massive multi-agent Fleet Layer expansion, and the subsequent stability and maturation patches into a single, cohesive architectural leap. 
 
 The Fleet Layer extends ButterClaw's cognition model to a fifth hemisphere — **the Fleet Sentinel** — reasoning across the entire observed fleet to detect coordinated attacks. Simultaneously, the entire codebase has been formalized into a globally installable Python package, decoupling source definitions from runtime installation paths.
 
 **Files Changed:** `.gitignore`, `nginx/butterclaw.conf` → `nginx/butterclaw.prod.conf.example`, `nginx/default.conf` → `nginx/butterclaw.local.conf`, `server.py`, `memory_engine.py`, `policy_engine.py`, `dream_engine.py`, `loop_engine.py`, `config.py`, `memory_api.py`, `default_signatures.json`, `setup_wizard.py`, `.env.example`, `Dockerfile`, `docs/ARCHITECTURE.md`, `docs/API.md`, `CHANGELOG.md`, `README.md`<br>
-**New Files:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`, `scripts/verify_backup.sh`, `whitepaper/src/main.tex`, `whitepaper/ButterClaw_Architecture_Ontology.pdf`, `whitepaper/diagrams/1.png`, `whitepaper/diagrams/2.png`, `whitepaper/LICENSE`, `whitepaper/LICENSE.md`, `.zenodo.json`
+**New Files:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`, `scripts/verify_backup.sh`, `whitepaper/src/main.tex`, `whitepaper/ButterClaw_Architecture_Ontology.pdf`, `whitepaper/diagrams/1.png`, `whitepaper/diagrams/2.png`, `whitepaper/LICENSE`, `.zenodo.json`
 
 ### Added
 - **Global Package Registration (`pyproject.toml`):** Formalized ButterClaw as an installed Python package, eliminating flat-folder execution and allowing global namespace imports (`from butterclaw import ...`) across all environments. Included `pytest` wiring for the `src` pythonpath.

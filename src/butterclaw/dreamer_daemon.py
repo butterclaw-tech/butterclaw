@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Dreamer Daemon (Warm Memory)
+ButterClaw v0.9.2 — Dreamer Daemon (Warm Memory) - src layout Mega
 Extracts resolution-independent behavioral attractors from tainted telemetry.
 """
 
@@ -11,10 +11,14 @@ import os
 from typing import List, Dict
 import threading
 
+# 1. Wire the central config
+from butterclaw.config import cfg
+
 class DreamerConsolidationLoop:
     def __init__(self, db_path: str = None, batch_size: int = 500):
+        # Route directly through the centralized config
         if db_path is None:
-            self.db_path = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
+            self.db_path = str(cfg.DB_PATH)
         else:
             self.db_path = db_path
             

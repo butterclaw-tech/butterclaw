@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.1 — Test Spatial API Integration
+ButterClaw v0.9.2 — Test Spatial API Integration
 """
 
 import requests
@@ -8,6 +8,10 @@ import time
 import json
 import os
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_auth_key():

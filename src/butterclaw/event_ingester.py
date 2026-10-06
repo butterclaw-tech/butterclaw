@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Event Ingester
+ButterClaw v0.9.2 — Event Ingester - src layout Mega
 High-speed asynchronous batch writer for spatial telemetry.
 """
 
@@ -10,9 +10,17 @@ import threading
 import queue
 import atexit
 
+# 1. Wire the central config
+from butterclaw.config import cfg
+
 class EventIngester:
-    def __init__(self, db_path: str = "butterclaw.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        # Route directly through the centralized config
+        if db_path is None:
+            self.db_path = str(cfg.DB_PATH)
+        else:
+            self.db_path = db_path
+            
         # Thread-safe queue to buffer incoming telemetry, was maxsize=10000, lowered to prevent unbounded memory growth
         self.write_queue = queue.Queue(maxsize=1000)
         self.is_running = True

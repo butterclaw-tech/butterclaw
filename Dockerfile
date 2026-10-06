@@ -1,5 +1,5 @@
 # =============================================
-# ButterClaw v0.9.2 — Production Container
+# ButterClaw v0.9.2 — Production Container - src layout Mega
 # =============================================
 # Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
@@ -31,7 +31,6 @@ COPY src/ ./src/
 # Copy root JSON/HTML artifacts
 COPY default_signatures.json .
 COPY capabilities.json .
-COPY mcp_stdio_transport.json .
 COPY index.html .
 COPY routing.html .
 

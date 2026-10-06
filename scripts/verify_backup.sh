@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/verify_backup.sh — Butterclaw v0.9.0
+# scripts/verify_backup.sh — Butterclaw v0.9.2 - src layout Mega
 # Verify integrity of all Butterclaw SQLite databases in the backup volume.
 #
 # Usage:
@@ -106,7 +106,7 @@ check_db_isolation() {
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 echo "============================================="
-echo " Butterclaw v0.9.0 -- Backup Integrity Check"
+echo " Butterclaw v0.9.2 -- Backup Integrity Check"
 echo " Data dir: ${DATA_DIR}"
 echo " $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "============================================="

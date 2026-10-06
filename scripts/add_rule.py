@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw v0.8.1 — Add Rule
+ButterClaw v0.9.2 — Add Rule
 adds a new rule to the Policy Engine via the Nginx gateway.
 """
 import json
@@ -8,6 +8,10 @@ import os
 import urllib.error
 import urllib.request
 import sys
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 from butterclaw.config import cfg, PROJECT_ROOT
 
 def get_auth_key():

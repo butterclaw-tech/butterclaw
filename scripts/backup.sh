@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================
-# ButterClaw v0.6.3 — Backup Script
+# ButterClaw v0.9.2 — Backup Script - src layout Mega
 # =============================================
 # Creates a timestamped backup of:
 #   - butterclaw.db (SQLite database)
@@ -47,7 +47,7 @@ fi
 
 # 3. Version marker
 echo "$TIMESTAMP" > "${BACKUP_PATH}/backup_version.txt"
-python3 -c "from config import cfg; print(f'ButterClaw v0.6.3 | Instance: {cfg.INSTANCE_ID}')" \
+python3 -c "from butterclaw.config import cfg; print(f'ButterClaw v0.9.2 | Instance: {cfg.INSTANCE_ID}')" \
     >> "${BACKUP_PATH}/backup_version.txt" 2>/dev/null || true
 
 # 4. Compress
