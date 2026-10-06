@@ -1,6 +1,6 @@
-# 📡 ButterClaw API Reference
+# 📡 ButterClaw API Reference (v0.9.2)
 
-ButterClaw features a comprehensive REST API with **63 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
+ButterClaw features a comprehensive REST API with **77 routes**, protected by a **4-tier Role-Based Access Control (RBAC) system** (Infrastructure, Admin, Operator, Viewer) using HMAC-SHA256 API keys and session tokens.
 
 ---
 
@@ -208,6 +208,43 @@ Management surface for the unified Deep + Surface Memory Engine and its two new 
 
 ---
 
+### Fleet Endpoints (v0.9.0) — 14 routes
+
+> **RBAC:** viewer = read-only; operator = read + trigger + feedback; admin = full management including quarantine and entity demotion.
+> All routes return `503` if a fleet component is unavailable.
+
+| Method | Path | Min Role | Description |
+|--------|------|----------|-------------|
+| `GET` | `/api/fleet/agents` | viewer | List all registered fleet agents with trust scores and reputation |
+| `GET` | `/api/fleet/agents/<agent_id>` | viewer | Fetch a single agent record |
+| `GET` | `/api/fleet/agents/<agent_id>/trust` | viewer | Return trust graph edges for an agent |
+| `POST` | `/api/fleet/agents/<agent_id>/quarantine` | operator | Step 1 — flag agent for quarantine; returns 60s confirmation token |
+| `POST` | `/api/fleet/agents/<agent_id>/quarantine/confirm` | operator | Step 2 — consume token and execute quarantine (R-06) |
+| `GET` | `/api/fleet/correlations` | viewer | List open correlation events |
+| `GET` | `/api/fleet/correlations/<event_id>` | viewer | Fetch a single correlation event |
+| `DELETE` | `/api/fleet/correlations/<event_id>` | operator | Dismiss a false-positive correlation event |
+| `POST` | `/api/fleet/correlations/<event_id>/promote` | admin | Human-gate: promote correlated session entity to fleet scope (I-03-fleet) |
+| `GET` | `/api/fleet/collusions` | viewer | List open collusion events |
+| `GET` | `/api/fleet/sentinel/log` | viewer | Fleet Sentinel verdict history (paginated) |
+| `POST` | `/api/fleet/sentinel/trigger` | operator | Manually trigger a Fleet Sentinel proactive analysis |
+| `POST` | `/api/fleet/sentinel/feedback` | operator | Submit operator feedback on a verdict (TP/FP) |
+| `GET` | `/api/fleet/health` | viewer | Fleet component health status (registry, trust graph, sentinel, scheduler) |
+
+**Quarantine lifecycle (R-06):**
+```
+POST /api/fleet/agents/<id>/quarantine
+  → 200 { "confirmation_token": "qtok_...", "expires_in_seconds": 60,
+           "active_sessions": [...], "warning": "..." }
+
+POST /api/fleet/agents/<id>/quarantine/confirm?token=qtok_...
+  → 200 { "agent_id": "...", "new_reputation": 0.0, "quarantined": true }
+  → 400 if token expired or invalid
+```
+
+> ⚠️ Quarantine sets reputation to 0.0 and blocks new sessions. It does **NOT** terminate active processes. Use `POST /api/spatial/block` separately to kill active sessions.
+
+---
+
 ## Route Count Summary
 
 | Module | Routes | Introduced |
@@ -220,7 +257,8 @@ Management surface for the unified Deep + Surface Memory Engine and its two new 
 | Vault & OAuth | 10 | v0.5.x |
 | Spatial Telemetry | 1 | v0.8.0 (Part 1) |
 | Memory / Dream / Loop | 12 | v0.8.0 (Part 2) |
-| **Total** | **63** | — |
+| Fleet Layer | 14 | v0.9.0 |
+| **Total** | **77** | — |
 
 ---
 
@@ -248,5 +286,7 @@ Management surface for the unified Deep + Surface Memory Engine and its two new 
 ## Related Documentation
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, data flow
+- [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
 - [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+- [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model

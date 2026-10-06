@@ -29,6 +29,7 @@ ollama pull gemma4:e4b
 ollama create butterclaw-optimized -f Modelfile.example
 ```
 
+
 **Modelfile.example parameters:**
 
 | Parameter | Value | Purpose |
@@ -232,9 +233,9 @@ BUTTERCLAW_DB_PATH=/custom/path/butterclaw.db bash scripts/backup.sh
 
 ### API Health Endpoint
 
-​```bash
+```bash
 curl -s https://localhost/api/health | python3 -m json.tool
-​```
+```
 
 Returns: version, instance ID, uptime, Ollama connectivity, vault keyring status,
 MCP transport status, active policy count, component health map.
@@ -252,7 +253,7 @@ curl -s -H "Authorization: Bearer <admin_key>" https://localhost/api/auth/keys
 curl -s -H "Authorization: Bearer <any_key>" https://localhost/api/auth/whoami
 ```
 
-> The `infrastructure` role (privilege level -1) is bootstrapped automatically from the
+> The `infrastructure` role (privilege level 4) is bootstrapped automatically from the
 > `BUTTERCLAW_API_KEY` environment variable at startup via
 > `bootstrap_infrastructure_keys_auto_heal()`. It does not appear in `GET /api/auth/keys`
 > listings and cannot be created or deleted via the API. If the infrastructure key is
@@ -305,6 +306,8 @@ When creating an ntfy channel via `POST /api/alerts/channels`, set:
 
 ## Related Documentation
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
-- [`API.md`](API.md) — Full endpoint reference, RBAC role table, rate limits
-- [`SECURITY.md`](SECURITY.md) — Security mechanisms, ASI coverage, known attack surfaces
+* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model

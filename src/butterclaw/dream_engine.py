@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8 — Dream Engine (Deep Memory / REM Hemisphere)
+ButterClaw v0.9.2 — Dream Engine (Deep Memory / REM Hemisphere) - src layout
 ==============================================================
 Idle-triggered sleep cycle for the DEEP memory tier (memory_episodic /
 memory_semantic) — NOT to be confused with dreamer_daemon.py, which already
@@ -79,10 +79,11 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-import memory_engine as mem
+import butterclaw.memory_engine as mem
 
 log = logging.getLogger("butterclaw.dream")
 log.setLevel(logging.INFO)
+log.propagate = False  # v0.9.1 fix — prevent double output via root logger (server.py basicConfig)
 if not log.handlers:
     _h = logging.StreamHandler()
     _h.setFormatter(logging.Formatter("%(message)s"))
@@ -147,6 +148,21 @@ class DreamEngine:
         self._dreaming = False
         self._worker_thread: Optional[threading.Thread] = None
 
+        # Seed _last_mcp_event_id from the DB at init time so that
+        # mcp_events rows written during server.py startup (MCP transport
+        # handshake) are not mistaken for live user activity on the first
+        # poll. Without this, the first _activity_fingerprint() call sees
+        # MAX(id)=1 != None → treats boot as live traffic → delays the
+        # first dream cycle by one full poll interval (60s).
+        self._last_mcp_event_id: Optional[int] = None
+        try:
+            _boot_conn = mem._get_db_connection()
+            _boot_row  = _boot_conn.execute("SELECT MAX(id) AS m FROM mcp_events").fetchone()
+            self._last_mcp_event_id = _boot_row["m"] if _boot_row else None
+            _boot_conn.close()
+        except Exception:
+            pass  # table may not exist yet — None sentinel is safe
+
         assert DREAM_DRY_RUN is True, "I-13 violation: dreaming must stay dry-run-only"
 
     # ------------------------------------------------------------------
@@ -155,6 +171,9 @@ class DreamEngine:
 
     def start(self) -> None:
         """Launches the background idle-watch + dream-cycle worker thread."""
+        if self._worker_thread is not None:  # start-once guard (v0.9.1)
+            log.debug("[DREAM ENGINE] start() called but worker already running — ignoring.")
+            return
         self._worker_thread = threading.Thread(target=self._loop, daemon=True)
         self._worker_thread.start()
         log.info(

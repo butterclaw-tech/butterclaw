@@ -1,7 +1,7 @@
 """
 ButterClaw v0.6.4 — Log Watcher, migrated to src layout
 =================================================
-[v0.8.0] - configured for src layout
+[v0.8.1] - configured for src layout
 
 [v0.6.3.1] - Full Docker Updated v0.6.3 version with minor logic flow bug fixes.
 | `watcher.py` | ~5 | ~5 | Auth compliance (Bearer tokens), boot warning logic fix. |
@@ -31,6 +31,7 @@ import signal
 from collections import deque
 from pathlib import Path
 from butterclaw.config import GATEWAY_LOG_PATH, RETRY_QUEUE_PATH
+#from butterclaw.config import cfg
 import tempfile
 import os
 
@@ -44,10 +45,17 @@ logger = logging.getLogger("butterclaw.watcher")  # PATCHED I6: basicConfig move
 # CONFIGURATION
 # =============================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Delegate path math to config.py so it always hits /app in Docker
-LOG_FILE = GATEWAY_LOG_PATH
+# Old: LOG_FILE = str(cfg.GATEWAY_LOG_PATH)
+LOG_FILE = str(GATEWAY_LOG_PATH)
 PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
+# Old: RETRY_QUEUE_PATH = str(cfg.RETRY_QUEUE_PATH)
+RETRY_QUEUE_PATH = str(RETRY_QUEUE_PATH)
+
+# DELETE: BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Old: LOG_FILE = GATEWAY_LOG_PATH
+
+#LOG_FILE = str(cfg.GATEWAY_LOG_PATH)
+#PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
 
 #LOG_FILE = os.path.join(BASE_DIR, "openclaw_gateway.log")
 # Write the PID to a safe, cross-platform temporary directory (e.g., /tmp in Linux)
@@ -56,12 +64,17 @@ PID_FILE = os.path.join(tempfile.gettempdir(), "watcher.pid")
 # PID_FILE = os.path.join(BASE_DIR, "watcher.pid") -> pre-src layout
 
 VPS_ENDPOINT = "http://127.0.0.1:5000/api/analyze"
+#VPS_ENDPOINT = f"{cfg.BASE_URL}/api/analyze"
 
+# DELETE THIS ENTIRE BLOCK:
 # [L1] Retry queue persistent storage path
-RETRY_QUEUE_PATH = os.path.join(
-    os.environ.get("BUTTERCLAW_DATA_DIR", "/data"),
-    "retry_queue.json"
-)
+# RETRY_QUEUE_PATH = os.path.join(
+#     os.environ.get("BUTTERCLAW_DATA_DIR", "/data"),
+#     "retry_queue.json"
+# )
+
+# Retry queue persistent storage path
+#RETRY_QUEUE_PATH = str(cfg.RETRY_QUEUE_PATH)
 
 # [C3] Retry queue for failed POSTs
 RETRY_QUEUE_MAX = 100

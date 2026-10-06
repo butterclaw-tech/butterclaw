@@ -10,8 +10,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.8.1** | The Package Architecture Update | 2026-10-01 | Formal `src/` layout migration, `pyproject.toml` packaging, universal `/app` path anchoring, and database splintering resolution. |
-| **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-29 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
+| **v0.9.2** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-05 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
+| **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-12 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
 | **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
 | **v0.7.0** | Positive Security Model, Capability Matrix, & Physical Firewall | 2026-08-14 | Capability Matrix (4-tier RBAC), STDIO physical firewall (byte-level memory boundary), dynamic model state wiring, Docker config updates |
@@ -33,6 +33,314 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+## [0.9.2] - The Fleet Layer & Package Architecture Mega Release - 2026-10-05
+
+The definitive `v0.9.0` release consolidates the PEP 517 `src/` layout migration, the massive multi-agent Fleet Layer expansion, and the subsequent stability and maturation patches into a single, cohesive architectural leap. 
+
+The Fleet Layer extends ButterClaw's cognition model to a fifth hemisphere — **the Fleet Sentinel** — reasoning across the entire observed fleet to detect coordinated attacks. Simultaneously, the entire codebase has been formalized into a globally installable Python package, decoupling source definitions from runtime installation paths.
+
+**Files Changed:** `.gitignore`, `nginx/butterclaw.conf` → `nginx/butterclaw.prod.conf.example`, `nginx/default.conf` → `nginx/butterclaw.local.conf`, `server.py`, `memory_engine.py`, `policy_engine.py`, `dream_engine.py`, `loop_engine.py`, `config.py`, `memory_api.py`, `default_signatures.json`, `setup_wizard.py`, `.env.example`, `Dockerfile`, `docs/ARCHITECTURE.md`, `docs/API.md`, `CHANGELOG.md`, `README.md`<br>
+**New Files:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`, `scripts/verify_backup.sh`, `whitepaper/src/main.tex`, `whitepaper/ButterClaw_Architecture_Ontology.pdf`, `whitepaper/diagrams/1.png`, `whitepaper/diagrams/2.png`, `whitepaper/LICENSE`, `whitepaper/LICENSE.md`, `.zenodo.json`
+
+### Added
+- **Global Package Registration (`pyproject.toml`):** Formalized ButterClaw as an installed Python package, eliminating flat-folder execution and allowing global namespace imports (`from butterclaw import ...`) across all environments. Included `pytest` wiring for the `src` pythonpath.
+- **Fleet Sentinel (Fifth Hemisphere):** New LLM hemisphere (temperature 0.5) that fires reactively on correlation/collusion events and proactively every 4 hours. Escalates cross-agent threats to the Guardian Brain via the Paranoia Dial when confidence crosses 0.8.
+- **Cross-Agent Detection Engines:** 
+  - **Correlation Engine:** Detects spatial (same trajectory across N≥3 agents) and temporal (kill-chain sequence) broadcast attacks.
+  - **Collusion Detector:** Detects divided-labor attacks where N≥3 distinct agents fill complementary semantic roles (e.g., scout + encoder + exfiltrator).
+- **Fleet Database & Trust Graph (`fleet.db`):** New SQLite database tracking persistent cross-session agent identity, reputation scoring, and a directed weighted relationship graph. Quarantining an agent propagates taint upstream to parents and peers.
+- **Maturation Lifecycle Decoupling (Memory Watchdog):** Implements a production-grade daemon thread (`_maturation_fallback_loop`) polling via `Event.wait()`. Keeps episodic activation scores and semantic promotion current even if the Dream Engine is stalled, restarting, or disabled.
+- **Fleet Memory & API:** 14 new `/api/fleet/*` routes for graph queries, correlation tracking, and a two-step human-gated quarantine workflow. `fleet_baselines` now tracks per-agent behavioral distributions via exponential moving average.
+- **Operations Runbook (`docs/RUNBOOK.md`):** Comprehensive 250+ line runbook covering quarantine flowcharts, Sentinel dry-run rollouts, backup procedures, and alert response tables.
+
+### Changed
+- **`src/` Layout Migration & Absolute Imports:** Relocated all application code into `src/butterclaw/`. Purged brittle bare sibling imports across the daemons and engines, replacing them with strict absolute imports to eradicate resolution crashes.
+- **Universal Configuration Anchor (`config.py`):** Centralized path resolution via `PROJECT_ROOT` to anchor host and container volumes reliably. Stripped local `BASE_DIR`/`DB_PATH` fallback logic entirely from individual modules.
+- **Diagnostic Scoping:** Quarantined `BASE_DIR` fallback logic strictly to the `if __name__ == "__main__":` entry blocks, preventing test environments from polluting production path resolution.
+- **Setup Wizard Expansion:** Extended to 10 sections, incorporating interactive prompts for Fleet Layer environment variables and the Memory Watchdog poll cadence.
+- **Systemd Service Execution:** Updated the `butterclaw.service` unit file to execute the application using the new virtual environment's isolated Python binary (`.venv/bin/python`).
+- **Batched SQL Performance:** Replaced N+1 per-row UPDATE loops in `run_maturation_tick()` with single-pass batched `executemany()` SQL, drastically reducing SQLite connection overhead during memory consolidation.
+- **Lenient Arsenal Loader:** `load_signatures()` now ignores unknown fields, safely extracts `collusion_role` and `fleet_scope` tags, and skips malformed regexes without aborting the entire Arsenal load. 
+
+- **Pytest Suite Alignment:** Updated all inline imports within the `tests/` directory (`conftest.py`, `test_lenient_loader.py`) to respect the absolute `butterclaw.` package namespace. Refined fixture type-hinting (`Iterator[Connection]`) to perfectly satisfy static analysis.
+- **`pyproject.toml` Dev Tooling:** Finalized the package configuration using the `setuptools` backend. Added an optional `[dev]` dependency block for Pytest integration (`pip install -e .[dev]`) and explicitly bundled the firewall config (`mcp_stdio_transport.json`) while ensuring live user-data files (`capabilities.json`, `default_signatures.json`) remain out of the built wheel.
+
+### Fixed
+- **Database Splintering & Path Resolvers:** Eradicated legacy `try/except ImportError` blocks that quietly failed inside the container's `site-packages`. All SQLite reads/writes and JSON artifact lookups (Capability Matrix, Arsenal) now route cleanly via the `PROJECT_ROOT` anchor.
+- **Duplicate Daemon Log Lines:** Added `log.propagate = False` to `memory_engine.py`, `dream_engine.py`, and `loop_engine.py` loggers. Prevents double-output via the root logger (armed by `server.py`'s basicConfig), ensuring each subsystem line prints exactly once.
+- **Fleet DB Initialization Race:** Reordered `init_db()` so `memory_engine` schema initializes *before* `fleet_db_init` attempts to ALTER `memory_semantic`, preventing startup crashes. Enforced strict transaction isolation between `fleet.db` and `butterclaw.db`.
+- **Dream Engine Delayed Start:** Seeded `_last_mcp_event_id` from the DB at init time. `mcp_events` rows written during server startup (MCP handshake) are no longer mistaken for live user activity, allowing the first dream cycle to fire at t=62s instead of t=122s.
+- **Double-Decay Race Condition:** Added `_maturation_tick_lock` (execution mutex) to prevent the `dream_engine` and the Memory Watchdog from concurrently executing `run_maturation_tick()` and double-decaying activation scores.
+- **Unresponsive Thread Shutdown:** Replaced blocking `time.sleep()` calls in background daemons with `Event.wait(timeout)`. The process now exits cooperatively and instantly on `SIGTERM`.
+- **SQLite WAL Contention:** Added `PRAGMA busy_timeout=5000` to connection factories. Resolves immediate `database is locked` OperationalErrors under high concurrent write contention.
+- **Dashboard 404 Void & Loop Adapters:** Re-anchored Flask's `send_from_directory` routes to restore web UI access. Implemented facade aliases in the Policy Engine to maintain backward compatibility with Loop Engine artifact adapters.
+
+- **v0.8.0 Straggler Migration:** Patched spatial daemons and TUI files (`topology_manager.py`, `tui_dashboard.py`, `tui_execution_harness.py`) that were missed in the initial `src/` layout migration. Replaced hardcoded database fallbacks with the centralized `config.cfg` anchor.
+- **Setup Wizard Memory Amnesia:** Restored the Dual Memory Engine variables (`LIVE_CRYSTALLIZATION_ENABLED`, `ATTRACTOR_DECAY_DAYS`) and `LOOP_DRY_RUN` to `setup_wizard.py` and `.env.example` that were accidentally overwritten during the v0.9.2 update. Corrected a baremetal launch command typo (`-m butterclaw.server.py` → `-m butterclaw.server`).
+- **Watcher Configuration Override:** Fixed a bug where `watcher.py` was ignoring the unified config object, hardcoding the local API port, and aggressively clobbering the `RETRY_QUEUE_PATH` back to a `/data/` fallback.
+- **Mermaid Markdown Crashes:** Fixed three structural bugs in the `ARCHITECTURE.md` flowchart diagrams (subgraph spacing, node shape redeclaration, and unquoted parentheses in edge labels) that prevented GitHub from rendering the visual charts.
+
+---
+
+---
+
+## [v0.9.2] — Patch
+
+Fix 1 — memory_engine.py: Duplicate log lines
+Root cause: dream_engine.py had log.propagate = False added as a v0.9.1 fix, but memory_engine.py was missed. Python's logger hierarchy means every [MEMORY] log call hit two handlers simultaneously — the named "butterclaw.memory" handler AND the root handler registered by server.py's logging.basicConfig() at import time. This is why every [MEMORY] line appeared exactly twice at 0ms apart across the entire boot sequence, not just maturation ticks.
+
+Change — memory_engine.py line 119, one line added:
+
+log = logging.getLogger("butterclaw.memory")
+log.setLevel(logging.INFO)
+log.propagate = False  # prevent double output via root logger (server.py basicConfig)  ← ADDED
+if not log.handlers:
+    ...
+Fix 2 — dream_engine.py: First cycle delayed by one full poll interval
+Root cause: _last_mcp_event_id was never initialised in __init__ — it only existed via getattr(self, "_last_mcp_event_id", None) inside _activity_fingerprint(). At t=60s (first poll), MAX(id) from mcp_events returns 1 (the MCP stdio handshake row written by server.py during transport init). Because 1 != None is True, _activity_fingerprint() sets latest = time.time() — making the engine think there was live user activity at t=60s. _is_idle() then sees elapsed = 0s vs 900s threshold → not idle → skips. At t=120s the id hasn't changed, 1 != 1 is False, latest stays 0.0 → idle → fires. Exactly matches the 122s observation in the log.
+
+Change — dream_engine.py __init__, after _worker_thread assignment:
+
+```text
+Seed _last_mcp_event_id from the DB at init time so that
+mcp_events rows written during server.py startup (MCP transport
+handshake) are not mistaken for live user activity on the first
+poll. Without this, the first _activity_fingerprint() call sees
+MAX(id)=1 != None → treats boot as live traffic → delays the
+first dream cycle by one full poll interval (60s).
+```
+
+```python
+self._last_mcp_event_id: Optional[int] = None
+try:
+    _boot_conn = mem._get_db_connection()
+    _boot_row  = _boot_conn.execute("SELECT MAX(id) AS m FROM mcp_events").fetchone()
+    self._last_mcp_event_id = _boot_row["m"] if _boot_row else None
+    _boot_conn.close()
+except Exception:
+    pass  # table may not exist yet — None sentinel is safe
+```
+
+After this fix the first poll at t=60s will see MAX(id) = 1, 1 != 1 → False → latest stays 0.0 → idle → fires immediately. First dream cycle moves from t=122s to t=62s.
+
+---
+
+## [v0.9.2] — 2026-09-16 - Maturation Lifecycle Decoupling
+
+### Added — R3: Maturation Lifecycle Decoupling
+
+Implements a production-grade memory maturation watchdog that keeps activation
+scores current even when `dream_engine` is stalled, restarting, or never
+initialised. Purely additive — no schema migrations, no new tables, no changes
+to `dream_engine.py`.
+
+#### `memory_engine.py`
+- **`_MemoryCfg`** — two new dataclass fields:
+  `FALLBACK_TICK_INTERVAL_HRS` (default `6.0`) and
+  `FALLBACK_TICK_GRACE_HRS` (default `1.0`), plus
+  `FALLBACK_CHECK_INTERVAL_SEC` (default `300.0`) for watchdog poll cadence.
+- **Module-level state** — `_maturation_tick_lock` (execution mutex),
+  `_fallback_stop_event` (cooperative shutdown), and
+  `_last_maturation_unix_caller` (audit trail) added alongside existing
+  `_last_maturation_unix`.
+- **`notify_maturation_tick(caller)`** — records timestamp and caller identity
+  (`"dream_engine"` or `"watchdog_fallback"`) after every successful tick.
+- **`_maturation_fallback_loop()`** — daemon watchdog thread. Polls every
+  `FALLBACK_CHECK_INTERVAL_SEC` via `Event.wait()` (instant shutdown response)
+  instead of a blocking `time.sleep()`. Fires `run_maturation_tick()` and logs
+  `⚠️ WARNING` only when `dream_engine` has been silent beyond the threshold.
+- **`start_fallback_ticker()`** — start-once guard (`is_alive()` check),
+  clears stop event on restart, logs armed confirmation.
+- **`stop_fallback_ticker(join_timeout=2.0)`** — signals event and joins thread
+  within the timeout; safe to call even if never started.
+- **`run_maturation_tick(caller)`** — hardened with non-blocking
+  `_maturation_tick_lock.acquire(blocking=False)`: returns
+  `{"status": "skipped"}` immediately if a tick is already in progress,
+  preventing double-decay of activation scores. `caller` param propagated
+  through to `notify_maturation_tick()` and the success log line.
+
+#### `server.py`
+- `import atexit` added to imports.
+- `memory_engine.start_fallback_ticker()` called immediately after
+  `init_memory_db()`, before `dream_engine.start()` — fallback is always armed
+  even if `dream_engine` fails to initialise.
+- `atexit.register(memory_engine.stop_fallback_ticker)` registered for
+  cooperative process shutdown.
+
+#### `config.py`
+- `_env_float(key, default)` helper added (stdlib only, matches existing
+  `_env_int` / `_env_bool` pattern).
+- Three new `ButterClawConfig` fields with env-var overrides:
+  - `MEMORY_WATCHDOG_ENABLED` (`BUTTERCLAW_MEMORY_WATCHDOG_ENABLED`, default `True`)
+  - `MEMORY_MATURATION_FALLBACK_HOURS` (`BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS`, default `6.0`)
+  - `MEMORY_WATCHDOG_CHECK_INTERVAL_SEC` (`BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC`, default `300.0`)
+- `to_dict()` — new `"memory_watchdog"` section with all three fields.
+- `to_flat_dict()` — all three fields added.
+
+#### `memory_api.py`
+- `GET /api/memory/status` (role: `viewer`) — new 13th route. Returns
+  `last_maturation_unix`, `last_maturation_caller`, `seconds_since_maturation`,
+  `dream_engine_healthy` (bool), `fallback_threshold_hrs`, and
+  `watchdog_enabled`. `dream_engine_healthy` uses the same elapsed-time
+  threshold as the watchdog itself, so API and daemon are always in agreement.
+
+#### `.env.example`
+- Version header bumped to `v0.9.2`.
+- New `# --- Memory Watchdog (v0.9.2 R3) ---` section added before
+  `# --- Docker / Python ---` with all three vars pre-filled at safe defaults
+  and inline comments explaining each.
+
+#### `setup_wizard.py`
+- `valid_positive_float(v)` validator added.
+- All wizard sections renumbered from `X / 9` to `X / 10`.
+- New **step 10 / 10 — Memory Watchdog** section: `ask_bool` to enable/disable,
+  conditional `ask()` prompts for threshold hours and poll cadence (both
+  validated with `valid_positive_float`), `warn()` displayed when disabled.
+- `setdefault` guard block ensures all three vars are always written even when
+  wizard fast-paths skip sections.
+- `render_env()` output block writes the R3 section before `PYTHONUNBUFFERED`.
+- Version string in generated `.env` header bumped to `v0.9.2`.
+
+### Fixed
+- **Double-decay race** — `dream_engine` and watchdog could previously execute
+  `run_maturation_tick()` concurrently within the same window. Eliminated by
+  `_maturation_tick_lock`.
+- **Unresponsive shutdown** — watchdog thread previously blocked in
+  `time.sleep(6h)` during normal operation. Replaced with `Event.wait(300s)`
+  polling loop; process now exits within seconds of SIGTERM.
+
+---
+
+[v0.9.1] The Fleet Layer Stability Patch
+=========================================
+
+server.py
+---------
+- BUGFIX: init_db() — fleet_db_init.init_fleet_db() was attempting to ALTER
+  TABLE memory_semantic and memory_signatures on fleet.db, which never
+  contained those tables (they live in butterclaw.db). Fixed by moving
+  _FLEET_MEMORY_ADDITIONS execution into init_db() against the butterclaw.db
+  connection, preserving invariant I-07-fleet (fleet.db and butterclaw.db are
+  never co-transacted).
+
+- BUGFIX: init_db() — _FLEET_MEMORY_ADDITIONS ALTER statements were firing
+  before memory_engine.init_memory_db() had run, meaning memory_semantic did
+  not yet exist at the time of the ALTER. Fixed by calling
+  memory_engine.init_memory_db() explicitly inside init_db() (via local
+  import), before opening conn2 for the fleet ALTER statements. Corrected
+  startup sequence:
+    (1) core schema via conn  → commit → close
+    (2) memory_engine.init_memory_db()   (creates memory_semantic + v0.8 tables)
+    (3) fleet ALTER columns via conn2     → commit → close
+    (4) auth / policy / alert dispatcher init
+    (5) fleet_db_init.init_fleet_db()    (fleet.db only)
+
+- BUGFIX: docker-compose healthcheck start_period raised from 10s to 60s to
+  accommodate v0.9.0 fleet layer startup weight (FleetRegistry, TrustGraph,
+  CollusionDetector, HemisphereScheduler, +14 route registration all fire
+  before Flask binds to port 5000).
+
+- BUGFIX: Dockerfile ENV var renamed FLEET_SENTINEL_DRY_RUN →
+  BUTTERCLAW_FLEET_SENTINEL_DRY_RUN to match os.environ.get() key in
+  server.py.
+
+dream_engine.py
+---------------
+- BUGFIX: Added start-once guard to DreamEngine.start() — if _worker_thread
+  is not None, return immediately. Prevents a second daemon thread from
+  spawning if start() is called more than once on the same instance.
+
+- BUGFIX: Added log.propagate = False to module-level logger setup. Root cause
+  of all [DREAM ENGINE] log lines appearing twice: the module's own
+  StreamHandler and the root logger (armed by server.py's logging.basicConfig)
+  were both handling the same records. Setting propagate=False cuts the root
+  path so each message prints exactly once.
+
+loop_engine.py
+--------------
+- BUGFIX: Added start-once guard to LoopEngine.start() — mirrors dream_engine
+  fix above.
+
+- BUGFIX: Added log.propagate = False to module-level logger setup — mirrors
+  dream_engine fix above. Resolves [LOOP ENGINE] double-print in docker logs.
+
+memory_engine.py
+----------------
+- BUGFIX (R1): Added PRAGMA busy_timeout=5000 to _get_db_connection(). SQLite
+  connections previously raised sqlite3.OperationalError: database is locked
+  immediately on write contention. 5-second retry window before raising,
+  consistent with WAL mode already in use.
+
+- PERF (R4): Replaced N+1 per-row UPDATE loop in run_maturation_tick() with
+  batched SQL. Changes:
+    • Prune step now executes a single DELETE ... WHERE in SQL (no Python row
+      scan).
+    • Fetch reduced from SELECT * to 5 named columns only.
+    • Activation updates batched into a single executemany() + one commit
+      instead of one connection open/commit/close per row.
+    • Semantic promotion loop now only iterates the subset of rows that
+      actually crossed MATURATION_THRESHOLD, not every row in the table.
+
+---
+
+## [0.9.0] - The Fleet Layer (Multi-Agent Awareness) - 2026-09-15
+
+**Files Changed:** `server.py`, `memory_engine.py`, `policy_engine.py`, `default_signatures.json`, `Dockerfile`, `setup_wizard.py`, `.env.example`, `scripts/verify_backup.sh`, `docs/ARCHITECTURE.md`, `docs/API.md`
+**Files Added:** `fleet_db_init.py`, `fleet_registry.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `fleet_memory.py`, `fleet_sentinel.py`, `fleet_api.py`, `hemisphere_scheduler.py`, `tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`, `docs/RUNBOOK.md`
+**New runtime dependencies:** 0
+
+The Fleet Layer extends Butterclaw's four-hemisphere cognition model to a fifth hemisphere — the Fleet Sentinel — with persistent cross-session agent tracking, directed trust graph propagation, and two complementary cross-agent detection engines. Where the existing four hemispheres reason about a single agent's behaviour within a session, the Fleet Sentinel reasons across the entire observed fleet to answer: *Are these agents working together against me?*
+
+### Added
+
+- **Fleet Database Bootstrap (`fleet_db_init.py`):** New SQLite database `fleet.db` bootstrapped with 8 DDL tables: `fleet_agents`, `trust_edges`, `trust_events`, `fleet_baselines`, `fleet_sentinel_log`, `correlation_journal`, `quarantine_audit_log`, plus scope-column migrations on `memory_semantic`. Runs at server startup step 2 — between `butterclaw_db_init` and route binding — and is fatal if unavailable: the server does NOT start in a silently-degraded state (I-01-fleet). WAL mode enabled; `fleet.db` and `butterclaw.db` are never co-transacted (I-07-fleet).
+
+- **Fleet Agent Registry (`fleet_registry.py`):** Persistent cross-session agent registry backed by `fleet_agents` table. Tracks `first_seen`, `last_seen`, `session_count`, `taint_count`, `reputation_score`, `role`, and `parent_agent_id` across container restarts. Asymmetric reputation scoring: taint hits 3x harder than clean-session recovery (configurable via `BUTTERCLAW_REPUTATION_DECAY_RATIO`, default 3.0). Role vocabulary: `orchestrator`, `worker`, `peer`, `unknown`, `quarantined`. Soft-delete only — records are never physically removed (I-01-fleet).
+
+- **Trust Graph (`trust_graph.py`):** Directed weighted agent relationship graph persisted in `trust_edges` and `trust_events`. Tracks three edge types: `spawn` (parent spawned child), `comm` (observed inter-agent communication), `peer` (lateral same-orchestrator relationship). When an agent is tainted, `propagate_taint()` applies a `edge_weight × TRUST_PROPAGATION_FACTOR` penalty to all upstream agents — one hop by default, two hops behind `BUTTERCLAW_TRUST_PROPAGATION_DEPTH=2` (I-05-fleet). Inactive edge weights decay at `TRUST_DECAY_RATE` per hour.
+
+- **Correlation Engine (`correlation_engine.py`):** Detects two classes of cross-agent coordination. Spatial correlation: same abstracted trajectory seen across N≥3 distinct agents within `CORRELATION_WINDOW_MINUTES` (default 30). Temporal correlation: kill-chain tool-call sequence across distinct agents within `TEMPORAL_WINDOW_SECONDS` (default 120). Fires a `CorrelationEvent` when the threshold is crossed, which routes reactively to the Fleet Sentinel. Window state is backed by `correlation_journal` (append-only, deduplicated) and replayed from journal on restart — no ephemeral state lost to pod eviction (D-26). Background compaction thread trims expired journal rows.
+
+- **Collusion Detector (`collusion_detector.py`):** Detects divided-labor attacks where distinct agents fill distinct semantic roles within `COLLUSION_WINDOW_SECONDS` (default 180). Role vocabulary: `encoder`, `exfiltrator`, `persister`, `scout`, `injector`. Fires a `CollusionEvent` when N≥3 distinct roles are filled by N≥3 distinct agents. Role assignment flows from Arsenal signature tags — no second signature system (I-06-fleet, R-04). Distinct from the Correlation Engine: correlation detects SAME patterns (broadcast attack), collusion detects COMPLEMENTARY patterns (divided labour). If the Arsenal is empty on startup, collusion detection is disabled with a CRITICAL log — never silently degrades.
+
+- **Fleet Memory (`fleet_memory.py`):** Two extensions to the v0.8 memory model. (1) Fleet semantic entity promotion: `scope='session'→'fleet'` on `memory_semantic` is human-gated — requires ≥3 distinct sessions, a CORRELATED or COLLUDING Fleet Sentinel verdict, `FLEET_SENTINEL_DRY_RUN=false`, and explicit admin confirmation via `DELETE /api/fleet/correlations/<id>/promote`. No automated promotion path exists (I-03-fleet). (2) Per-agent behavioural baselines: `tool_call_distribution`, `avg_session_duration_s`, and `avg_action_count` stored in `fleet_baselines` via exponential moving average (α=0.3). `format_fleet_context_for_prompt()` returns `{}` gracefully if `fleet.db` is unavailable — Fleet Sentinel logs WARN and continues without enrichment.
+
+- **Fleet Sentinel — Fifth Hemisphere (`fleet_sentinel.py`):** LLM hemisphere at temperature 0.5 (between Guardian Brain's decisive 0.3 and Dream Weaver's speculative 0.7, D-21). Fires reactively on every `CorrelationEvent` or `CollusionEvent` (priority 1, same as Auditor) and proactively every `BUTTERCLAW_SENTINEL_INTERVAL_HOURS` (default 4, priority 2). Verdicts: `ISOLATED`, `CORRELATED`, `COLLUDING`, `INSUFFICIENT_DATA`. An `INSUFFICIENT_DATA` short-circuit skips the LLM call entirely when fewer than `SENTINEL_MIN_AGENTS` are registered or the trust graph has no edges. Events arriving within `FLEET_SENTINEL_MIN_INTERVAL_SECONDS` of the previous LLM call are coalesced; the oldest are dropped (with a Prometheus counter increment) if the queue exceeds `FLEET_SENTINEL_MAX_QUEUED_EVENTS`. A `COLLUDING` verdict with confidence ≥ 0.8 and `FLEET_SENTINEL_DRY_RUN=false` escalates to the existing Guardian Brain + DRIFT + Paranoia Dial chain via `ask_guardian_agent()` (I-04-fleet). The Fleet Sentinel perceives; the exoskeleton decides. Operator feedback (`confirmed_true_positive` / `confirmed_false_positive`) persisted to `fleet_sentinel_log` for Loop Proposer improvement cycles (D-28).
+
+- **Fleet API (`fleet_api.py`):** 14 new `/api/fleet/*` routes registered via `register_fleet_routes(app, ...)` following the existing `register_X_routes()` convention (D-19). Total API route count: 63 (v0.8) + 14 = 77. Routes span four RBAC tiers: viewer (read-only fleet data), operator (manual sentinel trigger, feedback), admin (quarantine, entity demotion, soft-delete). Two-step quarantine workflow (R-06): `POST .../quarantine` issues a 60-second HMAC confirmation token; `POST .../quarantine/confirm` consumes the token and applies side effects — reputation → 0.0, role → `quarantined`, taint propagation through trust graph, reactive Fleet Sentinel cycle. Quarantine does NOT terminate active processes (use `POST /api/spatial/block` for that). Full `quarantine_audit_log` written on every step. All routes return 503 if a fleet component is unavailable.
+
+- **Hemisphere Scheduler (`hemisphere_scheduler.py`):** Priority min-heap queue managing all five LLM hemisphere invocations under a configurable concurrency cap (`BUTTERCLAW_MAX_CONCURRENT_LLM`, default 2). Priority assignments: Guardian Brain 0 (cap-exempt), Auditor 1, Fleet Sentinel reactive 1, Fleet Sentinel proactive 2, Loop Proposer 3, Dream Weaver 4. Circuit breaker: after `BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD` (default 3) consecutive LLM errors the circuit opens; non-Guardian-Brain invocations are rejected until `BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS` (default 60) elapses and a half-open probe succeeds. Guardian Brain errors never trip the breaker. Prometheus metric names stubbed for `server.py` to wire (R-05).
+
+- **Fleet Test Suite (`tests/fleet/conftest.py`, `tests/arsenal/test_lenient_loader.py`):** `conftest.py` provides pytest fixtures for all fleet components with function-scoped temp-file DBs. The `assert_distinct_db_connections` fixture runs `autouse=True` on every fleet test — asserts that `fleet.db` and `butterclaw.db` connections are distinct objects pointing to different inodes, enforcing I-07-fleet at the test layer. `test_lenient_loader.py` covers the full R-04 backward compatibility matrix: unknown fields ignored, `collusion_role` correct when present, `None` when absent, `fleet_scope` defaults `False`, v0.8 legacy signature loads intact, empty Arsenal disables collusion detection with CRITICAL log.
+
+- **Operations Runbook (`docs/RUNBOOK.md`):** New 252-line runbook covering: quarantine-vs-block decision flowchart, two-step quarantine procedure with UI requirements, Fleet Sentinel dry-run rollout phases (deploy → label verdicts → FP rate < 5% → flip to live), operator feedback API, `fleet.db` backup and restore procedure, I-07-fleet isolation verification, P1/P2 alert response table, manual sentinel trigger, entity demotion two-step rollback, and full environment variable quick-reference.
+
+### Fixed
+
+- **`memory_semantic` Schema Gap (`memory_engine.py`):** The v0.8 `memory_semantic` table had no scope column, meaning fleet-promoted entities and session entities were indistinguishable. Added `scope TEXT NOT NULL DEFAULT 'session' CHECK(scope IN ('session','fleet'))` to the DDL and `ALTER TABLE` migration in `init_memory_db()` — a no-op when the column already exists (swallowed `OperationalError`). All semantic queries now default-filter to `scope='session'` so fleet-promoted entities never contaminate session-local context. Fleet scope can only be written by `FleetMemory.promote_entity_to_fleet()` after explicit admin confirmation (I-03-fleet).
+
+- **Arsenal Loader KeyError on New Fields (`policy_engine.py`):** The v0.7.1 `load_signatures()` used direct key access (`sig['pattern']`, `sig['severity']`) and would `KeyError` on any future signature entry missing a field, and silently dropped unrecognised keys rather than logging them. Replaced with a `_KNOWN_SIG_FIELDS` allow-list lenient loader (R-04): unknown fields are logged at DEBUG and ignored; missing `id` or `pattern` skips the signature with a WARNING; malformed regex skips with a WARNING instead of aborting the entire Arsenal load. `raw_pattern` now preserved alongside the compiled object for Loop Proposer shadow evaluation.
+
+- **CollusionDetector Seeded with Stale Empty Arsenal (`server.py`):** The initial fleet wiring used `arsenal_signatures=[]` as a placeholder, meaning `CollusionDetector` would start with no role mappings and collusion detection would be silently disabled on every boot. Fixed by wiring `policy_engine.list_signatures() if POLICY_ENGINE_ENABLED else []` at the `CollusionDetector` instantiation site, so the live Arsenal is passed immediately after `load_signatures()` completes.
+
+### Changed
+
+- **Policy Engine (`policy_engine.py`):** Added `list_signatures()` — returns JSON-safe raw dict list (no compiled regex objects) for `CollusionDetector` seeding and `GET /api/memory/signatures` inventory. Added `reload_signatures()` — hot-reload Arsenal from disk without server restart, for Loop Proposer post-commit use. Lenient `load_signatures()` now extracts `collusion_role` (validated against `_VALID_COLLUSION_ROLES`, defaults `None`) and `fleet_scope` (defaults `False`) from each signature entry. Self-test diagnostic block extended with `list_signatures()` schema assertion and full lenient-loader round-trip test including unknown-field drop, fleet-field extraction, and v0.8 legacy compatibility.
+
+- **Arsenal Signatures (`default_signatures.json`):** All 7 signatures tagged with `collusion_role` and `fleet_scope: true` for Fleet Sentinel collusion detection (I-06-fleet): `sig_cswh_01` → `scout`, `sig_exfil_01` → `exfiltrator`, `sig_exfil_02` → `encoder`, `sig_inj_01` → `injector`, `sig_kin_01` → `exfiltrator`, `sig_exfil_03` → `scout`, `sig_kin_02` → `persister`. All five collusion roles are covered, enabling a scout + encoder + exfiltrator trio to trigger a `CollusionEvent` with the default `COLLUSION_MIN_ROLES=3` threshold.
+
+- **Server Wiring (`server.py`):** 13 fleet blocks integrated: `fleet_db_init.init_fleet_db()` in startup step 2 (fatal on failure); `fleet_registry.register_agent()` in `MCPProcessManager.start()` for every stdio agent; `HemisphereScheduler` instantiated before Dream Weaver; `_fleet_sentinel_llm_call()` added alongside `_dream_llm_call`/`_loop_llm_call` using the same hybrid local/remote routing pattern (temperature 0.5); all fleet components instantiated with reactive callbacks wired to `HemisphereScheduler`; `register_fleet_routes()` called after `register_memory_routes()`; `correlation_engine.ingest_tool_event()` fed from `spatial_telemetry_gateway()` (non-blocking, never raises); `/api/health` and `GET /api/settings` extended with fleet component status and all 11 fleet config values; boot banner extended with Fleet Layer summary lines.
+
+- **Container Build (`Dockerfile`):** Added 9 new fleet `.py` files to a dedicated `--- NEW v0.9.0 FLEET LAYER FILES ---` `COPY` block. Added `BUTTERCLAW_FLEET_DB_PATH=/data/fleet.db` and `FLEET_SENTINEL_DRY_RUN=true` environment variables. Added `VOLUME ["/data"]` declaration so both `butterclaw.db` and `fleet.db` are captured in the Docker volume backup (I-01-fleet).
+
+- **Setup Wizard + Environment Template (`setup_wizard.py`, `.env.example`):** Wizard extended from 8 to 9 sections. New section 9/9 — Fleet Layer — prompts for all 11 fleet env vars with Docker-aware path defaults and a skip-friendly fast path that applies safe defaults silently. `FLEET_SENTINEL_DRY_RUN` added to section 7 Safety alongside `BUTTERCLAW_DRY_RUN` / `BUTTERCLAW_MCP_DRY_RUN`. `render_env()` emits the full `--- Fleet Layer (v0.9.0) ---` block. `print_next_steps()` dry-run advice extended with fleet sentinel flip instruction referencing the RUNBOOK. `.env.example` updated to v0.9.0, `BUTTERCLAW_FLEET_DB_PATH` added under the Database section, full fleet section appended.
+
+- **Backup Verification (`scripts/verify_backup.sh`):** Extended from `butterclaw.db`-only to check both databases. New `check_db()` helper runs `PRAGMA integrity_check`, reports WAL file size, and logs page count. New `check_db_isolation()` enforces I-07-fleet: asserts `butterclaw.db` and `fleet.db` have distinct inodes — fails with exit code 1 if they share a backing file.
+
+- **Architecture & API Documentation (`docs/ARCHITECTURE.md`, `docs/API.md`):** `ARCHITECTURE.md` updated to v0.9.0: Fleet Layer added to exoskeleton diagram, hemisphere table extended to five rows (Fleet Sentinel temp 0.5), full "Hemisphere 5" section, Flow F (Fleet Sentinel reactive cycle) added to data flow walkthroughs, I-01-fleet through I-07-fleet invariants table, D-21 through D-26 design decisions, nine new source-file rows in the Source Code Map, route count updated to 77, Related Docs cross-reference to new RUNBOOK.md. `API.md` updated to v0.9.0: full 14-route fleet endpoints section with quarantine lifecycle, route count summary table updated to 77 (added Fleet Layer row).
 
 ---
 
@@ -65,7 +373,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 ## [0.8.0] - The Spatial SOC & Memory Pipeline - 2026-09-08
 
 **Files Changed:** `server.py`, `tui_dashboard.py`, `Dockerfile`, `requirements.txt`
-**Files Added:** `memory_engine.py`, `event_ingester.py`, `topology_manager.py`, `watcher_daemon.py`, `dreamer_daemon.py`, `archiver_daemon.py`, `tui_execution_harness.py`, `scripts/test_spatial.py`
+**Files Added:** `memory_engine.py`, `event_ingester.py`, `topology_manager.py`, `watcher_daemon.py`, `dreamer_daemon.py`, `archiver_daemon.py`, `tui_execution_harness.py`, `migrate_v080.py`, `test_spatial.py`
 **New runtime dependencies:** psutils
 
 ### Added
@@ -97,13 +405,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 ## [0.8.0] - Part 2 - The Unified Memory Substrate (Four-Hemisphere Cognition) - 2026-09-12
 
 **Files Changed:** `memory_engine.py`, `server.py`, `Dockerfile`
-**Files Added:** `dream_engine.py`, `loop_engine.py`, `memory_api.py`, `scripts/test_dual_memory.py`
+**Files Added:** `dream_engine.py`, `loop_engine.py`, `memory_api.py`
 **New runtime dependencies:** 0
 
-Context: two independent v0.8 memory-engine designs existed in parallel going into this pass — a **Deep Memory Engine** (HOT/WARM/COLD tiers, episodic + semantic consolidation, activation-strength maturation, read-only Guardian Brain context injection) and a **Surface Memory Engine** documented in Part 1 above (spatial telemetry, primitive-action heuristics, Cold Memory attractor scanning). This release merges both into one `memory_engine.py` and completes the three modules the original v0.8 design roadmap called for beyond the engine itself — `dream_engine.py`, `loop_engine.py`, and `memory_api.py` — none of which existed prior to this pass.
+Context: two independent v0.8 memory-engine designs existed in parallel going into this pass — a Copilot-authored **Deep Memory Engine** (HOT/WARM/COLD tiers, episodic + semantic consolidation, activation-strength maturation, read-only Guardian Brain context injection) and the Gemini-authored **Surface Memory Engine** documented in Part 1 above (spatial telemetry, primitive-action heuristics, Cold Memory attractor scanning). This release merges both into one `memory_engine.py` and completes the three modules the original v0.8 design roadmap called for beyond the engine itself — `dream_engine.py`, `loop_engine.py`, and `memory_api.py` — none of which existed prior to this pass.
 
 ### Added
-- **Unified Deep + Surface Memory Engine (`memory_engine.py`):** Merged the Deep Memory Engine and the Surface Memory Engine into a single dual-layer module. Telemetry primitives now flow into the same `store()` → episodic → semantic lifecycle as every other Guardian Brain verdict; a shared `_get_db_connection()`/schema layer backs both tiers. Retains a `MemoryEngine` class facade for any caller still written against the original Surface engine's call style, alongside the full functional API (`store`, `retrieve_context`, `reconsolidate`, `run_maturation_tick`) for Deep-tier callers.
+- **Unified Deep + Surface Memory Engine (`memory_engine.py`):** Merged the Copilot Deep Memory Engine and the Gemini Surface Memory Engine into a single dual-layer module. Telemetry primitives now flow into the same `store()` → episodic → semantic lifecycle as every other Guardian Brain verdict; a shared `_get_db_connection()`/schema layer backs both tiers. Retains a `MemoryEngine` class facade for any caller still written against the original Surface engine's call style, alongside the full functional API (`store`, `retrieve_context`, `reconsolidate`, `run_maturation_tick`) for Deep-tier callers.
 - **Scoped Live Signature Crystallization:** Zero-day heuristic hits that recur 3+ times **within the same session** now crystallize automatically into a new Cold Memory attractor (`threat_category` prefixed `live:`, confidence 0.7 — deliberately below the offline Dreamer's 0.85), closing the loop between real-time heuristics and `dreamer_daemon.py`'s offline batch synthesis without a container restart. Both producers derive `sig_id` identically (`SIG_` + `sha256(pattern)[:16]`) and write via `INSERT OR IGNORE`, so a pattern crystallized live and one later synthesized by the Dreamer collapse onto the same row instead of duplicating. Gated behind a one-line kill switch (`_cfg.LIVE_CRYSTALLIZATION_ENABLED`) in case live crystallization proves noisier than the offline path in practice.
 - **Dream Engine (`dream_engine.py`) — the "Dream Weaver" hemisphere (temp 0.7, idle ≥ 15 min):** New idle-triggered daemon, distinct from `dreamer_daemon.py` (which is surface-tier-only, always-on, and purely mechanical). Every cycle calls `memory_engine.run_maturation_tick()` — built in Part 2's memory engine but never invoked by anything until now — and optionally synthesizes speculative, plausible-but-unconfirmed threat scenarios from the semantic graph via an operator-supplied `llm_caller` callback, priming them into memory as `source="dream"` (renders as `[DREAM-PRIMED]` in the Guardian Brain's recalled-memory context block). Hardcodes `DREAM_DRY_RUN = True` as a literal, un-overridable constant (I-13) and re-checks for live traffic between every step of a cycle so it yields immediately if real activity appears (I-14).
 - **Loop Engine (`loop_engine.py`) — the "Loop Proposer" hemisphere (temp 0.4, every 6 hrs):** New Karpathy-style autoresearch loop. Proposes a change to exactly one signature or policy rule, replays the last N `mcp_events` through a side-effect-free shadow evaluator (reuses `policy_engine`'s own public `POLICY_OPERATORS`/`SCOPE_FIELDS` matching primitives, but never mutates its live `COMPILED_SIGNATURES` or the `policies` table while scoring a candidate), scores baseline vs. candidate, and commits or reverts through `memory_engine.record_loop_experiment()`. Governed by `LOOP_DRY_RUN` (env-controlled, defaults `true` — per the original design intent, an operator must explicitly flip it once proposal quality is trusted, unlike the Dream Weaver's non-negotiable dry-run). Enforces I-15 twice: structurally (only signature/policy/prompt artifact types exist as public operations — no "write arbitrary file" entry point) and at runtime (`_reject_python_targets` raises on any `.py`-shaped target). Prompt-type proposals are a deliberate exception — always forced to `status="needs_review"` regardless of `dry_run`, since there is no deterministic replay score for prompt-quality the way there is for a regex/condition match.

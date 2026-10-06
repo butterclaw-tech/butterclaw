@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8 — Unified Memory Engine
+ButterClaw v0.9.2 — Unified Memory Engine - src layout
 =================================================
 Merges the two v0.8 candidate engines into one substrate:
 
@@ -116,6 +116,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("butterclaw.memory")
 log.setLevel(logging.INFO)
+log.propagate = False  # prevent double output via root logger (server.py basicConfig)
 if not log.handlers:
     _h = logging.StreamHandler()
     _h.setFormatter(logging.Formatter("%(message)s"))
@@ -139,11 +140,12 @@ def _get_db_path() -> str:
         if _db_path is not None:
             return _db_path
         try:
-            from config import cfg  # type: ignore
+            from butterclaw.config import cfg  # type: ignore
             _db_path = cfg.DB_PATH
         except Exception:
             import os
-            _db_path = os.path.join(os.path.dirname(__file__), "butterclaw.db")
+            #_db_path = os.path.join(os.path.dirname(__file__), "butterclaw.db")
+            _db_path = os.path.join(os.getcwd(), "butterclaw.db")
             log.warning(f"⚠️ [MEMORY] config.py unavailable — using fallback DB path: {_db_path}")
     return _db_path
 
@@ -153,6 +155,7 @@ def _get_db_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(_get_db_path(), check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")  # v0.9.1 R1 — 5 s retry on lock before raising
     conn.execute("PRAGMA foreign_keys=ON;")  # matches server.py — required for Topology Lineage FKs
     return conn
 
@@ -171,6 +174,8 @@ class _MemoryCfg:
     MATURATION_THRESHOLD: float = 0.5
     PRUNE_ACTIVATION_FLOOR: float = 0.05
     PRUNE_AGE_DAYS: int = 30
+    FALLBACK_TICK_INTERVAL_HRS: float = 6.0    # R3 — hours before fallback fires if dream_engine stalls
+    FALLBACK_TICK_GRACE_HRS: float = 1.0       # R3 — extra grace on top of interval before ⚠️ fires
     CONTEXT_MAX: int = 3
     REASONING_SUMMARY_CHARS: int = 200
 
@@ -192,6 +197,11 @@ class _MemoryCfg:
 
 
 _cfg = _MemoryCfg()
+
+# ── R3 Maturation Fallback State ─────────────────────────────────────────────
+_last_maturation_unix: float = 0.0         # unix timestamp of last successful run_maturation_tick()
+_last_maturation_lock = threading.Lock()   # guards _last_maturation_unix
+_fallback_thread: Optional[threading.Thread] = None
 
 
 def init(
@@ -1023,6 +1033,104 @@ def reconsolidate(
 
 
 # ---------------------------------------------------------------------------
+# ── R3 Maturation Fallback — notify / loop / start ──────────────────────────
+
+def notify_maturation_tick() -> None:
+    """
+    Records that a maturation tick just completed successfully.  Called
+    internally by run_maturation_tick() so the timestamp is always current
+    regardless of whether the tick was driven by dream_engine or the fallback
+    thread.  dream_engine.py does NOT need to call this directly.
+
+    The fallback thread watches _last_maturation_unix: as long as dream_engine
+    is healthy the fallback stays silent.  If the timestamp goes stale by more
+    than FALLBACK_TICK_INTERVAL_HRS + FALLBACK_TICK_GRACE_HRS, the fallback
+    fires and logs ⚠️ WARNING.
+    """
+    global _last_maturation_unix
+    with _last_maturation_lock:
+        _last_maturation_unix = time.time()
+
+
+def _maturation_fallback_loop() -> None:
+    """
+    Background daemon thread (name="memory-maturation-fallback").  Wakes every
+    FALLBACK_TICK_INTERVAL_HRS and checks whether dream_engine has ticked
+    recently.  If healthy → logs debug and sleeps.  If stale → logs ⚠️ WARNING,
+    runs run_maturation_tick() directly, then sleeps again.
+
+    Invariant: this thread never races with dream_engine — both call the same
+    run_maturation_tick(), which uses executemany() inside a single transaction.
+    SQLite WAL + busy_timeout=5000 (R1) handle the contention case gracefully.
+
+    Does NOT perform REM synthesis, LLM dreaming, or speculative scenario
+    generation — those remain exclusively in dream_engine.  This thread only
+    does the mechanical decay / prune / promote work.
+    """
+    interval_secs = _cfg.FALLBACK_TICK_INTERVAL_HRS * 3600
+
+    # Stagger first wakeup by the full interval so dream_engine gets a chance
+    # to tick first after normal boot before we check anything.
+    time.sleep(interval_secs)
+
+    while True:
+        try:
+            with _last_maturation_lock:
+                last = _last_maturation_unix
+
+            age_hrs = (time.time() - last) / 3600.0
+            threshold_hrs = _cfg.FALLBACK_TICK_INTERVAL_HRS + _cfg.FALLBACK_TICK_GRACE_HRS
+
+            if last == 0.0 or age_hrs >= threshold_hrs:
+                log.warning(
+                    f"⚠️ [MEMORY] Fallback maturation tick firing "
+                    f"(dream_engine last ticked {age_hrs:.1f}h ago — "
+                    f"expected within {threshold_hrs:.1f}h). "
+                    f"Check dream_engine health."
+                )
+                stats = run_maturation_tick()  # run_maturation_tick calls notify_maturation_tick internally
+                log.warning(
+                    f"⚠️ [MEMORY] Fallback tick complete — "
+                    f"updated={stats['updated']} pruned={stats['pruned']} "
+                    f"promoted={stats['promoted_to_semantic']}"
+                )
+            else:
+                log.debug(
+                    f"[MEMORY] Fallback ticker: dream_engine healthy "
+                    f"(last tick {age_hrs:.2f}h ago). No action."
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            log.error(f"❌ [MEMORY] Fallback tick error: {exc}")
+
+        time.sleep(interval_secs)
+
+
+def start_fallback_ticker() -> None:
+    """
+    Starts the maturation fallback daemon thread.  Safe to call multiple times —
+    the start-once guard ensures only one thread is ever spawned.
+
+    Call from server.py immediately after init_memory_db() and before
+    dream_engine.start() so the fallback is always armed even if dream_engine
+    fails to initialise.
+    """
+    global _fallback_thread
+    if _fallback_thread is not None:
+        return  # already running — idempotent
+    _fallback_thread = threading.Thread(
+        target=_maturation_fallback_loop,
+        name="memory-maturation-fallback",
+        daemon=True,
+    )
+    _fallback_thread.start()
+    log.info(
+        f"[MEMORY] Maturation fallback ticker armed "
+        f"(interval={_cfg.FALLBACK_TICK_INTERVAL_HRS}h, "
+        f"grace={_cfg.FALLBACK_TICK_GRACE_HRS}h)."
+    )
+
+
 # Public API — run_maturation_tick()  (deep + surface tiers)
 # ---------------------------------------------------------------------------
 
@@ -1032,6 +1140,14 @@ def run_maturation_tick() -> Dict[str, int]:
     Surface tier: decay Cold Memory attractors that haven't fired recently.
     Called by dream_engine.py during the consolidation phase.
     Returns {updated, promoted_to_semantic, pruned, signatures_decayed}.
+
+    v0.9.1 R4 — replaced N+1 per-row UPDATE loop with two batched SQL statements:
+      1. DELETE rows that are both below PRUNE_ACTIVATION_FLOOR and older than PRUNE_AGE_DAYS
+         (pure SQL, no Python row scan needed).
+      2. Bulk UPDATE activation_strength for all remaining rows via a CASE expression.
+    Semantic promotion still requires a Python loop (needs _promote_tags_to_semantic()
+    side-effects) but only iterates rows that actually crossed the maturation threshold,
+    not every row in the table.
     """
     stats = {"updated": 0, "promoted_to_semantic": 0, "pruned": 0, "signatures_decayed": 0}
     now_unix     = time.time()
@@ -1039,47 +1155,61 @@ def run_maturation_tick() -> Dict[str, int]:
 
     try:
         conn = _get_db_connection()
-        all_records = conn.execute("SELECT * FROM memory_episodic").fetchall()
+
+        # ── Step 1: batch-prune in SQL (no Python loop) ──────────────────────
+        cur = conn.execute("""
+            DELETE FROM memory_episodic
+            WHERE created_at_unix < ?
+              AND activation_strength < ?
+        """, (prune_cutoff, _cfg.PRUNE_ACTIVATION_FLOOR))
+        stats["pruned"] = cur.rowcount
+
+        # ── Step 2: fetch only rows that survive pruning ──────────────────────
+        # We need created_at_unix to recompute activation and old activation_strength
+        # to detect semantic-promotion crossings — only these two columns, not SELECT *.
+        rows = conn.execute(
+            "SELECT memory_id, created_at_unix, activation_strength, tags, threat_type "
+            "FROM memory_episodic"
+        ).fetchall()
+
+        # ── Step 3: compute new activations, batch UPDATE in one transaction ──
+        update_batch = []
+        promote_rows = []
+        for row in rows:
+            r       = dict(row)
+            mem_id  = r["memory_id"]
+            created = r.get("created_at_unix", now_unix)
+            new_act = compute_activation_strength(created)
+            old_act = r.get("activation_strength", 0.0)
+            update_batch.append((new_act, mem_id))
+            stats["updated"] += 1
+            if new_act >= _cfg.MATURATION_THRESHOLD and old_act < _cfg.MATURATION_THRESHOLD:
+                promote_rows.append(r)
+
+        conn.executemany(
+            "UPDATE memory_episodic SET activation_strength = ? WHERE memory_id = ?",
+            update_batch,
+        )
+        conn.commit()
         conn.close()
+
     except sqlite3.Error as e:
-        log.error(f"❌ [MEMORY] Maturation tick fetch failed: {e}")
+        log.error(f"❌ [MEMORY] Maturation tick failed: {e}")
         return stats
 
-    for row in all_records:
-        r       = dict(row)
-        mem_id  = r["memory_id"]
-        created = r.get("created_at_unix", now_unix)
-        new_act = compute_activation_strength(created)
-        old_act = r.get("activation_strength", 0.0)
-
-        if new_act < _cfg.PRUNE_ACTIVATION_FLOOR and created < prune_cutoff:
-            _episodic_delete(mem_id)
-            stats["pruned"] += 1
-            log.info(f"🗑️  [MEMORY] Pruned {mem_id[:8]} "
-                     f"(A={new_act:.3f}, age={(now_unix-created)/86400:.1f}d)")
-            continue
-
+    # ── Step 4: semantic promotion (requires Python side-effects, unavoidable) ─
+    for r in promote_rows:
         try:
-            conn = _get_db_connection()
-            conn.execute(
-                "UPDATE memory_episodic SET activation_strength = ? WHERE memory_id = ?",
-                (new_act, mem_id),
-            )
-            conn.commit()
-            conn.close()
-            stats["updated"] += 1
-        except sqlite3.Error as e:
-            log.error(f"❌ [MEMORY] Activation update failed for {mem_id[:8]}: {e}")
-            continue
+            tags = json.loads(r.get("tags") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+        _promote_tags_to_semantic(tags, r["threat_type"])
+        stats["promoted_to_semantic"] += 1
+        log.info(f"🧠 [MEMORY] Promoted {r['memory_id'][:8]} to semantic "
+                 f"(A={compute_activation_strength(r['created_at_unix']):.3f})")
 
-        if new_act >= _cfg.MATURATION_THRESHOLD and old_act < _cfg.MATURATION_THRESHOLD:
-            try:
-                tags = json.loads(r.get("tags") or "[]")
-            except (json.JSONDecodeError, TypeError):
-                tags = []
-            _promote_tags_to_semantic(tags, r["threat_type"])
-            stats["promoted_to_semantic"] += 1
-            log.info(f"🧠 [MEMORY] Promoted {mem_id[:8]} to semantic (A={new_act:.3f})")
+    if stats["pruned"]:
+        log.info(f"🗑️  [MEMORY] Batch-pruned {stats['pruned']} expired episodic rows.")
 
     stats["signatures_decayed"] = _decay_stale_signatures()
 
@@ -1088,6 +1218,7 @@ def run_maturation_tick() -> Dict[str, int]:
         f"updated={stats['updated']} promoted={stats['promoted_to_semantic']} "
         f"pruned={stats['pruned']} signatures_decayed={stats['signatures_decayed']}"
     )
+    notify_maturation_tick()   # R3 — keep timestamp current for fallback watcher
     return stats
 
 
@@ -1835,6 +1966,9 @@ class MemoryEngine:
 
 if __name__ == "__main__":
     import os, tempfile
+
+    # Quarantined local path for standalone diagnostic tests
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     print("=" * 60)
     print("ButterClaw memory_engine.py (v0.8 unified) — self-test")

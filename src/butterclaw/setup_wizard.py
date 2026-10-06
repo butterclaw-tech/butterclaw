@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ButterClaw Setup Wizard — ButterClaw v0.8.1 - modern src layout
+ButterClaw Setup Wizard — ButterClaw v0.9.2
 Interactively generates a .env configuration file.
 
 Usage:
@@ -19,10 +19,6 @@ import textwrap
 import datetime
 from typing import Optional
 from pathlib import Path
-from butterclaw.config import PROJECT_ROOT
-
-ENV_EXAMPLE_PATH = PROJECT_ROOT / "env.example"
-ENV_TARGET_PATH = PROJECT_ROOT / ".env"
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +165,13 @@ def valid_positive_int(v):
     if not v.isdigit() or int(v) < 1:
         return "Must be a positive integer."
 
+def valid_positive_float(v):
+    try:
+        if float(v) <= 0:
+            raise ValueError
+    except ValueError:
+        return "Must be a positive number (e.g. 6.0 or 300)."
+
 
 # ---------------------------------------------------------------------------
 # Banner
@@ -185,7 +188,7 @@ BANNER = r"""
 
 def print_banner():
     _safe_print(cyan(BANNER))
-    _safe_print(bold(cyan("  ButterClaw v0.8.1 -- Interactive Setup Wizard")))
+    _safe_print(bold(cyan("  ButterClaw v0.9.2 -- Interactive Setup Wizard")))
     _safe_print(dim("  Agentic SOC * Local-first * Zero-trust credential locker"))
     _safe_print("")
     _safe_print(dim("  This wizard will ask you a series of questions and generate a"))
@@ -322,7 +325,7 @@ def run_wizard() -> dict:
     )
 
     # ── SAFETY / PARANOIA ────────────────────────────────────────────────────
-    section("  7 / 8  *  Safety & Paranoia Dial")
+    section("  7 / 10  *  Safety & Paranoia Dial")
     info("DRY_RUN controls whether kinetic actions (SIGKILL, vault shred)")
     info("  are simulated or actually executed.")
     warn("Keep BOTH dry-run flags TRUE until you're confident in your setup.")
@@ -331,13 +334,12 @@ def run_wizard() -> dict:
     mcp_dry   = ask_bool("MCP dry run?   (blocks real TCP connections & syscalls)", default=True)
     chain_dry = ask_bool("Chain dry run? (simulates tool calls, brain still reasons)", default=True)
     loop_dry  = ask_bool("Loop dry run?  (simulates signature mutations)", default=True)
-    
-    cfg["BUTTERCLAW_MCP_DRY_RUN"]  = "true" if mcp_dry   else "false"
-    cfg["BUTTERCLAW_DRY_RUN"]      = "true" if chain_dry else "false"
+    cfg["BUTTERCLAW_MCP_DRY_RUN"] = "true" if mcp_dry   else "false"
+    cfg["BUTTERCLAW_DRY_RUN"]     = "true" if chain_dry else "false"
     cfg["BUTTERCLAW_LOOP_DRY_RUN"] = "true" if loop_dry  else "false"
 
-    if not mcp_dry or not chain_dry or not loop_dry:
-        warn("One or more dry-run flags are OFF -- real kinetic or mutative actions will fire.")
+    if not mcp_dry or not chain_dry:
+        warn("One or both dry-run flags are OFF -- real kinetic actions will fire.")
 
     _safe_print("")
     info("Paranoia Dial -- how aggressively ButterClaw responds to threats:")
@@ -360,8 +362,112 @@ def run_wizard() -> dict:
     if paranoia == "3" and (not mcp_dry or not chain_dry):
         warn("Level 3 with dry-run disabled: vault shred + token revocation WILL fire on threat.")
 
+    _safe_print("")
+    info("Fleet Sentinel dry-run (v0.9.0) -- controls whether COLLUDING verdicts")
+    info("  from the Fleet Sentinel escalate to the Guardian Brain for kinetic action.")
+    tip("  Keep TRUE until you have validated fleet verdicts against the sentinel log.")
+    tip("  See docs/RUNBOOK.md for the recommended dry-run rollout procedure.")
+    fleet_dry = ask_bool("Fleet Sentinel dry run?  (suppress multi-agent escalation)", default=True)
+    cfg["FLEET_SENTINEL_DRY_RUN"] = "true" if fleet_dry else "false"
+    if not fleet_dry:
+        warn("Fleet Sentinel dry-run is OFF -- COLLUDING verdicts will escalate to Guardian Brain.")
+
+    # ── FLEET LAYER ──────────────────────────────────────────────────────────
+    section("  9 / 10  *  Fleet Layer (v0.9.0)")
+    info("Multi-agent awareness: correlation detection, trust graph, Fleet Sentinel hemisphere.")
+    tip("  Defaults are safe for production. Skip unless you have specific scaling needs.")
+    _safe_print("")
+
+    if ask_bool("Configure fleet layer settings?", default=False):
+        if deploy_mode == "docker":
+            fleet_db_default = "/data/fleet.db"
+        else:
+            fleet_db_default = "./fleet.db"
+        cfg["BUTTERCLAW_FLEET_DB_PATH"] = ask(
+            "Fleet DB path (separate from butterclaw.db, I-07-fleet)",
+            default=fleet_db_default,
+        )
+        cfg["BUTTERCLAW_SENTINEL_INTERVAL_HOURS"] = ask(
+            "Fleet Sentinel proactive sweep interval (hours)",
+            default="4", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_SENTINEL_MIN_AGENTS"] = ask(
+            "Min agents before Fleet Sentinel fires (INSUFFICIENT_DATA guard)",
+            default="2", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_COLLUSION_WINDOW_SECONDS"] = ask(
+            "Collusion role accumulation window (seconds)",
+            default="180", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_CORRELATION_FLEET_THRESHOLD"] = ask(
+            "Distinct agents for a CorrelationEvent (cross-agent same-pattern threshold)",
+            default="3", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_TRUST_PROPAGATION_DEPTH"] = ask(
+            "Taint propagation depth (1 or 2 hops)",
+            default="1", validator=lambda v: "Must be 1 or 2" if v not in ("1", "2") else None,
+        )
+        cfg["BUTTERCLAW_REPUTATION_DECAY_RATIO"] = ask(
+            "Reputation decay ratio (taint:recovery asymmetry, default 3.0)",
+            default="3.0",
+        )
+        cfg["BUTTERCLAW_MAX_CONCURRENT_LLM"] = ask(
+            "Max concurrent LLM hemisphere calls (Guardian Brain is exempt)",
+            default="2", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD"] = ask(
+            "Consecutive LLM errors before circuit breaker opens",
+            default="3", validator=valid_positive_int,
+        )
+        cfg["BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS"] = ask(
+            "Circuit breaker reset window (seconds)",
+            default="60", validator=valid_positive_int,
+        )
+    else:
+        if deploy_mode == "docker":
+            cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH", "/data/fleet.db")
+        else:
+            cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH", "./fleet.db")
+        cfg.setdefault("BUTTERCLAW_SENTINEL_INTERVAL_HOURS",    "4")
+        cfg.setdefault("BUTTERCLAW_SENTINEL_MIN_AGENTS",        "2")
+        cfg.setdefault("BUTTERCLAW_COLLUSION_WINDOW_SECONDS",   "180")
+        cfg.setdefault("BUTTERCLAW_CORRELATION_FLEET_THRESHOLD","3")
+        cfg.setdefault("BUTTERCLAW_TRUST_PROPAGATION_DEPTH",    "1")
+        cfg.setdefault("BUTTERCLAW_REPUTATION_DECAY_RATIO",     "3.0")
+        cfg.setdefault("BUTTERCLAW_MAX_CONCURRENT_LLM",         "2")
+        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD",  "3")
+        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS", "60")
+
+    # ── R3 MEMORY WATCHDOG ───────────────────────────────────────────────────
+    section("  10 / 10  *  Memory Watchdog (v0.9.2 R3)")
+    info("Fallback maturation daemon that fires when dream_engine has been")
+    info("  silent for longer than the configured threshold.")
+    info("  Prevents memory activations from freezing if dream_engine stalls.")
+    tip("  Defaults (enabled, 6h threshold, 5-min poll) are safe for production.")
+    tip("  Change only if your dream_engine cycle is longer than 6 hours.")
+    _safe_print("")
+
+    watchdog_enabled = ask_bool("Enable memory maturation watchdog?", default=True)
+    cfg["BUTTERCLAW_MEMORY_WATCHDOG_ENABLED"] = "true" if watchdog_enabled else "false"
+
+    if watchdog_enabled:
+        cfg["BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS"] = ask(
+            "Fallback threshold (hours without a dream_engine tick before watchdog fires)",
+            default="6.0",
+            validator=valid_positive_float,
+        )
+        cfg["BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC"] = ask(
+            "Watchdog poll cadence (seconds). Lower = faster shutdown response.",
+            default="300",
+            validator=valid_positive_float,
+        )
+    else:
+        cfg.setdefault("BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS",   "6.0")
+        cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", "300")
+        warn("Memory watchdog disabled — dream_engine stalls will not trigger fallback maturation.")
+
     # ── ADVANCED ─────────────────────────────────────────────────────────────
-    section("  8 / 8  *  Advanced Settings")
+    section("  8 / 10  *  Advanced Settings")
     info("Sensible defaults are pre-filled. Skip unless you have specific needs.")
     _safe_print("")
 
@@ -441,8 +547,8 @@ def run_wizard() -> dict:
 
         _safe_print("")
         info("--- Dual Memory Engine ---")
-        cfg["LIVE_CRYSTALLIZATION_ENABLED"] = "true" if ask_bool("Enable Live Signature Crystallization (3-strike rule)?", default=True) else "false"
-        cfg["ATTRACTOR_DECAY_DAYS"] = ask("Cold Memory Attractor Decay (days)", default="30", validator=valid_positive_int)
+        cfg["BUTTERCLAW_LIVE_CRYSTALLIZATION_ENABLED"] = "true" if ask_bool("Enable Live Signature Crystallization (3-strike rule)?", default=True) else "false"
+        cfg["BUTTERCLAW_ATTRACTOR_DECAY_DAYS"] = ask("Cold Memory Attractor Decay (days)", default="30", validator=valid_positive_int)
 
         _safe_print("")
         info("--- Confidence Threshold ---")
@@ -476,8 +582,31 @@ def run_wizard() -> dict:
         cfg.setdefault("BUTTERCLAW_AUTH_FAIL_WINDOW",       "60")
         cfg.setdefault("BUTTERCLAW_CONFIDENCE_THRESHOLD",   "85")
         cfg.setdefault("BUTTERCLAW_LOOP_DRY_RUN",           "true")
-        cfg.setdefault("BUTTERCLAW_LIVE_CRYSTALLIZATION_ENABLED",      "true")
-        cfg.setdefault("BUTTERCLAW_ATTRACTOR_DECAY_DAYS",              "30")
+        cfg.setdefault("BUTTERCLAW_LIVE_CRYSTALLIZATION_ENABLED", "true")
+        cfg.setdefault("BUTTERCLAW_ATTRACTOR_DECAY_DAYS",   "30")
+
+    # Fleet layer quick-path defaults (set in section 9 wizard block above,
+    # but guard here too for the fast-path branch)
+    cfg.setdefault("FLEET_SENTINEL_DRY_RUN",                     "true")
+    if cfg.get("_deploy_mode", "docker") == "docker":
+        cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH",               "/data/fleet.db")
+    else:
+        cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH",               "./fleet.db")
+    cfg.setdefault("BUTTERCLAW_SENTINEL_INTERVAL_HOURS",         "4")
+    cfg.setdefault("BUTTERCLAW_SENTINEL_MIN_AGENTS",             "2")
+    cfg.setdefault("BUTTERCLAW_COLLUSION_WINDOW_SECONDS",        "180")
+    cfg.setdefault("BUTTERCLAW_CORRELATION_FLEET_THRESHOLD",     "3")
+    cfg.setdefault("BUTTERCLAW_TRUST_PROPAGATION_DEPTH",         "1")
+    cfg.setdefault("BUTTERCLAW_REPUTATION_DECAY_RATIO",          "3.0")
+    cfg.setdefault("BUTTERCLAW_MAX_CONCURRENT_LLM",              "2")
+    cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD",       "3")
+    cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS",   "60")
+
+    # R3 memory watchdog quick-path defaults (set in section 10 above,
+    # guard here too for any fast-path that skips sections)
+    cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_ENABLED",            "true")
+    cfg.setdefault("BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS",   "6.0")
+    cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", "300")
 
     cfg["PYTHONUNBUFFERED"] = "1"
     return cfg
@@ -495,7 +624,7 @@ def render_env(cfg: dict) -> str:
 
     lines = [
         f"# =============================================",
-        f"# ButterClaw v0.8.1 -- Environment Configuration",
+        f"# ButterClaw v0.9.2 -- Environment Configuration",
         f"# Generated by setup_wizard.py on {now}",
         f"# Deploy mode : {deploy_mode}",
         f"# Brain mode  : {brain_mode}",
@@ -513,6 +642,20 @@ def render_env(cfg: dict) -> str:
         f"",
         f"# --- Database ---",
         f"BUTTERCLAW_DB_PATH={cfg.get('BUTTERCLAW_DB_PATH', './butterclaw.db')}",
+        f"",
+        f"# --- Fleet Layer (v0.9.0) ---",
+        f"BUTTERCLAW_FLEET_DB_PATH={cfg.get('BUTTERCLAW_FLEET_DB_PATH', '/data/fleet.db')}",
+        f"# Fleet Sentinel dry-run: true = log verdicts only, no kinetic escalation",
+        f"FLEET_SENTINEL_DRY_RUN={cfg.get('FLEET_SENTINEL_DRY_RUN', 'true')}",
+        f"BUTTERCLAW_SENTINEL_INTERVAL_HOURS={cfg.get('BUTTERCLAW_SENTINEL_INTERVAL_HOURS', '4')}",
+        f"BUTTERCLAW_SENTINEL_MIN_AGENTS={cfg.get('BUTTERCLAW_SENTINEL_MIN_AGENTS', '2')}",
+        f"BUTTERCLAW_COLLUSION_WINDOW_SECONDS={cfg.get('BUTTERCLAW_COLLUSION_WINDOW_SECONDS', '180')}",
+        f"BUTTERCLAW_CORRELATION_FLEET_THRESHOLD={cfg.get('BUTTERCLAW_CORRELATION_FLEET_THRESHOLD', '3')}",
+        f"BUTTERCLAW_TRUST_PROPAGATION_DEPTH={cfg.get('BUTTERCLAW_TRUST_PROPAGATION_DEPTH', '1')}",
+        f"BUTTERCLAW_REPUTATION_DECAY_RATIO={cfg.get('BUTTERCLAW_REPUTATION_DECAY_RATIO', '3.0')}",
+        f"BUTTERCLAW_MAX_CONCURRENT_LLM={cfg.get('BUTTERCLAW_MAX_CONCURRENT_LLM', '2')}",
+        f"BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD={cfg.get('BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD', '3')}",
+        f"BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS={cfg.get('BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS', '60')}",
         f"",
     ]
 
@@ -559,6 +702,7 @@ def render_env(cfg: dict) -> str:
         f"BUTTERCLAW_CONFIDENCE_THRESHOLD={cfg.get('BUTTERCLAW_CONFIDENCE_THRESHOLD', '85')}",
         f"BUTTERCLAW_MCP_DRY_RUN={cfg.get('BUTTERCLAW_MCP_DRY_RUN', 'true')}",
         f"BUTTERCLAW_DRY_RUN={cfg.get('BUTTERCLAW_DRY_RUN', 'true')}",
+        f"",
         f"BUTTERCLAW_LOOP_DRY_RUN={cfg.get('BUTTERCLAW_LOOP_DRY_RUN', 'true')}",
         f"",
         f"# --- Dual Memory Engine ---",
@@ -582,7 +726,8 @@ def render_env(cfg: dict) -> str:
     if cfg.get("BUTTERCLAW_MCP_SCRIPT"):
         lines += [f"BUTTERCLAW_MCP_SCRIPT={cfg['BUTTERCLAW_MCP_SCRIPT']}"]
     else:
-        lines += [f"# BUTTERCLAW_MCP_SCRIPT=./butterclaw_mcp.py  # default"]
+        # Old: lines += [f"# BUTTERCLAW_MCP_SCRIPT=./butterclaw_mcp.py  # default"]
+        lines += [f"# BUTTERCLAW_MCP_SCRIPT=  # dynamically resolved in src/ layout"]
 
     lines += [
         f"",
@@ -600,6 +745,12 @@ def render_env(cfg: dict) -> str:
         f"BUTTERCLAW_ALERT_BACKOFF={cfg.get('BUTTERCLAW_ALERT_BACKOFF', '1')}",
         f"BUTTERCLAW_AUTH_FAIL_THRESHOLD={cfg.get('BUTTERCLAW_AUTH_FAIL_THRESHOLD', '5')}",
         f"BUTTERCLAW_AUTH_FAIL_WINDOW={cfg.get('BUTTERCLAW_AUTH_FAIL_WINDOW', '60')}",
+        f"",
+        f"# --- Memory Watchdog (v0.9.2 R3) ---",
+        f"# Fallback daemon: fires when dream_engine silent > FALLBACK_HOURS.",
+        f"BUTTERCLAW_MEMORY_WATCHDOG_ENABLED={cfg.get('BUTTERCLAW_MEMORY_WATCHDOG_ENABLED', 'true')}",
+        f"BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS={cfg.get('BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS', '6.0')}",
+        f"BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC={cfg.get('BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC', '300')}",
         f"",
         f"# --- Docker / Python ---",
         f"PYTHONUNBUFFERED=1",
@@ -643,11 +794,10 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
 
     brain_mode = cfg_snapshot.get("_brain_mode_snapshot", "local")
     deploy     = cfg_snapshot.get("_deploy_mode_snapshot", "docker")
-    # Fix #4: check all flags -- any flag in dry-run means some actions are suppressed
+    # Fix #4: check both flags -- either flag in dry-run means kinetic actions are suppressed
     dry_run_on = (
         cfg_snapshot.get("BUTTERCLAW_MCP_DRY_RUN") == "true"
         or cfg_snapshot.get("BUTTERCLAW_DRY_RUN") == "true"
-        or cfg_snapshot.get("BUTTERCLAW_LOOP_DRY_RUN") == "true"
     )
 
     step = 1
@@ -681,10 +831,13 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
 
     elif deploy == "baremetal":
         _safe_print(f"  {bold(str(step)+'.')} Install Python dependencies:")
-        _safe_print(f"       {dim('pip install -e .')}")
+        _safe_print(f"       {dim('pip install -r requirements.txt')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Start the server:")
-        _safe_print(f"       {dim('python -m butterclaw.server.py')}")
+        _safe_print(f"       {dim('python -m butterclaw.server')}")
+        # Old:_safe_print(f"       {dim('python -m butterclaw.server.py')}")
+        #_safe_print(f"  {bold(str(step)+'.')} Start the server:")
+        #_safe_print(f"       {dim('python server.py')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Your {yellow('bootstrap admin API key')} is safely stored in your .env file.")
         _safe_print(f"       {dim('Keep it secret. Keep it safe.')}")
@@ -715,6 +868,7 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
         _safe_print(f"  {bold(str(step)+'.')} Ready for production? Flip the switches in your .env:")
         _safe_print(f"       {dim('BUTTERCLAW_DRY_RUN=false')}")
         _safe_print(f"       {dim('BUTTERCLAW_MCP_DRY_RUN=false')}")
+        _safe_print(f"       {dim('FLEET_SENTINEL_DRY_RUN=false  # only after validating sentinel-log per RUNBOOK')}")
         step += 1
     else:
         _safe_print(f"  {bold(str(step)+'.')} {red('Dry-run is OFF')} -- kinetic actions execute for real.")

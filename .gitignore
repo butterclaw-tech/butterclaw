@@ -38,3 +38,12 @@ openclaw_gateway.log
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- Cryptographic Keys & Certs (CRITICAL) ---
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+nginx/certs/

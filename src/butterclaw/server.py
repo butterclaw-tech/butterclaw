@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1
+ButterClaw v0.9.2 - src layout
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -18,6 +18,7 @@ Changelog:
   [v0.7.1] Full Policy Hotfix
   [v0.7.2] The Agentic SOC (ENV Setup Wizard)
   [v0.8.0] The Spatial SOC (Memory Engine)
+  [v0.9.0] The Fleet Layer (Multi-Agent Awareness)
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -42,7 +43,7 @@ import json
 import subprocess
 import sys
 
-from butterclaw.config import cfg
+from butterclaw.config import cfg, PROJECT_ROOT
 _server_start_time = time.time()
 
 import butterclaw.buttervault as buttervault
@@ -66,11 +67,28 @@ except ImportError:
     ALERT_DISPATCHER_ENABLED = False
     print("⚠️ [WARN] alert_dispatcher.py not found. External notifications disabled.")
 
+# ──── v0.9.0 BEGIN ────
+try:
+    import butterclaw.fleet_db_init as fleet_db_init
+    from butterclaw.fleet_registry       import FleetRegistry
+    from butterclaw.trust_graph          import TrustGraph
+    from butterclaw.correlation_engine   import CorrelationEngine
+    from butterclaw.collusion_detector   import CollusionDetector
+    from butterclaw.fleet_memory         import FleetMemory
+    from butterclaw.fleet_sentinel       import FleetSentinel
+    from butterclaw.fleet_api            import register_fleet_routes
+    from butterclaw.hemisphere_scheduler import HemisphereScheduler
+    FLEET_ENABLED = True
+except ImportError as _fleet_import_err:
+    FLEET_ENABLED = False
+    print(f"⚠️ [WARN] Fleet layer not found ({_fleet_import_err}). Multi-agent awareness disabled.")
+# ──── v0.9.0 END ────
+
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -134,7 +152,12 @@ VALID_MCP_TRANSPORTS = ("stdio", "sse")
 # ABSOLUTE DB PATH + THREAD-SAFE SQLITE
 # =============================================
 
-BASE_DIR = cfg.BASE_DIR
+# Old: BASE_DIR = cfg.BASE_DIR
+#BASE_DIR = cfg.PROJECT_ROOT  # Restored v0.8.1 Web UI anchor!
+
+# Old: BASE_DIR = cfg.PROJECT_ROOT  # Restored v0.8.1 Web UI anchor!
+BASE_DIR = str(PROJECT_ROOT)  # Restored v0.8.1 Web UI anchor!
+
 DB_PATH = cfg.DB_PATH
 
 def get_db_connection():
@@ -242,6 +265,37 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_time ON telemetry_events(timestamp)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_dreamer ON telemetry_events(processed_by_dreamer)")
 
+    # ── v0.9.0 Fleet-scope column additions ─────────────────────────────────
+    # memory_semantic is created by memory_engine.init_memory_db(), NOT by the
+    # core schema above. server.py has no CREATE TABLE memory_semantic of its
+    # own — that table lives entirely in the memory_engine module.
+    # Local import used to avoid a forward-reference NameError: the module-level
+    # `from memory_engine import MemoryEngine, ...` is below init_db() in this
+    # file and has not run yet when init_db() executes at import time.
+    # memory_engine.py does not import server.py, so there is no circular risk.
+    # Old: import memory_engine as _mem_engine_init
+    import butterclaw.memory_engine as _mem_engine_init       # local — safe, see above
+    _mem_engine_init.init_memory_db()              # creates memory_semantic + full v0.8 schema
+
+    conn2 = get_db_connection()
+    _FLEET_MEMORY_ADDITIONS = [
+        "ALTER TABLE memory_semantic ADD COLUMN scope TEXT NOT NULL DEFAULT 'session' "
+        "CHECK(scope IN ('session','fleet'))",
+        "ALTER TABLE memory_signatures ADD COLUMN source_scope TEXT NOT NULL DEFAULT 'session' "
+        "CHECK(source_scope IN ('session','fleet'))",
+    ]
+    for stmt in _FLEET_MEMORY_ADDITIONS:
+        try:
+            conn2.execute(stmt)
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" in str(exc).lower():
+                pass  # idempotent — column exists from prior run
+            else:
+                raise
+    conn2.commit()
+    conn2.close()
+    # ── end v0.9.0 ────────────────────────────────────────────────────────────
+
     conn.commit()
     conn.close()
 
@@ -253,6 +307,14 @@ def init_db():
         
     if ALERT_DISPATCHER_ENABLED:
         alert_dispatcher.init_alert_db()
+
+    # ──── v0.9.0 BEGIN ────
+    if FLEET_ENABLED:
+        # Startup sequence: (1) core butterclaw_db_init → (2) memory_engine.init_memory_db()
+        #                   → (3) fleet-scope ALTER columns → (4) fleet_db_init
+        # FATAL if fleet.db cannot be initialised (I-01-fleet).
+        fleet_db_init.init_fleet_db()
+    # ──── v0.9.0 END ────
 
 init_db()
 
@@ -522,6 +584,18 @@ class MCPProcessManager(BaseMCPManager):
             conn.commit()
             conn.close()
             # ---------------------------------
+
+            # ──── v0.9.0 BEGIN ────
+            if FLEET_ENABLED:
+                try:
+                    fleet_registry.register_agent(
+                        agent_id=self.agent_id,
+                        session_id=self.session_id,
+                        display_name=f"stdio-agent-{self.agent_id}",
+                    )
+                except Exception as _fe:
+                    print(f"⚠️ [FLEET] register_agent failed (non-fatal): {_fe}")
+            # ──── v0.9.0 END ────
             
         except Exception as e:
             print(f"❌ [MCP] Failed to spawn: {e}")
@@ -920,7 +994,29 @@ def _dream_llm_call(messages):
         print(f"⚠️ [DREAM WEAVER] llm_caller failure: {e}")
         return None
 
+# ──── v0.9.0 BEGIN ────
+if FLEET_ENABLED:
+    _HEMISPHERE_MAX_CONCURRENT = int(os.environ.get("BUTTERCLAW_MAX_CONCURRENT_LLM", "2"))
+    _CIRCUIT_BREAKER_THRESHOLD = int(os.environ.get("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD", "3"))
+    _CIRCUIT_BREAKER_RESET     = int(os.environ.get("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS", "60"))
+    hemisphere_scheduler = HemisphereScheduler(
+        max_concurrent=_HEMISPHERE_MAX_CONCURRENT,
+        circuit_breaker_threshold=_CIRCUIT_BREAKER_THRESHOLD,
+        circuit_breaker_reset_seconds=_CIRCUIT_BREAKER_RESET,
+    )
+    hemisphere_scheduler.start()
+    print(f"⚙️  [HEMISPHERE SCHEDULER] Priority queue online "
+          f"(max_concurrent={_HEMISPHERE_MAX_CONCURRENT}, cb_threshold={_CIRCUIT_BREAKER_THRESHOLD}).")
+else:
+    hemisphere_scheduler = None
+    _HEMISPHERE_MAX_CONCURRENT = _CIRCUIT_BREAKER_THRESHOLD = _CIRCUIT_BREAKER_RESET = None
+# ──── v0.9.0 END ────
+
 print("🌙 [DREAM WEAVER] Initializing v0.8 idle-triggered consolidation cycle...")
+# Old: import memory_engine as _mem_engine_r3
+import butterclaw.memory_engine as _mem_engine_r3
+_mem_engine_r3.start_fallback_ticker()   # R3 — arm fallback before dream_engine starts
+
 dream_engine = DreamEngine(db_path=DB_PATH, llm_caller=_dream_llm_call)
 dream_engine.start()
 
@@ -985,6 +1081,53 @@ def _loop_llm_call(messages):
         print(f"⚠️ [LOOP PROPOSER] llm_caller failure: {e}")
         return None
 
+# ──── v0.9.0 BEGIN ────
+def _fleet_sentinel_llm_call(messages, temperature=0.5):
+    """
+    Fleet Sentinel LLM call — temperature 0.5 (D-21).
+    Same hybrid-routing pattern as _dream_llm_call / _loop_llm_call.
+    Raises on failure so HemisphereScheduler circuit breaker can count it.
+    """
+    with _state_lock:
+        active_model = model_name
+        mode         = routing_mode
+        endpoint     = remote_endpoint
+
+    if mode == "remote":
+        api_url = endpoint if endpoint else "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        headers = _build_ai_headers(api_url)
+        payload = {
+            "model": active_model,
+            "response_format": {"type": "json_object"},
+            "temperature": temperature,
+            "messages": messages,
+        }
+    else:
+        api_url = _resolve_ollama_url()
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "model": active_model,
+            "format": "json",
+            "stream": False,
+            "options": {"temperature": temperature},
+            "messages": messages,
+        }
+
+    response = _call_brain_api(api_url, payload, headers, timeout=120)
+    if response is None or response.status_code != 200:
+        code = response.status_code if response else "N/A"
+        raise RuntimeError(
+            f"Fleet Sentinel LLM API error HTTP {code}: "
+            f"{response.text[:200] if response else 'No response'}"
+        )
+    resp_json = response.json()
+    if isinstance(resp_json, list):
+        resp_json = resp_json[0] if resp_json else {}
+    if mode == "remote":
+        return resp_json.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+    return resp_json.get("message", {}).get("content", "{}")
+# ──── v0.9.0 END ────
+
 print(f"🔁 [LOOP PROPOSER] Initializing v0.8 autoresearch loop (dry_run={LOOP_DRY_RUN})...")
 loop_engine = LoopEngine(
     db_path=DB_PATH,
@@ -1003,6 +1146,97 @@ loop_engine.start()
 # itself lives down here rather than in the SPATIAL DEFENSE DAEMONS block.
 from butterclaw.memory_api import register_memory_routes
 register_memory_routes(app, dream_engine, loop_engine)
+
+# ──── v0.9.0 BEGIN ────
+if FLEET_ENABLED:
+    _FLEET_DB_PATH           = os.environ.get("BUTTERCLAW_FLEET_DB_PATH", "./fleet.db")
+    _FLEET_DRY_RUN           = os.environ.get("BUTTERCLAW_FLEET_SENTINEL_DRY_RUN", "true").strip().lower()                                not in ("false", "0", "no")
+    _SENTINEL_MIN_AGENTS     = int(os.environ.get("BUTTERCLAW_SENTINEL_MIN_AGENTS", "2"))
+    _SENTINEL_INTERVAL_HOURS = float(os.environ.get("BUTTERCLAW_SENTINEL_INTERVAL_HOURS", "4"))
+    _COLLUSION_WINDOW        = int(os.environ.get("BUTTERCLAW_COLLUSION_WINDOW_SECONDS", "180"))
+    _CORRELATION_THRESHOLD   = int(os.environ.get("BUTTERCLAW_CORRELATION_FLEET_THRESHOLD", "3"))
+    _TRUST_DEPTH             = int(os.environ.get("BUTTERCLAW_TRUST_PROPAGATION_DEPTH", "1"))
+    _REPUTATION_DECAY        = float(os.environ.get("BUTTERCLAW_REPUTATION_DECAY_RATIO", "3.0"))
+
+    print("🌐 [FLEET LAYER] Initializing v0.9.0 Multi-Agent Awareness pipeline...")
+
+    fleet_registry     = FleetRegistry(reputation_decay_ratio=_REPUTATION_DECAY)
+    trust_graph        = TrustGraph(propagation_depth=_TRUST_DEPTH)
+    fleet_memory_inst  = FleetMemory()
+    correlation_engine = CorrelationEngine(fleet_threshold=_CORRELATION_THRESHOLD)
+    collusion_detector = CollusionDetector(
+        # v0.9.0: feed live Arsenal signatures so collusion_role tags are active
+        arsenal_signatures=policy_engine.list_signatures() if POLICY_ENGINE_ENABLED else [],
+        window_seconds=_COLLUSION_WINDOW,
+    )
+
+    def _on_correlation_event(event):
+        if hemisphere_scheduler:
+            hemisphere_scheduler.submit(
+                hemisphere="fleet_sentinel_reactive",
+                fn=fleet_sentinel_inst.run_reactive,
+                args=(event.as_dict(),),
+                block=False,
+            )
+
+    def _on_collusion_event(event):
+        if hemisphere_scheduler:
+            hemisphere_scheduler.submit(
+                hemisphere="fleet_sentinel_reactive",
+                fn=fleet_sentinel_inst.run_reactive,
+                args=({"type": "collusion_event", **event.as_dict()},),
+                block=False,
+            )
+
+    correlation_engine._on_event = _on_correlation_event
+    collusion_detector._on_event  = _on_collusion_event
+
+    def _fleet_analyze_submitter(payload):
+        """Routes COLLUDING verdict into Guardian Brain via ask_guardian_agent() (I-04-fleet)."""
+        raw_data = (
+            f"[Fleet Sentinel Escalation] "
+            f"verdict={payload.get('verdict')} "
+            f"confidence={payload.get('confidence')} "
+            f"agents={payload.get('implicated_agent_ids')} "
+            f"ts={payload.get('timestamp_unix')}"
+        )
+        ask_guardian_agent(payload.get("threat_type", "Multi-Agent Collusion"), raw_data)
+
+    fleet_sentinel_inst = FleetSentinel(
+        fleet_registry=fleet_registry,
+        correlation_engine=correlation_engine,
+        collusion_detector=collusion_detector,
+        trust_graph=trust_graph,
+        fleet_memory=fleet_memory_inst,
+        llm_client=_fleet_sentinel_llm_call,
+        analyze_endpoint_submitter=_fleet_analyze_submitter,
+        dry_run=_FLEET_DRY_RUN,
+        min_agents=_SENTINEL_MIN_AGENTS,
+    )
+
+    register_fleet_routes(
+        app=app,
+        fleet_registry=fleet_registry,
+        trust_graph=trust_graph,
+        correlation_engine=correlation_engine,
+        collusion_detector=collusion_detector,
+        fleet_sentinel=fleet_sentinel_inst,
+        fleet_memory=fleet_memory_inst,
+        require_role=require_auth,
+        get_current_operator=lambda: getattr(request, "auth_context", {}).get("key_id", "unknown"),
+        get_request_ip=lambda: request.remote_addr,
+    )
+
+    print(f"🌐 [FLEET LAYER] Online — dry_run={_FLEET_DRY_RUN}, "
+          f"sentinel_interval={_SENTINEL_INTERVAL_HOURS}h, collusion_window={_COLLUSION_WINDOW}s.")
+    print("🌐 [FLEET LAYER] +14 /api/fleet/* routes registered (77 total).")
+else:
+    _FLEET_DB_PATH = _FLEET_DRY_RUN = None
+    _SENTINEL_MIN_AGENTS = _SENTINEL_INTERVAL_HOURS = None
+    _COLLUSION_WINDOW = _CORRELATION_THRESHOLD = _TRUST_DEPTH = _REPUTATION_DECAY = None
+    fleet_registry = trust_graph = fleet_memory_inst = None
+    correlation_engine = collusion_detector = fleet_sentinel_inst = None
+# ──── v0.9.0 END ────
 
 # =============================================
 # [v0.8.0] PROMPT OVERRIDE RESOLUTION (Loop Proposer I-15 exception)
@@ -1220,18 +1454,16 @@ def run_self_audit(original_threat):
 # =============================================
 # FRONTEND DASHBOARD ROUTES
 # =============================================
-from butterclaw.config import PROJECT_ROOT
-
 # This function handles BOTH the root URL and /index.html
 @app.route('/')
 @app.route('/index.html')
 def serve_index():
-    return send_from_directory(PROJECT_ROOT, 'index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 # This separate function handles ONLY /routing.html
 @app.route('/routing.html')
 def serve_routing():
-    return send_from_directory(PROJECT_ROOT, 'routing.html')
+    return send_from_directory(BASE_DIR, 'routing.html')
 
 # =============================================
 # API ROUTES
@@ -1250,6 +1482,14 @@ def health():
             "policy_engine": "enabled" if POLICY_ENGINE_ENABLED else "disabled",
             "alert_dispatcher": "enabled" if ALERT_DISPATCHER_ENABLED else "disabled",
             "mcp": "alive" if mcp_manager.is_alive else "dead",
+            # ──── v0.9.0 BEGIN ────
+            "fleet_layer":           "enabled" if FLEET_ENABLED else "disabled",
+            "fleet_sentinel_dry_run": _FLEET_DRY_RUN if FLEET_ENABLED else None,
+            "hemisphere_scheduler":  (
+                hemisphere_scheduler.get_status()
+                if FLEET_ENABLED and hemisphere_scheduler else "disabled"
+            ),
+            # ──── v0.9.0 END ────
         },
         "config_source": "env" if os.environ.get("BUTTERCLAW_PORT") else "defaults",
     }
@@ -1661,7 +1901,29 @@ def oauth_revoke(provider_name):
 @app.route('/api/settings', methods=['GET'])
 @require_auth(min_role="operator")
 def settings_get():
-    with _state_lock: return jsonify({"level": current_level, "shield_enabled": shield_enabled, "routing_mode": routing_mode, "model": model_name, "endpoint": remote_endpoint, "gates": dict(gate_states), "dry_run": DRY_RUN, "mcp_transport": mcp_transport_mode, "mcp_sse_url": mcp_sse_url, "mcp_sse_token_set": bool(mcp_sse_token)})
+    with _state_lock: return jsonify({
+        "level": current_level,
+        "shield_enabled": shield_enabled,
+        "routing_mode": routing_mode,
+        "model": model_name,
+        "endpoint": remote_endpoint,
+        "gates": dict(gate_states),
+        "dry_run": DRY_RUN,
+        "mcp_transport": mcp_transport_mode,
+        "mcp_sse_url": mcp_sse_url,
+        "mcp_sse_token_set": bool(mcp_sse_token),
+        # ──── v0.9.0 BEGIN ────
+        "fleet_enabled":            FLEET_ENABLED,
+        "fleet_sentinel_dry_run":   _FLEET_DRY_RUN             if FLEET_ENABLED else None,
+        "sentinel_interval_hours":  _SENTINEL_INTERVAL_HOURS   if FLEET_ENABLED else None,
+        "collusion_window_seconds": _COLLUSION_WINDOW          if FLEET_ENABLED else None,
+        "correlation_threshold":    _CORRELATION_THRESHOLD     if FLEET_ENABLED else None,
+        "trust_propagation_depth":  _TRUST_DEPTH               if FLEET_ENABLED else None,
+        "reputation_decay_ratio":   _REPUTATION_DECAY          if FLEET_ENABLED else None,
+        "hemisphere_scheduler":     hemisphere_scheduler.get_status()
+                                    if FLEET_ENABLED and hemisphere_scheduler else None,
+        # ──── v0.9.0 END ────
+    })
 
 @app.route('/api/settings', methods=['POST'])
 @require_auth(min_role="admin")
@@ -1957,6 +2219,25 @@ def spatial_telemetry_gateway():
     # 4. Log to RAM queue FIRST so the TUI and forensics capture the attempt
     event_ingester.log_event(session_id, action_type, logged_payload, screenshot_ref)
 
+    # ──── v0.9.0 BEGIN ────
+    # 4b. Feed into fleet correlation engine (non-blocking; never raises)
+    if FLEET_ENABLED and correlation_engine:
+        try:
+            import hashlib as _hl
+            _args_hash = _hl.sha256(
+                json.dumps(spatial_payload, sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+            _agent_id = f"agt_{session_id[:12]}"
+            correlation_engine.ingest_tool_event(
+                agent_id=_agent_id,
+                tool_name=action_type,
+                tool_args_hash=_args_hash,
+                session_id=session_id,
+            )
+        except Exception as _ce:
+            print(f"⚠️ [FLEET] CorrelationEngine ingest error (non-fatal): {_ce}")
+    # ──── v0.9.0 END ────
+
     # 5. Enforce the Verdict
     if not is_allowed:
         print(f"🚨 [KINETIC BLOCK] Spatial trajectory violation on session {session_id} ({reason})")
@@ -2055,5 +2336,15 @@ if __name__ == '__main__':
 
     print(f"📋 [LEDGER] Event ledger initialized. {ledger_count()} historical events.")
     print("=" * 60 + "\n")
+
+    # ──── v0.9.0 BEGIN ────
+    if FLEET_ENABLED:
+        print(f"   Fleet Layer:      ENABLED (dry_run={_FLEET_DRY_RUN})")
+        print(f"   Fleet Sentinel:   interval={_SENTINEL_INTERVAL_HOURS}h, min_agents={_SENTINEL_MIN_AGENTS}")
+        print(f"   Hemisphere Sched: max_concurrent={_HEMISPHERE_MAX_CONCURRENT}, cb_threshold={_CIRCUIT_BREAKER_THRESHOLD}")
+        print(f"   Fleet DB:         {_FLEET_DB_PATH}")
+    else:
+        print("   Fleet Layer:      DISABLED (fleet modules not found)")
+    # ──── v0.9.0 END ────
 
     app.run(host=cfg.HOST, port=cfg.PORT, debug=cfg.DEBUG)

@@ -5,8 +5,8 @@ Security updates are applied to the current release only.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.4.x   | ✅                 |
-| < 0.4.0 | ❌                 |
+| 0.9.x   | ✅                 |
+| < 0.9.0 | ❌                 |
 
 ## Reporting a Vulnerability
 ButterClaw is a security-focused project. If you discover a vulnerability anywhere in the system—including the behavioral analysis pipeline, credential storage, or execution layer—we want to know.

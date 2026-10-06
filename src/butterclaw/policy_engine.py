@@ -1,7 +1,13 @@
 """
-ButterClaw v0.8.1 — Policy Engine
+ButterClaw v0.9.0 — Policy Engine - src layout
 ===================================
 Deterministic guardrails for the probabilistic Brain.
+
+v0.9.0 additions (I-06-fleet, R-04):
+  - Lenient JSON loader: unknown signature fields ignored, never raise
+  - collusion_role and fleet_scope optional fields extracted per R-04
+  - reload_signatures(): hot-reload without restart (Loop Proposer)
+  - list_signatures(): raw dict list for CollusionDetector seeding
 
 Provides:
   - Capability Bounds (Positive security model via capabilities.json)
@@ -41,7 +47,6 @@ import re
 import uuid
 import threading
 import logging
-import butterclaw.config as cfg
 
 logger = logging.getLogger("butterclaw.policy")
 
@@ -66,24 +71,26 @@ MAX_PRIORITY = 100
 DEFAULT_PRIORITY = 50
 
 # Keep this line so the diagnostic tests still know where they are!
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Primary import from unified config
+from butterclaw.config import cfg, DB_PATH, PROJECT_ROOT, CAPABILITIES_PATH, DEFAULT_SIGNATURES_PATH
 
 # =============================================
 # CAPABILITY MATRIX (v0.7.0 POSITIVE SECURITY)
 # =============================================
-from butterclaw.config import CAPABILITIES_PATH
-
-CAPABILITIES_FILE = CAPABILITIES_PATH # <-- alias for loop_engine
+#CAPABILITIES_FILE = os.path.join(BASE_DIR, "capabilities.json")
+# Old: CAPABILITIES_FILE = os.path.join(BASE_DIR, "capabilities.json")
+CAPABILITIES_FILE = str(CAPABILITIES_PATH)
 CAPABILITY_MATRIX = None
 
 def load_capabilities():
     """Loads the positive security model matrix from disk."""
     global CAPABILITY_MATRIX
-    if not os.path.exists(CAPABILITIES_PATH):
-        logger.warning(f"⚠️ No capabilities.json found at {CAPABILITIES_PATH}. Tool execution will default to strict fail-closed.")
+    if not os.path.exists(CAPABILITIES_FILE):
+        logger.warning(f"⚠️ No capabilities.json found at {CAPABILITIES_FILE}. Tool execution will default to strict fail-closed.")
         return
     try:
-        with open(CAPABILITIES_PATH, "r") as f:
+        with open(CAPABILITIES_FILE, "r") as f:
             CAPABILITY_MATRIX = json.load(f)
         logger.info("🛡️ Capability Matrix loaded: Positive security model armed.")
     except Exception as e:
@@ -129,44 +136,159 @@ def validate_tool_skill(active_model, tool_name, matrix):
 # =============================================
 # ZERO-DAY ARSENAL (STATIC SIGNATURES)
 # =============================================
-from butterclaw.config import DEFAULT_SIGNATURES_PATH
-
-SIGNATURE_FILE = DEFAULT_SIGNATURES_PATH # <-- alias for loop_engine
+# Old: SIGNATURE_FILE = os.path.join(BASE_DIR, "default_signatures.json")
+SIGNATURE_FILE = str(DEFAULT_SIGNATURES_PATH)
 COMPILED_SIGNATURES = []
 
+# ──── v0.9.0 BEGIN ────
+# R-04: Allow-list of known signature fields. Unknown keys are logged at DEBUG
+# and silently dropped — a v0.9 sig with a future field loads cleanly on a
+# v0.8 deploy, and a v0.8 sig without collusion_role/fleet_scope continues
+# to work for individual-agent detection exactly as before.
+_KNOWN_SIG_FIELDS = frozenset({
+    "id", "name", "description", "pattern", "severity",
+    "collusion_role",   # v0.9 — optional; one of KNOWN_COLLUSION_ROLES
+    "fleet_scope",      # v0.9 — optional bool, default False
+})
+
+# Valid collusion roles (mirrors collusion_detector.KNOWN_COLLUSION_ROLES)
+_VALID_COLLUSION_ROLES = frozenset({
+    "encoder", "exfiltrator", "persister", "scout", "injector",
+})
+# ──── v0.9.0 END ────
+
+
 def load_signatures():
-    """Loads and pre-compiles the JSON regex signatures into memory."""
+    """
+    Loads and pre-compiles the JSON regex signatures into memory.
+
+    v0.9.0: Lenient loader (R-04).
+      - Unknown fields in a signature dict are logged at DEBUG and ignored.
+      - collusion_role and fleet_scope are extracted when present; default to
+        None / False when absent so v0.8 signatures are fully backward compatible.
+      - A malformed pattern logs a WARNING and skips that signature rather than
+        aborting the entire load — the Arsenal comes up with remaining sigs.
+    """
     global COMPILED_SIGNATURES
-    if not os.path.exists(DEFAULT_SIGNATURES_PATH):
-        logger.warning(f"⚠️ No default_signatures.json found at {DEFAULT_SIGNATURES_PATH}. Running without zero-day Arsenal.")
+    if not os.path.exists(SIGNATURE_FILE):
+        logger.warning("⚠️ No default_signatures.json found. Running without zero-day Arsenal.")
         return
 
     try:
-        with open(DEFAULT_SIGNATURES_PATH, "r") as f:
+        with open(SIGNATURE_FILE, "r") as f:
             data = json.load(f)
             signatures = data.get("signatures", [])
-            
-            for sig in signatures:
-                compiled_pattern = re.compile(sig["pattern"], re.IGNORECASE)
-                COMPILED_SIGNATURES.append({
-                    "id": sig["id"],
-                    "name": sig["name"],
-                    "description": sig.get("description", ""),
-                    "pattern": compiled_pattern,
-                    "severity": sig["severity"]
-                })
-        logger.info(f"🔫 Arsenal loaded: {len(COMPILED_SIGNATURES)} kinetic threat signatures armed.")
+
+        loaded = 0
+        skipped = 0
+        for sig in signatures:
+            # ── v0.9.0 BEGIN: lenient field extraction ──
+            unknown = set(sig.keys()) - _KNOWN_SIG_FIELDS
+            if unknown:
+                logger.debug("Arsenal loader: ignoring unknown fields %s in sig '%s'",
+                             unknown, sig.get("id", "?"))
+
+            sig_id      = sig.get("id")
+            sig_name    = sig.get("name", sig_id or "unnamed")
+            sig_pattern = sig.get("pattern")
+            sig_severity = sig.get("severity", "HIGH")
+
+            if not sig_id or not sig_pattern:
+                logger.warning("⚠️ Arsenal: skipping sig missing 'id' or 'pattern': %s", sig)
+                skipped += 1
+                continue
+
+            try:
+                compiled_pattern = re.compile(sig_pattern, re.IGNORECASE)
+            except re.error as exc:
+                logger.warning("⚠️ Arsenal: skipping sig '%s' — invalid regex (%s): %s",
+                               sig_id, sig_name, exc)
+                skipped += 1
+                continue
+
+            collusion_role = sig.get("collusion_role", None)
+            if collusion_role is not None and collusion_role not in _VALID_COLLUSION_ROLES:
+                logger.warning("⚠️ Arsenal: unknown collusion_role '%s' on sig '%s' — treating as None",
+                               collusion_role, sig_id)
+                collusion_role = None
+
+            COMPILED_SIGNATURES.append({
+                "id":             sig_id,
+                "name":           sig_name,
+                "description":    sig.get("description", ""),
+                "pattern":        compiled_pattern,
+                "raw_pattern":    sig_pattern,   # preserved for Loop Proposer shadow eval
+                "severity":       sig_severity,
+                # v0.9.0 fleet fields
+                "collusion_role": collusion_role,
+                "fleet_scope":    bool(sig.get("fleet_scope", False)),
+            })
+            loaded += 1
+            # ── v0.9.0 END ──
+
+        if skipped:
+            logger.warning("🔫 Arsenal loaded: %d signatures armed, %d skipped (see warnings above).",
+                           loaded, skipped)
+        else:
+            logger.info("🔫 Arsenal loaded: %d kinetic threat signatures armed.", loaded)
+
     except Exception as e:
-        logger.error(f"❌ Failed to load signatures: {e}")
+        logger.error("❌ Failed to load signatures: %s", e)
+
+
+def reload_signatures():
+    """
+    Hot-reload signatures from disk without restarting the server.
+    Called by the Loop Proposer after committing a signature change (R-04).
+    Thread-safe: clears and repopulates COMPILED_SIGNATURES atomically
+    using the module-level list replace pattern (GIL-safe for list ops).
+    """
+    global COMPILED_SIGNATURES
+    COMPILED_SIGNATURES = []
+    load_signatures()
+    logger.info("🔄 Arsenal hot-reloaded: %d signatures active.", len(COMPILED_SIGNATURES))
+    return len(COMPILED_SIGNATURES)
+
+
+def list_signatures():
+    """
+    Return a list of raw signature dicts (without the compiled regex object)
+    suitable for JSON serialisation and CollusionDetector seeding.
+
+    Used by:
+      - server.py BLOCK 8: seeds CollusionDetector with collusion_role tags
+      - loop_engine.py: shadow evaluator reads raw_pattern for replay scoring
+      - GET /api/memory/signatures: returns Arsenal inventory to operators
+
+    Returns a new list on every call — callers must not mutate entries.
+    """
+    return [
+        {
+            "id":             sig["id"],
+            "name":           sig["name"],
+            "description":    sig["description"],
+            "raw_pattern":    sig["raw_pattern"],
+            "severity":       sig["severity"],
+            "collusion_role": sig["collusion_role"],
+            "fleet_scope":    sig["fleet_scope"],
+        }
+        for sig in COMPILED_SIGNATURES
+    ]
 
 # Load immediately on module import
 load_capabilities()
 load_signatures()
+# list_signatures() and reload_signatures() are available after this point
 
 # =============================================
 # DATABASE
 # =============================================
-from butterclaw.config import DB_PATH
+
+#try:
+#    from config import cfg
+#    DB_PATH = cfg.DB_PATH
+#except ImportError:
+#    DB_PATH = os.path.join(BASE_DIR, 'butterclaw.db')
 
 _db_lock = threading.Lock()
 
@@ -991,6 +1113,9 @@ if __name__ == "__main__":
     """
     import sys
 
+    # Quarantined local path for standalone diagnostic tests
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
     print("\n🛡️ ButterClaw Policy Engine — Diagnostic Mode")
     print("=" * 55)
 
@@ -1012,6 +1137,92 @@ if __name__ == "__main__":
             print(f"⚠️ Test Arsenal: Did not catch sig_exfil_01. (Is default_signatures.json in the directory?)")
     except Exception as e:
         print(f"❌ Test Arsenal failed: {e}")
+
+    # ──────────────────────────────────────
+    # Test v0.9.0: list_signatures() (R-04)
+    # ──────────────────────────────────────
+    try:
+        sigs = list_signatures()
+        if isinstance(sigs, list):
+            print(f"✅ Test list_signatures: returned {len(sigs)} signatures as raw dicts")
+            # Verify no compiled regex objects leak out
+            for s in sigs:
+                assert "raw_pattern" in s, "Missing raw_pattern key"
+                assert "pattern" not in s, "Compiled pattern object must not appear in list_signatures output"
+                assert "collusion_role" in s, "Missing collusion_role key (may be None)"
+                assert "fleet_scope" in s, "Missing fleet_scope key"
+            print(f"✅ Test list_signatures: schema correct (raw_pattern, collusion_role, fleet_scope present; no compiled regex)")
+        else:
+            print(f"❌ Test list_signatures: expected list, got {type(sigs)}")
+    except Exception as e:
+        print(f"❌ Test list_signatures failed: {e}")
+
+    # ──────────────────────────────────────
+    # Test v0.9.0: Lenient loader (R-04)
+    # ──────────────────────────────────────
+    try:
+        import copy, tempfile
+        _test_sigs = {
+            "signatures": [
+                {
+                    "id": "test_lenient_001",
+                    "name": "Lenient Loader Test — known fields only",
+                    "pattern": "lenient_test_known",
+                    "severity": "LOW",
+                    "collusion_role": "encoder",
+                    "fleet_scope": True,
+                },
+                {
+                    "id": "test_lenient_002",
+                    "name": "Lenient Loader Test — unknown fields",
+                    "pattern": "lenient_test_unknown",
+                    "severity": "MEDIUM",
+                    "future_field_v10": "should be silently ignored",
+                    "another_unknown": 42,
+                },
+                {
+                    "id": "test_lenient_003",
+                    "name": "Lenient Loader Test — v0.8 legacy (no fleet fields)",
+                    "pattern": "lenient_test_legacy",
+                    "severity": "HIGH",
+                    # No collusion_role or fleet_scope — v0.8 style
+                },
+            ]
+        }
+        _orig_sigs = list(COMPILED_SIGNATURES)
+        _orig_file = SIGNATURE_FILE
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tf:
+            json.dump(_test_sigs, tf)
+            _tmp_path = tf.name
+
+        import butterclaw.policy_engine as _pe_self
+        _pe_self.SIGNATURE_FILE = _tmp_path
+        _pe_self.COMPILED_SIGNATURES = []
+        _pe_self.load_signatures()
+
+        loaded = _pe_self.COMPILED_SIGNATURES
+        assert len(loaded) == 3, f"Expected 3, got {len(loaded)}"
+        # Check unknown fields dropped
+        for s in loaded:
+            assert "future_field_v10" not in s
+            assert "another_unknown" not in s
+        # Check fleet fields correct
+        enc = next(s for s in loaded if s["id"] == "test_lenient_001")
+        assert enc["collusion_role"] == "encoder"
+        assert enc["fleet_scope"] is True
+        leg = next(s for s in loaded if s["id"] == "test_lenient_003")
+        assert leg["collusion_role"] is None
+        assert leg["fleet_scope"] is False
+
+        os.unlink(_tmp_path)
+        # Restore
+        _pe_self.SIGNATURE_FILE = _orig_file
+        _pe_self.COMPILED_SIGNATURES = _orig_sigs
+
+        print("✅ Test Lenient Loader: unknown fields ignored, collusion_role/fleet_scope correct, v0.8 compat verified")
+    except Exception as e:
+        print(f"❌ Test Lenient Loader failed: {e}")
 
     # ──────────────────────────────────────
     # Test 1: Create a pre_brain policy

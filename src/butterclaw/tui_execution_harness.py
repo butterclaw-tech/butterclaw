@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — TUI Execution Harness
+ButterClaw v0.8.0 — TUI Execution Harness - src layout
 A pseudo-TTY wrapper that runs an agent, intercepts its stdout for the dashboard, 
 and provides a side-channel hook for spatial telemetry.
 """
@@ -15,10 +15,11 @@ import threading
 from typing import Dict
 
 # Import the v0.8.0 Core
-from memory_engine import MemoryEngine
-from event_ingester import EventIngester
-from topology_manager import TopologyManager
-from watcher_daemon import WatcherDaemon
+from butterclaw.memory_engine import MemoryEngine
+from butterclaw.event_ingester import EventIngester
+from butterclaw.topology_manager import TopologyManager
+from butterclaw.watcher_daemon import WatcherDaemon
+from butterclaw.config import cfg
 
 class TUIExecutionHarness:
     def __init__(self, agent_command: list):
@@ -27,8 +28,11 @@ class TUIExecutionHarness:
         self.agent_command = agent_command
         
         # Point everything to the Docker volume so we stop making ghosts
-        import os
-        db_path = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
+        # DELETE:
+        # import os
+        # db_path = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
+
+        db_path = str(cfg.DB_PATH)
         
         # Initialize the v0.8.0 Pipeline
         self.memory = MemoryEngine(db_path=db_path)

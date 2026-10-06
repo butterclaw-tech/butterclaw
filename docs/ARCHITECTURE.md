@@ -1,4 +1,4 @@
-# 🏗️ ButterClaw Architecture
+# 🏗️ ButterClaw Architecture (v0.9.2)
 
 ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fully local, event-driven behavioral analysis pipeline for autonomous AI agents. It intercepts raw telemetry and evaluates it through multiple deterministic and probabilistic layers before allowing any kinetic execution.
 
@@ -8,6 +8,10 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 
 ```text
 ┌─────────────────────────────────────────────────┐
+│  Fleet Layer (v0.9.0)                           │
+│  5th hemisphere, fleet DB, trust graph,         │
+│  correlation + collusion detection, fleet API   │
+├─────────────────────────────────────────────────┤
 │  Spatial SOC & Unified Memory Substrate (v0.8.0)│
 │  4-hemisphere cognition, dual memory engine,    │
 │  spatial telemetry gateway, autoresearch loop   │
@@ -115,7 +119,7 @@ flowchart TD
     TAINT -->|quarantine agent + child PIDs| WATCH[Watcher Daemon\nsuspend → kill via psutil]
     TAINT --> EVID[Preserve Evidence\nRAM disk → /data/evidence_locker]
 
-    subgraph OFFLINE[Offline / Idle-Triggered]
+    subgraph OFFLINE [Offline / Idle-Triggered]
         DREAMER[Dreamer Daemon\nN-gram attractor synthesis\nfrom tainted sessions] --> SIGDB[(memory_signatures)]
         ARCHIVER[Archiver Daemon\nretention + RAM sweep] --> EPISODIC
         DREAM[Dream Engine — Dream Weaver\nidle ≥ 15 min: maturation tick\n+ optional REM synthesis] --> EPISODIC
@@ -208,6 +212,20 @@ The log line sanitizer in `watcher.py` removes only shell-dangerous characters (
 
 **I-10 — Physical STDIO Boundaries**
 Unbounded string buffering is strictly prohibited in local MCP transport. All inbound pipes read via byte-level limits (`sys.stdin.buffer.readline`) to prevent Out-Of-Memory (OOM) crashes before the JSON parser engages.
+
+---
+
+## Fleet Layer Invariants (v0.9.0)
+
+| ID | Invariant |
+| --- | --- |
+| **I-01-fleet** | `fleet.db` is included in the Docker volume backup (`/data/fleet.db`). Unavailability at startup is fatal — the server does NOT start in a degraded state with fleet awareness silently disabled. |
+| **I-02-fleet** | A trust score of 0.0 does NOT kill processes or block active sessions. It informs the Fleet Sentinel hemisphere only. Kinetic action flows through Guardian Brain + DRIFT + Paranoia Dial. |
+| **I-03-fleet** | Cross-fleet entity promotion (`scope='session'→'fleet'` in `memory_semantic`) requires a human gate. No automated code path may write `scope='fleet'`. |
+| **I-04-fleet** | Fleet Sentinel verdicts escalate through the existing Guardian Brain + DRIFT + Paranoia Dial chain. The Fleet Sentinel perceives; the exoskeleton decides. |
+| **I-05-fleet** | Taint propagation depth is 1-hop by default. 2-hop requires `TRUST_PROPAGATION_DEPTH=2` in config. Never automated beyond 2 hops. |
+| **I-06-fleet** | Arsenal patterns (`default_signatures.json`) are the single signature system for both single-agent and collusion detection. No second signature system exists. |
+| **I-07-fleet** | `fleet.db` and `butterclaw.db` are NEVER co-transacted. No code path may hold an open transaction on one while acquiring a connection to the other. Enforced by test fixture `assert_distinct_db_connections` (autouse). |
 
 ---
 
@@ -334,6 +352,36 @@ kinetic pathway decided entirely inside the Memory Engine.
 
 ---
 
+### Flow F — Fleet Sentinel Cycle (v0.9.0)
+
+```text
+Tool event arrives at spatial_telemetry_gateway()
+        │
+        ▼
+correlation_engine.ingest_tool_event()
+  [spatial] same abstracted trajectory seen by N≥3 agents in 30 min?
+  [temporal] kill-chain sequence across agents within 120 s?
+        │ YES → CorrelationEvent emitted → fleet_sentinel.analyze_reactive()
+        │
+collusion_detector.ingest_role_signal()
+  arsenal pre_brain scan assigns collusion_role to matching event
+  N≥3 distinct roles observed within 180 s?
+        │ YES → CollusionEvent emitted → fleet_sentinel.analyze_reactive()
+        │
+Fleet Sentinel LLM call (temp 0.5)
+  verdict: ISOLATED | CORRELATED | COLLUDING | INSUFFICIENT_DATA
+        │
+        ├─ COLLUDING + confidence ≥ 0.8 + DRY_RUN=false
+        │     → ask_guardian_agent() with fleet context injected
+        │     → DRIFT post_brain + Paranoia Dial → kinetic action (I-04-fleet)
+        │
+        └─ All other verdicts
+              → logged to fleet_sentinel_log in fleet.db
+              → visible at GET /api/fleet/sentinel/log
+```
+
+---
+
 ## Paranoia Dial — Response Levels
 
 | Level | Name | Behavior | Trigger |
@@ -355,7 +403,7 @@ kinetic pathway decided entirely inside the Memory Engine.
 
 ---
 
-## Four-Hemisphere Reasoning
+## Five-Hemisphere Reasoning (v0.9.0)
 
 ButterClaw's LLM evaluation layer is not a single model call — as of v0.7.x it was two
 independent passes with opposing mandates, different temperatures, and different
@@ -371,6 +419,7 @@ schedule:
 | Auditor | `0.0` | 30s after every CRITICAL verdict | Was I wrong? |
 | Dream Weaver (v0.8.0) | `0.7` | Idle ≥ 15 min | What haven't I seen? |
 | Loop Proposer (v0.8.0) | `0.4` | Every 6 hours | How can I get better? |
+| Fleet Sentinel (v0.9.0) | `0.5` | Correlation/collusion event, or every 4 hrs | Are these agents working together against me? |
 
 ### Hemisphere 1 — The Guardian Brain (`ask_guardian_agent()`)
 
@@ -443,16 +492,26 @@ Unlike the Dream Weaver's hardcoded dry-run, the Loop Proposer's dry-run
 (`LOOP_DRY_RUN`) is meant to be flipped once an operator trusts its proposal quality
 (see I-15-mem/I-16-mem for what it is permanently barred from touching regardless).
 
-### Why Four Calls, Not One
+### Hemisphere 5 — The Fleet Sentinel (`fleet_sentinel.py`, v0.9.0)
 
-A single LLM call cannot simultaneously optimize for decisive action, skeptical
-review, speculative imagination, and self-improvement — these are four different,
-often opposing, prompt pressures. Combining any two of them into one call typically
-produces hedged, low-confidence output that underperforms at every task it's asked to
-do at once. Separating them into four calls — each with an explicit mandate, its own
-temperature, and its own trigger condition (per-request, post-verdict, idle, and
-scheduled) — lets each hemisphere operate at its natural optimum instead of
-compromising for the others.
+**Mandate:** Reason across the entire observed fleet to answer: *Are these agents working together against me?*
+**Temperature:** `0.5` — between the Guardian Brain's decisive `0.3` and the Dream Weaver's speculative `0.7` (D-21). Fleet-level reasoning benefits from more flexibility than single-event evaluation but must still produce a structured verdict.
+**Fires:** Reactively on every `CorrelationEvent` or `CollusionEvent` from the fleet detection stack; proactively every 4 hours on a schedule.
+
+The Fleet Sentinel receives:
+
+* A snapshot of active fleet agents with trust scores and reputation history
+* Any open correlation/collusion events (deduplicated, coalesced within a 30s window)
+* Fleet memory baselines (per-agent behavioral baselines, EMA)
+* Optional fleet-scoped semantic memory enrichment from `FleetMemory`
+
+Verdicts: `ISOLATED` (no cross-agent signal), `CORRELATED` (same pattern, N agents), `COLLUDING` (complementary roles, distributed kill chain), `INSUFFICIENT_DATA` (fewer than 2 agents, or event coalescing window too short). A `COLLUDING` verdict with confidence ≥ 0.8 escalates through the existing Guardian Brain + DRIFT + Paranoia Dial chain per I-04-fleet. The Fleet Sentinel **perceives**; the existing exoskeleton **decides**.
+
+Key constraints: FLEET_SENTINEL_DRY_RUN=true by default (suppress escalation during validation). HemisphereScheduler circuit breaker protects Guardian Brain from any Fleet Sentinel LLM failures.
+
+### Why Five Calls, Not Four
+
+A single LLM call cannot simultaneously optimize for decisive action, skeptical review, speculative imagination, self-improvement, and fleet-level behavioral reasoning — these are five different, often opposing, prompt pressures. Combining any two typically produces hedged, low-confidence output that underperforms at every task. Separating them into five calls — each with an explicit mandate, its own temperature, and its own trigger condition — lets each hemisphere operate at its natural optimum. The Fleet Sentinel in particular operates at a fundamentally different scope than the other four: it reasons across agents, not within a single agent's event stream, so it cannot share a prompt with any single-agent hemisphere without corrupting both signals.
 
 ---
 
@@ -503,11 +562,20 @@ Event Ledger for the 5 most recent successful MCP tool calls. These events are f
 | `src/butterclaw/dreamer_daemon.py` (v0.8.0) | ~150 | Offline N-gram Cold Memory signature synthesis from tainted sessions | `DreamerConsolidationLoop.start_dreaming()` |
 | `src/butterclaw/archiver_daemon.py` (v0.8.0) | ~170 | Retention, RAM-disk sweeping, evidence securing | `ArchiverDaemon.start_archiving()` |
 | `src/butterclaw/tui_execution_harness.py` (v0.8.0) | ~215 | Pseudo-TTY agent bootstrap + spatial channel interception | `TUIExecutionHarness.bootstrap_agent()`, `.intercept_spatial_channel()` |
+| `src/butterclaw/fleet_db_init.py` (v0.9.0) | ~190 | Fleet DB schema bootstrap — 8 DDL tables, WAL mode, fatal on startup if unavailable (I-01-fleet, I-07-fleet) | `init_fleet_db()`, `get_fleet_db()` |
+| `src/butterclaw/fleet_registry.py` (v0.9.0) | ~160 | Persistent cross-session agent registry, asymmetric reputation scoring (3:1 taint:recovery ratio) | `FleetRegistry.register_agent()`, `.record_taint()`, `.get_agent()` |
+| `src/butterclaw/trust_graph.py` (v0.9.0) | ~255 | Directed weighted agent relationship graph, taint propagation (I-05-fleet: 1-hop default, 2-hop behind config flag) | `TrustGraph.record_spawn()`, `.record_communication()`, `.propagate_taint()` |
+| `src/butterclaw/correlation_engine.py` (v0.9.0) | ~335 | Spatial + temporal cross-agent correlation, journal-backed windows (D-26), compaction thread | `CorrelationEngine.ingest_tool_event()`, `.get_open_events()` |
+| `src/butterclaw/collusion_detector.py` (v0.9.0) | ~320 | Complementary semantic role detection (encoder/exfiltrator/persister/scout/injector) — Arsenal-tagged (I-06-fleet) | `CollusionDetector.ingest_role_signal()`, `.get_open_events()` |
+| `src/butterclaw/fleet_memory.py` (v0.9.0) | ~265 | Fleet-scope semantic entity promotion (human-gated, I-03-fleet), per-agent EMA behavioral baselines | `FleetMemory.promote_entity_to_fleet()`, `.format_fleet_context_for_prompt()` |
+| `src/butterclaw/fleet_sentinel.py` (v0.9.0) | ~515 | 5th LLM hemisphere (temp 0.5), reactive + proactive, event coalescing, INSUFFICIENT_DATA guard | `FleetSentinel.analyze_reactive()`, `.run_proactive_cycle()` |
+| `src/butterclaw/fleet_api.py` (v0.9.0) | ~555 | 14 `/api/fleet/*` routes, two-step quarantine (R-06), operator feedback, 4-tier RBAC | `register_fleet_routes(app, ...)` |
+| `src/butterclaw/hemisphere_scheduler.py` (v0.9.0) | ~360 | Priority queue for all 5 hemispheres, Guardian Brain cap-exempt, circuit breaker (R-05) | `HemisphereScheduler.submit()`, `.get_status()` |
 | `capabilities.json` | — | Positive Security Model matrix defining agent profiles | Loaded by `policy_engine.py` |
-| `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` signature scan | Loaded by `policy_engine.py` at startup |
-| `nginx/` | — | TLS proxy — the internet-facing trust boundary | `nginx.conf` |
+| `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` scan; v0.9 adds `collusion_role` + `fleet_scope` fields (I-06-fleet, R-04) | Loaded by `policy_engine.py` at startup |
+| `nginx/` | — | TLS proxy — the internet-facing trust boundary | `butterclaw.conf`, `default.conf` |
 | `systemd/` | — | Service unit files | `butterclaw.service`, `watcher.service` |
-| `scripts/` | — | Diagnostics and live-fire test scripts | `test_attack.py`, `test_mcp.py`, `add_rule.py` |
+| `scripts/` | — | Diagnostics and live-fire test scripts | `test_dual_memory.py`, `test_attack.py`, `test_mcp.py`, `add_rule.py` |
 
 ---
 
@@ -584,6 +652,24 @@ A staged `prompt_overrides` row can only replace the identity/persona preamble s
 
 ---
 
+**D-21 — Fleet Sentinel temperature 0.5**
+Between Guardian Brain's decisive 0.3 and Dream Weaver's speculative 0.7. Fleet-level coordination analysis benefits from more flexibility than single-event evaluation while still needing to produce a structured, actionable verdict.
+
+**D-22 — Two-step quarantine (R-06)**
+`POST /api/fleet/agents/<id>/quarantine` issues a 60-second confirmation token. The operator must follow up with `POST .../quarantine/confirm?token=<tok>` to execute. Prevents accidental quarantine from a single API call. UI must display active sessions and a destructive-styled confirm button.
+
+**D-23 — Arsenal as the single collusion signature system (I-06-fleet)**
+Adding `collusion_role` tags to `default_signatures.json` entries instead of building a parallel signature store. A single lenient loader (R-04) serves both individual-agent detection and fleet collusion role assignment, eliminating any risk of the two systems drifting out of sync.
+
+**D-24 — Asymmetric reputation: 3:1 taint:recovery ratio**
+Taint hits are weighted 3× harder than recovery events. Borrowed from credit scoring: a single confirmed taint is stronger evidence of compromise than many clean runs are evidence of safety. The ratio is configurable per `FleetRegistry.reputation_decay_ratio`.
+
+**D-25 — HemisphereScheduler priority queue (R-05)**
+Guardian Brain is cap-exempt (priority 0); Fleet Sentinel reactive invocations are priority 1 (tied with Auditor); proactive Fleet Sentinel and scheduled hemispheres are priority 2–4. Ensures Guardian Brain is never starved by fleet workload, and kinetic post-verdict audit is never delayed by a proactive fleet scan.
+
+**D-26 — Journal-backed correlation windows (replaces ephemeral D-20 windows)**
+Correlation windows are appended to `correlation_journal` in `fleet.db` on every event. On restart, `_replay_journal()` rebuilds in-memory state. Pod eviction without a mounted volume still loses in-progress windows — accepted residual risk per spec.
+
 ## Extension Points
 
 | Extension | Interface | Notes |
@@ -603,6 +689,8 @@ A staged `prompt_overrides` row can only replace the identity/persona preamble s
 
 ## Related Documentation
 
-* [`API.md`](API.md) — Full endpoint reference (63 routes, 4-tier RBAC)
-* [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
+* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`THREAT_MODEL.md`](docs/THREAT_MODEL.md) — Updated threat model

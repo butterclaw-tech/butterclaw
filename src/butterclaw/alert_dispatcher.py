@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Alert Dispatcher
+ButterClaw v0.8.1 — Alert Dispatcher - src layout
 ======================================
 Push notifications to external channels when critical events occur.
 

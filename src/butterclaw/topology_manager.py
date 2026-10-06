@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Topology Manager
+ButterClaw v0.9.2 — Topology Manager - src layout
 Propagates taint down the agent lineage and preserves visual evidence.
 """
 
@@ -10,6 +10,12 @@ import platform
 import tempfile
 from typing import List
 
+# Primary import from unified config
+#from butterclaw.config import cfg
+
+# Old: from butterclaw.config import cfg
+from butterclaw.config import cfg, EVIDENCE_LOCKER_DIR
+
 # Setup Tiered Storage Directories
 def get_hot_screenshot_dir() -> str:
     if platform.system() == "Linux" and os.path.exists("/dev/shm"):
@@ -19,16 +25,23 @@ def get_hot_screenshot_dir() -> str:
 HOT_DIR = get_hot_screenshot_dir()
 # EVIDENCE_DIR = "/var/lib/butterclaw/evidence_locker"
 # Automatically use the Docker /data volume if it exists, otherwise use a local folder
-EVIDENCE_DIR = "/data/evidence_locker" if os.path.exists("/data") else "evidence_locker"
+#EVIDENCE_DIR = "/data/evidence_locker" if os.path.exists("/data") else "evidence_locker"
+# Old: EVIDENCE_DIR = str(cfg.EVIDENCE_LOCKER_DIR)
+EVIDENCE_DIR = str(EVIDENCE_LOCKER_DIR)
 os.makedirs(HOT_DIR, exist_ok=True)
 os.makedirs(EVIDENCE_DIR, exist_ok=True)
 
 class TopologyManager:
     #def __init__(self, db_path: str = "butterclaw.db"):
-    #    self.db_path = db_path
+    #    self.db_path = db_path -- IGNORE -- old version
+#def __init__(self, db_path: str = None):
+#        if db_path is None:
+#            self.db_path = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
+#        else:
+#            self.db_path = db_path
     def __init__(self, db_path: str = None):
         if db_path is None:
-            self.db_path = "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
+            self.db_path = str(cfg.DB_PATH)
         else:
             self.db_path = db_path
 

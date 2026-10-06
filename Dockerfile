@@ -1,6 +1,7 @@
 # =============================================
-# ButterClaw v0.8.1 — Production Container
+# ButterClaw v0.9.2 — Production Container
 # =============================================
+# Multi-stage build: deps first (cached), app second
 # Base: python:3.11-slim (minimal attack surface)
 # No root: runs as butterclaw user
 
@@ -72,9 +73,16 @@ RUN pip install --no-cache-dir supervisor && \
 ENV BUTTERCLAW_HOST=0.0.0.0
 ENV BUTTERCLAW_PORT=5000
 ENV BUTTERCLAW_DB_PATH=/data/butterclaw.db
+# v0.9.0: Fleet DB — separate file, never co-transacted with butterclaw.db (I-07-fleet)
+ENV BUTTERCLAW_FLEET_DB_PATH=/data/fleet.db
 # Force keyring credentials to save inside the persistent volume
 ENV XDG_DATA_HOME=/data
 ENV BUTTERCLAW_INSTANCE_ID=butterclaw-docker
+# v0.9.0: Fleet Sentinel dry-run mode (set to false in production after validation)
+ENV BUTTERCLAW_FLEET_SENTINEL_DRY_RUN=true
+
+# Persistent data volume — both DBs live here (I-01-fleet: fleet.db in backup)
+VOLUME ["/data"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

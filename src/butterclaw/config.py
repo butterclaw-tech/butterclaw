@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Configuration Module
+ButterClaw v0.9.2 — Configuration Module - src layout
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -61,6 +61,10 @@ RETRY_QUEUE_PATH = PROJECT_ROOT / "retry_queue.json"
 DB_PATH = PROJECT_ROOT / "butterclaw.db"
 GATEWAY_LOG_PATH = PROJECT_ROOT / "openclaw_gateway.log"
 EVIDENCE_LOCKER_DIR = PROJECT_ROOT / "data" / "evidence_locker"
+
+# Canonical Root File Paths (Fleet Layer)
+FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
+
 logger = logging.getLogger("butterclaw.config")
 
 
@@ -68,7 +72,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.8.0"
+CONFIG_VERSION = "0.9.2"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.
@@ -176,6 +180,21 @@ def _env_int(key, default=0):
         return default
 
 
+def _env_float(key, default=0.0):
+    """Get float from environment with BUTTERCLAW_ prefix."""
+    raw = os.environ.get(ENV_PREFIX + key, "")
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid float for %s%s: '%s' — using default %.2f",
+            ENV_PREFIX, key, raw, default,
+        )
+        return default
+
+
 def _env_bool(key, default=False):
     """Get boolean from environment with BUTTERCLAW_ prefix.
     Truthy: 'true', '1', 'yes', 'on' (case-insensitive).
@@ -236,6 +255,13 @@ class ButterClawConfig:
             "DB_PATH",
             str(PROJECT_ROOT / "butterclaw.db"),
         )
+
+        # New v0.9.2 Fleet Layer DB
+        self.FLEET_DB_PATH = _env_str(
+            "FLEET_DB_PATH",
+            str(PROJECT_ROOT / "fleet.db"),
+        )
+
         self.MCP_SCRIPT = _env_str(
             "MCP_SCRIPT",
             os.path.join(self.BASE_DIR, "butterclaw_mcp.py"),
@@ -293,10 +319,22 @@ class ButterClawConfig:
         # ── Identity ──
         self.INSTANCE_ID = _env_str("INSTANCE_ID", "butterclaw-local")
 
-        # ── Dual Memory Engine & Loop Proposer (v0.8.0) ──
-        self.LOOP_DRY_RUN = _env_bool("LOOP_DRY_RUN", True)
-        self.LIVE_CRYSTALLIZATION_ENABLED = _env_bool("LIVE_CRYSTALLIZATION_ENABLED", True)
-        self.ATTRACTOR_DECAY_DAYS = _env_int("ATTRACTOR_DECAY_DAYS", 30)
+        # ── R3 — Memory Watchdog ──────────────────────────────────────────────
+        # Controls the maturation fallback thread in memory_engine.py.
+        # All three values mirror the _MemoryCfg dataclass defaults but are
+        # exposed here so operators can tune them via env vars without touching
+        # source code.  memory_engine.py reads _cfg (its own dataclass) at
+        # module load time; these cfg fields are what server.py passes through
+        # if it ever needs to override the defaults at startup.
+        self.MEMORY_WATCHDOG_ENABLED            = _env_bool(
+            "MEMORY_WATCHDOG_ENABLED", True
+        )
+        self.MEMORY_MATURATION_FALLBACK_HOURS   = _env_float(
+            "MEMORY_MATURATION_FALLBACK_HOURS", 6.0
+        )
+        self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC = _env_float(
+            "MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", 300.0
+        )
 
         # ── Validate ──
         self._validate()
@@ -389,13 +427,6 @@ class ButterClawConfig:
                 f"(must be >= 1)"
             )
 
-        # Attractor Decay
-        if self.ATTRACTOR_DECAY_DAYS < 1:
-            errors.append(
-                f"Invalid attractor decay days: {self.ATTRACTOR_DECAY_DAYS} "
-                f"(must be >= 1)"
-            )
-
         # OAuth TTL
         if self.OAUTH_STATE_TTL < 1:
             errors.append(
@@ -458,9 +489,6 @@ class ButterClawConfig:
                 "google_api_key": "***" if redact_secrets and self.GOOGLE_API_KEY else self.GOOGLE_API_KEY,
                 "confidence_threshold": self.CONFIDENCE_THRESHOLD,
                 "dry_run": self.DRY_RUN,
-                "loop_dry_run": self.LOOP_DRY_RUN,
-                "live_crystallization": self.LIVE_CRYSTALLIZATION_ENABLED,
-                "attractor_decay_days": self.ATTRACTOR_DECAY_DAYS,
             },
             "mcp": {
                 "transport": self.MCP_TRANSPORT,
@@ -500,6 +528,11 @@ class ButterClawConfig:
                     or os.environ.get(ENV_PREFIX + "HOST")
                 ),
             },
+            "memory_watchdog": {                            # R3
+                "enabled":              self.MEMORY_WATCHDOG_ENABLED,
+                "fallback_hours":       self.MEMORY_MATURATION_FALLBACK_HOURS,
+                "check_interval_sec":   self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC,
+            },
         }
         return d
 
@@ -524,9 +557,6 @@ class ButterClawConfig:
             "GOOGLE_API_KEY": "***" if self.GOOGLE_API_KEY else "",
             "CONFIDENCE_THRESHOLD": self.CONFIDENCE_THRESHOLD,
             "DRY_RUN": self.DRY_RUN,
-            "LOOP_DRY_RUN": self.LOOP_DRY_RUN,
-            "LIVE_CRYSTALLIZATION_ENABLED": self.LIVE_CRYSTALLIZATION_ENABLED,
-            "ATTRACTOR_DECAY_DAYS": self.ATTRACTOR_DECAY_DAYS,
             "MCP_TRANSPORT": self.MCP_TRANSPORT,
             "MCP_SSE_URL": self.MCP_SSE_URL,
             "MCP_SSE_TOKEN": "***" if self.MCP_SSE_TOKEN else "",
@@ -542,6 +572,10 @@ class ButterClawConfig:
             "AUTH_FAILURE_WINDOW": self.AUTH_FAILURE_WINDOW,
             "OAUTH_STATE_TTL": self.OAUTH_STATE_TTL,
             "INSTANCE_ID": self.INSTANCE_ID,
+            # R3 — memory watchdog
+            "MEMORY_WATCHDOG_ENABLED":            self.MEMORY_WATCHDOG_ENABLED,
+            "MEMORY_MATURATION_FALLBACK_HOURS":   self.MEMORY_MATURATION_FALLBACK_HOURS,
+            "MEMORY_WATCHDOG_CHECK_INTERVAL_SEC": self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC,
         }
 
     # ─────────────────────────────────────────
@@ -596,8 +630,8 @@ if __name__ == "__main__":
           repr(cfg))
 
     # ── Test 2: Version matches ──
-    _test(2, "Config version is 0.8.0",
-          CONFIG_VERSION == "0.8.0",
+    _test(2, "Config version is 0.9.2",
+          CONFIG_VERSION == "0.9.2",
           f"CONFIG_VERSION = {CONFIG_VERSION}")
 
     # ── Test 3: BASE_DIR is a real directory ──
@@ -679,10 +713,9 @@ if __name__ == "__main__":
         "BASE_DIR", "DB_PATH", "MCP_SCRIPT", "HOST", "PORT", "DEBUG",
         "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL", 
         "OLLAMA_CHAT_PATH", "MODEL_NAME", "GOOGLE_API_KEY",
-        "CONFIDENCE_THRESHOLD", "DRY_RUN", "LOOP_DRY_RUN", "LIVE_CRYSTALLIZATION_ENABLED", 
-        "ATTRACTOR_DECAY_DAYS", "MCP_TRANSPORT", "MCP_SSE_URL", "MCP_SSE_TOKEN", 
-        "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", "AUTH_RATE_OPERATOR", 
-        "AUTH_RATE_VIEWER", "SESSION_TTL", 
+        "CONFIDENCE_THRESHOLD", "DRY_RUN", "MCP_TRANSPORT", "MCP_SSE_URL",
+        "MCP_SSE_TOKEN", "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", 
+        "AUTH_RATE_OPERATOR", "AUTH_RATE_VIEWER", "SESSION_TTL", 
         "ALERT_DELIVERY_TIMEOUT", "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF", 
         "AUTH_FAILURE_THRESHOLD", "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", 
         "INSTANCE_ID",

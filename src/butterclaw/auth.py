@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Authentication & Authorization Module
+ButterClaw v0.8.1 — Authentication & Authorization Module - src layout
 ==========================================================
 API Gateway for the ButterClaw Reasoning Engine.
 

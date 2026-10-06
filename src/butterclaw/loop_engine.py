@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — Loop Engine (Karpathy Autoresearch Loop / Loop Proposer)
+ButterClaw v0.9.1 — Loop Engine (Karpathy Autoresearch Loop / Loop Proposer) - src layout
 ============================================================================
 The last of the three modules the original v0.8 design called for
 (memory_engine.py + dream_engine.py were built first). Four-Hemisphere role:
@@ -80,11 +80,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from butterclaw import memory_engine as mem
-from butterclaw import policy_engine as pe
+import butterclaw.memory_engine as mem
+import butterclaw.policy_engine as pe
+from butterclaw.config import cfg
 
 log = logging.getLogger("butterclaw.loop")
 log.setLevel(logging.INFO)
+log.propagate = False  # v0.9.1 fix — prevent double output via root logger (server.py basicConfig)
 if not log.handlers:
     _h = logging.StreamHandler()
     _h.setFormatter(logging.Formatter("%(message)s"))
@@ -110,9 +112,10 @@ def _reject_python_targets(*values: str) -> None:
             )
 
 
+#def _default_db_path() -> str:
+#    return "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
 def _default_db_path() -> str:
-    return "/data/butterclaw.db" if os.path.exists("/data") else "butterclaw.db"
-
+    return str(cfg.DB_PATH)
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -435,6 +438,9 @@ class LoopEngine:
         self._worker_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
+        if self._worker_thread is not None:  # start-once guard (v0.9.1)
+            log.debug("[LOOP ENGINE] start() called but worker already running — ignoring.")
+            return
         self._worker_thread = threading.Thread(target=self._loop, daemon=True)
         self._worker_thread.start()
         log.info(
@@ -625,7 +631,8 @@ if __name__ == "__main__":
     tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
     tmp_sig_dir = tempfile.mkdtemp()
     tmp_sig_file = os.path.join(tmp_sig_dir, "default_signatures.json")
-    shutil.copy(os.path.join(os.path.dirname(__file__), "default_signatures.json"), tmp_sig_file)
+    #shutil.copy(os.path.join(os.path.dirname(__file__), "default_signatures.json"), tmp_sig_file)
+    shutil.copy(str(cfg.DEFAULT_SIGNATURES_PATH), tmp_sig_file)
 
     mem.init(db_path=tmp_db)
     mem.init_memory_db()

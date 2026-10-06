@@ -1,5 +1,5 @@
 # =======================================================
-# ButterClaw v0.6.4
+# ButterClaw v0.9.0
 # Local Ollama (Local GPU) - ButterClaw in the Container
 # =======================================================
 # Usage:
@@ -43,7 +43,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 60s # ← was 10s — v0.9.0 needs more time
     deploy:
       resources:
         limits:

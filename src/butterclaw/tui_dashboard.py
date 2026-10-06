@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.0 — Visual TUI Dashboard
+ButterClaw v0.8.0 — Visual TUI Dashboard - src layout
 =========================================
 Real-time terminal monitoring for the Agentic SOC.
 """
@@ -9,7 +9,7 @@ import sys
 import time
 import sqlite3
 import shutil
-from policy_engine import _get_db, get_policy_event_count, get_policy_events, init_policy_db
+from butterclaw.policy_engine import _get_db, get_policy_event_count, get_policy_events, init_policy_db
 
 # Ensure tables exist before we try to read them!
 init_policy_db()
@@ -69,7 +69,8 @@ def render_loop():
             except Exception:
                 total_events, semantic_blocked, active_rules, spatial_events, tainted_swarms, spatial_blocked, dreamer_sigs = 0, 0, 0, 0, 0, 0, 0
 
-            import policy_engine
+            # Old: import policy_engine
+            import butterclaw.policy_engine as policy_engine
             # Combine static hardcoded signatures with dynamic Dreamer attractors
             arsenal_count = len(policy_engine.COMPILED_SIGNATURES) + dreamer_sigs
             

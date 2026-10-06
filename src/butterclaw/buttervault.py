@@ -1,11 +1,13 @@
 """
-ButterClaw v0.8.1 — The ButterVault
+ButterClaw v0.9.2 — The ButterVault - src layout
 =================================================
 Local-first, encrypted credential storage.
 Defends against .env scrapers and supply-chain credential harvesting.
 Supports complex OAuth 2.0 token dictionary payloads.
 [v0.6.0] The Gibson now hooks into auth.py to destroy API key hashes.
 [v0.6.5] Hardened with strict DRY_RUN safety blocks and connection leak patches.
+[v0.8.1] Migrated codebase to src layout.
+[v0.9.2] Updated missing src migration pathing.
 """
 
 import os
@@ -367,12 +369,15 @@ def butter_keys(provider=None):
 
     # Destroy API key hashes — invalidates all auth
     try:
-        import butterclaw.auth as auth
-        auth.destroy_all_api_keys()
+        import butterclaw.auth
+        butterclaw.auth.destroy_all_api_keys()
     except ImportError:
         pass  # auth module not present (pre-v0.6.0 compat)
 
 if __name__ == "__main__":
+    # Quarantined local path for standalone diagnostic tests
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
     # --- DIAGNOSTIC MODE ---
     print("🦞 ButterVault Diagnostic Boot...")
     

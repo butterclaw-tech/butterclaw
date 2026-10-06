@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8 — Memory API
+ButterClaw v0.9.2 — Memory API - src layout
 ============================================================
 The third and final module from the original v0.8 design roadmap
 (memory_engine.py + dream_engine.py + loop_engine.py were built first).
@@ -33,9 +33,10 @@ precedent already set by the /api/policies routes in server.py: GET = viewer,
 state-changing-but-reversible = operator, destructive or trust-elevating =
 admin.
 
-Routes (12 total — the roadmap's "9" was an estimate, not a contract):
+Routes (13 total — the roadmap's "9" was an estimate, not a contract):
 
   Deep + Surface Memory:
+    GET    /api/memory/status                 viewer   ← R3 watchdog health
     GET    /api/memory/hot                    viewer
     GET    /api/memory/episodic               viewer
     DELETE /api/memory/episodic/<memory_id>   admin
@@ -70,8 +71,11 @@ from typing import Any
 
 from flask import request, jsonify
 
-import memory_engine as mem
-from auth import require_auth
+import time
+
+import butterclaw.memory_engine as mem
+from butterclaw.auth import require_auth
+from butterclaw.config import cfg
 
 
 def register_memory_routes(app, dream_engine_instance: Any, loop_engine_instance: Any) -> None:
@@ -80,6 +84,40 @@ def register_memory_routes(app, dream_engine_instance: Any, loop_engine_instance
     # =============================================
     # DEEP + SURFACE MEMORY
     # =============================================
+
+    @app.route('/api/memory/status', methods=['GET'])
+    @require_auth(min_role="viewer")
+    def memory_status_endpoint():
+        """
+        R3 watchdog health — tells you when maturation last ran, who ran it,
+        and whether dream_engine is considered healthy relative to the
+        configured fallback threshold.
+
+        Response fields:
+          last_maturation_unix      — float epoch of the last successful tick
+                                      (0.0 if never run since process start)
+          last_maturation_caller    — "dream_engine" | "watchdog_fallback" | ""
+          seconds_since_maturation  — elapsed time in seconds (rounded to 1 dp)
+          dream_engine_healthy      — bool: True if elapsed < fallback threshold
+          fallback_threshold_hrs    — configured threshold (from cfg)
+          watchdog_enabled          — bool: True if watchdog thread is armed
+        """
+        with mem._last_maturation_lock:
+            last_unix  = mem._last_maturation_unix
+            last_caller = mem._last_maturation_unix_caller
+
+        elapsed   = time.time() - last_unix if last_unix > 0 else None
+        threshold = cfg.MEMORY_MATURATION_FALLBACK_HOURS * 3600
+        healthy   = (elapsed is not None) and (elapsed < threshold)
+
+        return jsonify({
+            "last_maturation_unix":     last_unix,
+            "last_maturation_caller":   last_caller or "unknown",
+            "seconds_since_maturation": round(elapsed, 1) if elapsed is not None else None,
+            "dream_engine_healthy":     healthy,
+            "fallback_threshold_hrs":   cfg.MEMORY_MATURATION_FALLBACK_HOURS,
+            "watchdog_enabled":         cfg.MEMORY_WATCHDOG_ENABLED,
+        }), 200
 
     @app.route('/api/memory/hot', methods=['GET'])
     @require_auth(min_role="viewer")

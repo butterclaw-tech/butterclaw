@@ -44,3 +44,13 @@ ButterClaw mitigates this through a **Dual-Pass Reasoning** architecture that is
 | **Ollama / Inference Engine Offline** | System fails secure. `server.py` cannot resolve verdicts. Requests sit in the Watcher's retry queue (persisted to disk) until inference is restored. |
 | **Network Loss During Gibson** | Graceful degradation. External OAuth revocation (HTTP DELETEs) will fail, but the local ButterVault SQLite rows will still be mathematically shredded with random CSPRNG bytes. |
 | **Alert Delivery Failure** | Channel independence. If the Discord webhook is down, SMTP and ntfy alerts will still fire. Failed deliveries are logged to `alert_history` and retried with exponential backoff. |
+
+---
+
+## Related Documentation
+
+* [`API.md`](docs/API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) — System design, trust boundaries, invariants, design decisions
+* [`SECURITY.md`](docs/SECURITY.md) — Threat model, attack surfaces, responsible disclosure
+* [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`RUNBOOK.md`](docs/RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
