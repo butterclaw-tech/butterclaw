@@ -10,7 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.9.0** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-06 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
+| **v0.9.2** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-06 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
 | **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-12 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
 | **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
@@ -33,6 +33,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.3.x** | Routing Dashboard | 2026-04-04 | routing.html, advanced config UI |
 | **v0.2.0** | ButterVault | 2026-04-01 | Encrypted credentials, Gibson Kill Switch |
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
+
+---
+
+---
+
+## [0.9.2] - The Fleet Layer, Package Architecture & Academic Artifact - 2026-10-06 - (Summary, detailed further below)
+
+ButterClaw v0.9.2 is a consolidated "Mega Release" that formally bridges the gap from the v0.8.x memory engines into a publish-ready academic repository. This release introduces a massive multi-agent "Fleet Layer" expansion, deploys a resilient memory maturation watchdog, and formally locks the architecture in place with a 19-page LaTeX-compiled whitepaper.
+
+### Key Changes:
+
+**The Fleet Layer (Multi-Agent Awareness):**
+- Added Fleet Sentinel (Fifth Hemisphere) for reactive and proactive cross-agent reasoning.
+- Implemented Correlation Engine for spatial/temporal broadcast attack detection.
+- Implemented Collusion Detector for divided-labor multi-agent threat detection.
+- Added `fleet.db` for persistent cross-session agent identity and trust graphs.
+- Added 14 new `/api/fleet/*` routes for graph queries and two-step quarantines.
+- Integrated Hemisphere Scheduler for priority queueing across all 5 LLM hemispheres.
+
+**The Academic Payload (Whitepaper & Zenodo):**
+- Added formal `whitepaper/` directory featuring `main.tex` and 19-page PDF ontology.
+- Integrated Mermaid.js graphics into the LaTeX pipeline.
+- Implemented `.zenodo.json` metadata for automated DataCite DOI minting.
+- Added CC-BY-4.0 dual-licensing structure for academic artifacts.
+
+**Maturation Lifecycle Decoupling (Memory Watchdog):**
+- Implemented `_maturation_fallback_loop` thread to decouple memory decay from the Dream Engine.
+- Added execution mutex (`_maturation_tick_lock`) to prevent double-decay race conditions.
+- Replaced blocking 6-hour sleep loops with 5-minute event polling for fast SIGTERM shutdown.
+
+**Operations & OPSEC Hardening:**
+- Added `docs/RUNBOOK.md` detailing quarantine flowcharts and dry-run rollouts.
+- Hardened `.gitignore` with strict cryptographic key quarantine blocks.
+
+---
 
 ---
 
