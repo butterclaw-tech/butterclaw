@@ -266,7 +266,7 @@ python scripts/test_spatial.py
 # 5. Validate the v0.8.0 Dual Memory Substrate & Four-Hemisphere Cognition
 python scripts/test_dual_memory.py
 
-# 4. Verify backup integrity for both databases (v0.9.0)
+# 6. Verify backup integrity for both databases (v0.9.0)
 ./scripts/verify_backup.sh /data
 ```
 
