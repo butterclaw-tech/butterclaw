@@ -582,6 +582,9 @@ invariant register; see \cref{sec:invariant-mapping} for its formal property map
 \begin{figure}[tp]
 \centering
 \includegraphics[width=\linewidth,height=0.85\textheight,keepaspectratio]{../diagrams/2.png}
+
+\vspace{1.5em}
+
 \caption{Spatial telemetry and memory data flow. Agent events enter the Memory Gateway, are
 evaluated against Cold Memory signatures (fast path --- no LLM call), and routed through the
 SpatialHeuristics engine. BLOCK verdicts are enforced directly by the Topology Manager and
@@ -589,8 +592,6 @@ Watcher Daemon, bypassing the signal loop entirely. ALLOW verdicts continue into
 pipeline.}
 \label{fig:spatial}
 \end{figure}
-
-\vspace{1.5em}
 
 The memory substrate implements a three-tier architecture---\textsc{hot}, \textsc{warm}, and
 \textsc{cold}---that mirrors the biological distinction between working memory, consolidating
