@@ -16,14 +16,17 @@ Local LLM reasoning. Persistent memory. Fleet collusion detection. Zero outbound
 </p>
 
 <p align="center">
-  <a href="https://opensource.org/licenses/Apache-2.0">
-  <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg">
-  </a>
   <a href="CHANGELOG.md">
-  <img src="https://img.shields.io/badge/version-0.9.2-navy.svg">
+    <img src="https://img.shields.io/badge/version-0.9.2-blue.svg" alt="Version">
+  </a>
+  <a href="https://doi.org/10.5281/zenodo.23201528">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.23201528.svg" alt="DOI">
+  </a>
+  <a href="https://opensource.org/licenses/Apache-2.0">
+    <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg" alt="License">
   </a>
   <a href="https://butterclaw.tech">
-  <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg">
+    <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg" alt="Live Site">
   </a>
 </p>
 
@@ -377,6 +380,14 @@ If you ship something that lands, your name goes here. Read [`CONTRIBUTING.md`](
 * **Architecture & Whitepapers:** [Creative Commons Attribution 4.0 International (CC-BY-4.0)](https://creativecommons.org/licenses/by/4.0/)
 
 ButterClaw Tech © 2026
+
+---
+
+## Citation
+
+If you use ButterClaw in your research, please cite the permanent archive:
+
+> **Bc77. (2026).** *Autonomous Signals: A New Ontology for AI Agents* (v0.9.2). Zenodo. https://doi.org/10.5281/zenodo.23201528
 
 ---
 
