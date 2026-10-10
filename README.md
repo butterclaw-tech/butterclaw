@@ -1,4 +1,5 @@
 <div align="center">
+  <a href="https://butterclaw.tech">
 <pre>
 ██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
 ██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
@@ -7,6 +8,7 @@
 ██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
 ╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
 </pre>
+  </a>
 </div>
 
 <h1 align="center">ButterClaw: The Agentic SOC</h1>
@@ -22,8 +24,14 @@ Local LLM reasoning. Persistent memory. Fleet collusion detection. Zero outbound
   <a href="https://doi.org/10.5281/zenodo.23201528">
     <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.23201528.svg" alt="DOI">
   </a>
+  <a href="https://orcid.org/0009-0001-2162-1397" target="_blank">
+    <img src="https://img.shields.io/badge/ORCID-Researcher-A6CE39?logo=orcid&logoColor=white" alt="ORCID">
+  </a><br>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/License-Apache_2.0-ef4444.svg" alt="License">
+  </a>
+  <a href="https://www.docker.com/" target="_blank">
+    <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white" alt="Docker">
   </a>
   <a href="https://butterclaw.tech">
     <img src="https://img.shields.io/badge/Live-butterclaw.tech-eab308.svg" alt="Live Site">
