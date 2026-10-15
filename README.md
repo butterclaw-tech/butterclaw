@@ -400,7 +400,7 @@ If you use ButterClaw in your research, please cite the permanent archive:
 ---
 
 <p align="center"><br>
-<strong>🦞 ButterClaw v0.9.2 (Mega Release) — The Fleet Layer, Package Architecture & Academic Artifact 🦞</strong><br>
+<strong>🦞 ButterClaw v0.9.2 (Mega Release) — The Fleet Layer, Package Architecture & Research Paper 🦞</strong><br>
 <em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
 <em>Five minds. One fleet. The Sentinel never goes silent.</em><br>
 <em>We watch the room.</em><br>
