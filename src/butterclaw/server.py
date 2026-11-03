@@ -1,5 +1,5 @@
 """
-ButterClaw v0.9.2 - src layout
+ButterClaw v0.9.3 - src layout
 =====================================================================
 Changelog:
   [v0.5.0] The Nervous System (Ledger, SSE Transport)
@@ -19,6 +19,9 @@ Changelog:
   [v0.7.2] The Agentic SOC (ENV Setup Wizard)
   [v0.8.0] The Spatial SOC (Memory Engine)
   [v0.9.0] The Fleet Layer (Multi-Agent Awareness)
+  [v0.9.1] Fleet Layer Hotfix
+  [v0.9.2] Zenodo Research Release
+  [v0.9.3] SkillGuard Supply-Chain Defense (Gate M5 & Gate M10)
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
@@ -84,11 +87,20 @@ except ImportError as _fleet_import_err:
     print(f"⚠️ [WARN] Fleet layer not found ({_fleet_import_err}). Multi-agent awareness disabled.")
 # ──── v0.9.0 END ────
 
+# ──── v0.9.3 SkillGuard BEGIN ────
+try:
+    from butterclaw.skill_guard import SkillGuard
+    SKILL_GUARD_ENABLED = True
+except ImportError as _sg_import_err:
+    SKILL_GUARD_ENABLED = False
+    print(f"⚠️ [WARN] SkillGuard not found ({_sg_import_err}). Supply-chain routes disabled.")
+# ──── v0.9.3 SkillGuard END ────
+
 # =============================================
 # APP SETUP
 # =============================================
 
-VERSION = "0.9.0"
+VERSION = "0.9.3"
 DRY_RUN = cfg.DRY_RUN
 CONFIDENCE_THRESHOLD = cfg.CONFIDENCE_THRESHOLD
 
@@ -307,6 +319,9 @@ def init_db():
         
     if ALERT_DISPATCHER_ENABLED:
         alert_dispatcher.init_alert_db()
+
+    if SKILL_GUARD_ENABLED:
+        SkillGuard(db_path=DB_PATH, allowed_root=cfg.SKILL_ROOT)
 
     # ──── v0.9.0 BEGIN ────
     if FLEET_ENABLED:
@@ -1229,7 +1244,7 @@ if FLEET_ENABLED:
 
     print(f"🌐 [FLEET LAYER] Online — dry_run={_FLEET_DRY_RUN}, "
           f"sentinel_interval={_SENTINEL_INTERVAL_HOURS}h, collusion_window={_COLLUSION_WINDOW}s.")
-    print("🌐 [FLEET LAYER] +14 /api/fleet/* routes registered (77 total).")
+    print("🌐 [FLEET LAYER] +14 /api/fleet/* routes registered (80 total).")
 else:
     _FLEET_DB_PATH = _FLEET_DRY_RUN = None
     _SENTINEL_MIN_AGENTS = _SENTINEL_INTERVAL_HOURS = None
@@ -1465,6 +1480,11 @@ def serve_index():
 def serve_routing():
     return send_from_directory(BASE_DIR, 'routing.html')
 
+@app.route('/favicon.png')
+@app.route('/favicon.ico')
+def serve_favicon():
+    return send_from_directory(BASE_DIR, 'favicon.png', mimetype='image/png')
+
 # =============================================
 # API ROUTES
 # =============================================
@@ -1482,6 +1502,7 @@ def health():
             "policy_engine": "enabled" if POLICY_ENGINE_ENABLED else "disabled",
             "alert_dispatcher": "enabled" if ALERT_DISPATCHER_ENABLED else "disabled",
             "mcp": "alive" if mcp_manager.is_alive else "dead",
+            "skill_guard": "enabled" if SKILL_GUARD_ENABLED else "disabled",
             # ──── v0.9.0 BEGIN ────
             "fleet_layer":           "enabled" if FLEET_ENABLED else "disabled",
             "fleet_sentinel_dry_run": _FLEET_DRY_RUN if FLEET_ENABLED else None,
@@ -2262,6 +2283,142 @@ def spatial_telemetry_gateway():
         return jsonify({"status": "blocked", "verdict": "BLOCK", "reason": reason}), 403
 
     return jsonify({"status": "allowed", "verdict": "ALLOW"}), 200
+
+# =============================================
+# API ROUTES: SKILLGUARD SUPPLY-CHAIN (v0.9.3)
+# =============================================
+
+@app.route('/api/skills', methods=['GET'])
+@require_auth(min_role="viewer")
+def list_skills_endpoint():
+    """Returns all attested SKILL.md packages and live Gate M5 TOCTOU status."""
+    if not SKILL_GUARD_ENABLED:
+        return jsonify({"error": "SkillGuard module disabled"}), 503
+
+    verify_live = request.args.get("verify", "true").lower() in ("true", "1", "yes")
+    guard = SkillGuard(db_path=DB_PATH, allowed_root=cfg.SKILL_ROOT)
+
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            "SELECT skill_name, package_path, merkle_root, declared_description, "
+            "allowed_tools_json, allow_network, allow_env_access, risk_score, "
+            "findings_json, status, attested_at "
+            "FROM skill_attestations ORDER BY attested_at DESC"
+        ).fetchall()
+        conn.close()
+    except sqlite3.Error as e:
+        return jsonify({"error": f"Database read failed: {e}"}), 500
+
+    skills = []
+    counts = {"approved": 0, "quarantined": 0, "tampered": 0}
+
+    for r in rows:
+        raw_status = r["status"]
+        live_status = raw_status
+        integrity_ok = (raw_status == "APPROVED")
+        integrity_reason = "Merkle root verified" if integrity_ok else "Quarantined by pre-flight scan"
+
+        if verify_live and raw_status == "APPROVED":
+            is_valid, reason, _ = guard.verify_runtime_integrity(r["skill_name"])
+            integrity_ok = is_valid
+            integrity_reason = reason
+            if not is_valid:
+                live_status = "TAMPERED"
+
+        if live_status == "APPROVED":
+            counts["approved"] += 1
+        elif live_status == "TAMPERED":
+            counts["tampered"] += 1
+        else:
+            counts["quarantined"] += 1
+
+        try:
+            findings = json.loads(r["findings_json"] or "[]")
+        except Exception:
+            findings = []
+
+        try:
+            allowed_tools = json.loads(r["allowed_tools_json"] or "[]")
+        except Exception:
+            allowed_tools = []
+
+        skills.append({
+            "skill_name": r["skill_name"],
+            "package_path": r["package_path"],
+            "merkle_root": r["merkle_root"],
+            "declared_description": r["declared_description"],
+            "allowed_tools": allowed_tools,
+            "allow_network": bool(r["allow_network"]),
+            "allow_env_access": bool(r["allow_env_access"]),
+            "risk_score": r["risk_score"],
+            "findings": findings,
+            "status": raw_status,
+            "live_status": live_status,
+            "integrity_ok": integrity_ok,
+            "integrity_reason": integrity_reason,
+            "attested_at": r["attested_at"],
+        })
+
+    return jsonify({
+        "skills": skills,
+        "count": len(skills),
+        "summary": counts,
+        "skill_root": cfg.SKILL_ROOT,
+        "risk_threshold": cfg.SKILL_RISK_THRESHOLD,
+        "strict_toctou": cfg.SKILL_STRICT_TOCTOU,
+    }), 200
+
+
+@app.route('/api/skills/audit', methods=['POST'])
+@require_auth(min_role="admin")
+def audit_skills_endpoint():
+    """Scans SKILL.md subdirectories inside cfg.SKILL_ROOT (Gate M10 contained)."""
+    if not SKILL_GUARD_ENABLED:
+        return jsonify({"error": "SkillGuard module disabled"}), 503
+
+    from pathlib import Path
+    root_path = Path(cfg.SKILL_ROOT).resolve()
+    if not root_path.is_dir():
+        return jsonify({"error": f"Skill root directory not found: {root_path}"}), 404
+
+    data = request.get_json(silent=True) or {}
+    target_name = str(data.get("skill_name", "")).strip()
+
+    guard = SkillGuard(db_path=DB_PATH, allowed_root=root_path)
+    targets = []
+
+    if target_name:
+        if "/" in target_name or "\\" in target_name or ".." in target_name:
+            return jsonify({"error": "Invalid skill_name (must be a direct subdirectory)"}), 400
+        candidate = (root_path / target_name).resolve()
+        if not (candidate / "SKILL.md").is_file():
+            return jsonify({"error": f"No SKILL.md found in '{target_name}'"}), 404
+        targets.append(candidate)
+    else:
+        for child in sorted(root_path.iterdir()):
+            if child.is_dir() and (child / "SKILL.md").is_file():
+                targets.append(child)
+
+    results = []
+    for pkg_dir in targets:
+        try:
+            rec = guard.audit_and_attest(str(pkg_dir))
+            results.append({
+                "skill_name": rec["skill_name"],
+                "status": rec["status"],
+                "risk_score": rec["risk_score"],
+                "merkle_root": rec["merkle_root"],
+                "findings_count": len(rec["findings"]),
+            })
+        except Exception as exc:
+            results.append({"skill_name": pkg_dir.name, "status": "ERROR", "error": str(exc)})
+
+    with _logs_counter_lock:
+        global total_logs_processed
+        total_logs_processed += 1
+
+    return jsonify({"status": "ok", "audited_count": len(results), "results": results}), 200
 
 # =============================================
 # SSE STREAM

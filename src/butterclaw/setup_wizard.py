@@ -1,24 +1,35 @@
 #!/usr/bin/env python3
 """
-ButterClaw Setup Wizard — ButterClaw v0.9.2 - src layout Mega
-Interactively generates a .env configuration file.
+ButterClaw Setup Wizard — ButterClaw v0.9.3 - src layout Mega
+Interactively generates a .env configuration file and provides CLI
+utilities for SkillGuard SKILL.md package auditing.
 
 Usage:
     python setup_wizard.py
     python setup_wizard.py --output /path/to/.env
+    python setup_wizard.py --audit-skill ./skills/my-skill
+    python setup_wizard.py --list-skills
 
 Zero external dependencies. Requires Python 3.8+.
 """
 
 import os
 import sys
+import json
 import shutil
+import sqlite3
 import secrets
 import argparse
 import textwrap
 import datetime
 from typing import Optional
 from pathlib import Path
+
+# Ensure src/ layout is importable when running CLI skill commands
+REPO_ROOT = Path(__file__).resolve().parent
+SRC_DIR = REPO_ROOT / "src"
+if SRC_DIR.is_dir() and str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 
 # ---------------------------------------------------------------------------
@@ -188,13 +199,129 @@ BANNER = r"""
 
 def print_banner():
     _safe_print(cyan(BANNER))
-    _safe_print(bold(cyan("  ButterClaw v0.9.2 -- Interactive Setup Wizard")))
+    _safe_print(bold(cyan("  ButterClaw v0.9.3 -- Interactive Setup Wizard")))
     _safe_print(dim("  Agentic SOC * Local-first * Zero-trust credential locker"))
     _safe_print("")
     _safe_print(dim("  This wizard will ask you a series of questions and generate a"))
     _safe_print(dim("  ready-to-use .env file. Press Ctrl+C at any time to abort."))
     _safe_print(dim("  Defaults shown in [brackets] -- press Enter to accept them."))
     _safe_print("")
+
+def _guard_windows_docker_path(db_path: Optional[str]) -> None:
+    """Prevents CLI commands run on the Windows host from creating C:\\data when .env uses Docker /data paths."""
+    if sys.platform != "win32":
+        return
+    from butterclaw.config import cfg
+    resolved_db = str(db_path or cfg.DB_PATH).replace("\\", "/")
+    if resolved_db.startswith("/data/") or resolved_db.startswith("C:/data/"):
+        warn("Docker path (/data/...) detected on Windows host!")
+        info("To keep host drives clean, run SkillGuard inside the container:")
+        _safe_print(f"    {cyan('dash.bat skills')}")
+        _safe_print(f"    {cyan('dash.bat audit /data/skills/<skill-folder>')}")
+        sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# SkillGuard CLI Actions (--audit-skill / --list-skills)
+# ---------------------------------------------------------------------------
+
+def cli_audit_skill(skill_path: str, db_path: Optional[str] = None, strict: bool = False) -> int:
+    """Runs SkillGuard static + Merkle attestation on a SKILL.md folder and prints a formatted report."""
+    _guard_windows_docker_path(db_path)
+    from butterclaw.skill_guard import SkillGuard
+
+    section("SkillGuard Pre-Flight Package Auditor")
+    guard = SkillGuard(db_path=db_path)
+    try:
+        report = guard.audit_and_attest(skill_path)
+    except Exception as exc:
+        _safe_print(f"  {red('X')}  {red(f'Audit failed: {exc}')}")
+        return 1
+
+    status_str = green(bold("APPROVED")) if report["status"] == "APPROVED" else red(bold("QUARANTINED"))
+    risk_color = green if report["risk_score"] == 0 else (yellow if report["risk_score"] < 50 else red)
+
+    _safe_print(f"  {bold('Skill Name   :')} {cyan(report['skill_name'])}")
+    _safe_print(f"  {bold('Package Path :')} {dim(report['package_path'])}")
+    _safe_print(f"  {bold('Description  :')} {report['declared_description'] or dim('(none)')}")
+    _safe_print(f"  {bold('Merkle Root  :')} {yellow(report['merkle_root'])}")
+    _safe_print(f"  {bold('Files Hashed :')} {len(report['file_hashes'])}")
+    _safe_print(f"  {bold('Risk Score   :')} {risk_color(str(report['risk_score']) + ' / 100')}")
+    _safe_print(f"  {bold('Verdict      :')} {status_str}")
+    _safe_print("")
+
+    if report["findings"]:
+        warn(f"Detected {len(report['findings'])} supply-chain / policy finding(s):")
+        for finding in report["findings"]:
+            _safe_print(f"    {red('-')} {finding}")
+    else:
+        ok("Zero static, AST, or steganographic findings detected.")
+
+    _safe_print("")
+    if strict and report["status"] != "APPROVED":
+        return 2
+    return 0
+
+
+def cli_list_skills(db_path: Optional[str] = None) -> int:
+    """Prints a formatted table of all attested SKILL.md packages stored in SQLite."""
+    _guard_windows_docker_path(db_path)
+    from contextlib import closing
+    from butterclaw.skill_guard import SkillGuard
+
+    guard = SkillGuard(db_path=db_path)
+    section("SkillGuard Attestation Registry (Gate M5)")
+    info(f"Database: {dim(guard.db_path)}")
+    _safe_print("")
+
+    if not Path(guard.db_path).exists():
+        warn("Database file does not exist yet. Audit a skill first with --audit-skill.")
+        return 0
+
+    with closing(sqlite3.connect(guard.db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT skill_name, status, risk_score, merkle_root, attested_at, package_path "
+            "FROM skill_attestations ORDER BY attested_at DESC"
+        ).fetchall()
+
+    if not rows:
+        tip("No SKILL.md packages attested yet.")
+        _safe_print("")
+        return 0
+
+    header = f"  {'SKILL NAME':<22} {'STATUS':<13} {'RISK':<6} {'MERKLE PREFIX':<16} {'ATTESTED AT'}"
+    _safe_print(bold(cyan(header)))
+    _safe_print(dim("  " + "-" * 78))
+
+    for r in rows:
+        name_col = bold(f"{r['skill_name'][:22]:<22}")
+        st_raw = r["status"]
+        st_col = green(f"{st_raw:<13}") if st_raw == "APPROVED" else red(f"{st_raw:<13}")
+        risk_str = f"{r['risk_score']:>3}%"
+        merkle_short = r["merkle_root"][:12] + "..."
+        merkle_col = yellow(f"{merkle_short:<16}")
+        _safe_print(
+            f"  {name_col} {st_col} {risk_str:<6} "
+            f"{merkle_col} {dim(r['attested_at'])}"
+        )
+    _safe_print("")
+    return 0
+
+    header = f"  {'SKILL NAME':<22} {'STATUS':<13} {'RISK':<6} {'MERKLE PREFIX':<16} {'ATTESTED AT'}"
+    _safe_print(bold(cyan(header)))
+    _safe_print(dim("  " + "-" * 78))
+
+    for r in rows:
+        st_raw = r["status"]
+        st_col = green(f"{st_raw:<13}") if st_raw == "APPROVED" else red(f"{st_raw:<13}")
+        risk_str = f"{r['risk_score']:>3}%"
+        merkle_short = r["merkle_root"][:12] + "..."
+        _safe_print(
+            f"  {bold(r['skill_name'][:22]):<22} {st_col} {risk_str:<6} "
+            f"{yellow(merkle_short):<16} {dim(r['attested_at'])}"
+        )
+    _safe_print("")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +331,8 @@ def print_banner():
 def run_wizard() -> dict:
     cfg = {}
 
-    # ── DEPLOYMENT MODE ──────────────────────────────────────────────────────
-    section("  1 / 8  *  Deployment Mode")
+    # ── 1 / 11 DEPLOYMENT MODE ───────────────────────────────────────────────
+    section("  1 / 11  *  Deployment Mode")
     info("How are you running ButterClaw?")
     tip("Docker is recommended for production; bare-metal is fine for local dev.")
 
@@ -220,16 +347,16 @@ def run_wizard() -> dict:
     )
     cfg["_deploy_mode"] = deploy_mode
 
-    # ── INSTANCE IDENTITY ────────────────────────────────────────────────────
-    section("  2 / 8  *  Instance Identity")
+    # ── 2 / 11 INSTANCE IDENTITY ─────────────────────────────────────────────
+    section("  2 / 11  *  Instance Identity")
     info("A unique name for this node. Appears in health checks, alert payloads,")
     info("and the boot banner. Use separate names for prod / staging / dev.")
     _safe_print("")
 
     cfg["BUTTERCLAW_INSTANCE_ID"] = ask("Instance ID", default="butterclaw-prod")
 
-    # ── SERVER ───────────────────────────────────────────────────────────────
-    section("  3 / 8  *  Server Settings")
+    # ── 3 / 11 SERVER ────────────────────────────────────────────────────────
+    section("  3 / 11  *  Server Settings")
 
     default_host = "0.0.0.0" if deploy_mode in ("docker", "systemd") else "127.0.0.1"
     info("Bind address: 0.0.0.0 exposes on all interfaces (Docker/prod).")
@@ -246,8 +373,8 @@ def run_wizard() -> dict:
     else:
         cfg["BUTTERCLAW_DEBUG"] = "false"
 
-    # ── DATABASE & CORS ──────────────────────────────────────────────────────
-    section("  4 / 8  *  Database & CORS")
+    # ── 4 / 11 DATABASE & CORS ───────────────────────────────────────────────
+    section("  4 / 11  *  Database & CORS")
     info("ButterClaw uses a single SQLite file for all persistent data.")
     _safe_print("")
 
@@ -267,11 +394,10 @@ def run_wizard() -> dict:
     if cors_raw:
         cfg["BUTTERCLAW_CORS_ORIGINS"] = cors_raw
 
-    # ── BRAIN / OLLAMA ───────────────────────────────────────────────────────
-    section("  5 / 8  *  Guardian Brain")
+    # ── 5 / 11 BRAIN / OLLAMA ────────────────────────────────────────────────
+    section("  5 / 11  *  Guardian Brain")
     info("ButterClaw supports local Ollama (privacy-first) and remote Gemini APIs.")
-    
-    # 1. Lock in the correct Ollama routing regardless of the active brain
+
     if deploy_mode == "docker":
         ollama_default = "http://host.docker.internal:11434"
         tip("Docker networking detected: using host.docker.internal for Ollama")
@@ -281,27 +407,23 @@ def run_wizard() -> dict:
     cfg["BUTTERCLAW_OLLAMA_URL"]  = ask("Ollama base URL", default=ollama_default, validator=valid_url)
     cfg["BUTTERCLAW_OLLAMA_PATH"] = "/api/chat"
 
-    # 2. Optionally capture the Gemini API Key
     _safe_print("")
     if ask_bool("Configure a Google Gemini API key? (allows switching models later)", default=True):
         cfg["BUTTERCLAW_GOOGLE_API_KEY"] = ask(
             "Google API key", required=True, secret=True,
             validator=lambda v: "Looks like a placeholder -- enter your real key." if v.startswith("your-") else None,
         )
-    
-    # 3. Set the active model
+
     _safe_print("")
     info("Which model should be active on boot?")
     tip("  Local:  butterclaw-optimized:latest")
     tip("  Remote: gemini-3.5-flash-lite")
-    
+
     cfg["BUTTERCLAW_MODEL"] = ask("Active model name", default="butterclaw-optimized:latest")
-    
-    # Set the internal state for the 'What's Next' printout
     cfg["_brain_mode"] = "remote" if "gemini" in cfg["BUTTERCLAW_MODEL"].lower() else "local"
 
-    # ── API KEYS ─────────────────────────────────────────────────────────────
-    section("  6 / 8  *  API Keys & Alerts")
+    # ── 6 / 11 API KEYS ──────────────────────────────────────────────────────
+    section("  6 / 11  *  API Keys & Alerts")
     info("BUTTERCLAW_API_KEY -- Bootstrap token for the Watcher daemon and")
     info("  auto-healing infrastructure. Keep this secret.")
     _safe_print("")
@@ -324,8 +446,8 @@ def run_wizard() -> dict:
         "ntfy topic name", default=f"butterclaw-{secrets.token_hex(6)}"
     )
 
-    # ── SAFETY / PARANOIA ────────────────────────────────────────────────────
-    section("  7 / 10  *  Safety & Paranoia Dial")
+    # ── 7 / 11 SAFETY / PARANOIA ─────────────────────────────────────────────
+    section("  7 / 11  *  Safety & Paranoia Dial")
     info("DRY_RUN controls whether kinetic actions (SIGKILL, vault shred)")
     info("  are simulated or actually executed.")
     warn("Keep BOTH dry-run flags TRUE until you're confident in your setup.")
@@ -334,8 +456,8 @@ def run_wizard() -> dict:
     mcp_dry   = ask_bool("MCP dry run?   (blocks real TCP connections & syscalls)", default=True)
     chain_dry = ask_bool("Chain dry run? (simulates tool calls, brain still reasons)", default=True)
     loop_dry  = ask_bool("Loop dry run?  (simulates signature mutations)", default=True)
-    cfg["BUTTERCLAW_MCP_DRY_RUN"] = "true" if mcp_dry   else "false"
-    cfg["BUTTERCLAW_DRY_RUN"]     = "true" if chain_dry else "false"
+    cfg["BUTTERCLAW_MCP_DRY_RUN"]  = "true" if mcp_dry   else "false"
+    cfg["BUTTERCLAW_DRY_RUN"]      = "true" if chain_dry else "false"
     cfg["BUTTERCLAW_LOOP_DRY_RUN"] = "true" if loop_dry  else "false"
 
     if not mcp_dry or not chain_dry:
@@ -343,9 +465,9 @@ def run_wizard() -> dict:
 
     _safe_print("")
     info("Paranoia Dial -- how aggressively ButterClaw responds to threats:")
-    tip("  Level 1 * Observe       -- Log threats only, no kinetic response")
+    tip("  Level 1 * Observe        -- Log threats only, no kinetic response")
     tip("  Level 2 * Active Defense -- SIGKILL compromised processes")
-    tip("  Level 3 * Air-Gapped    -- SIGKILL + Shred vault + Revoke all tokens")
+    tip("  Level 3 * Air-Gapped     -- SIGKILL + Shred vault + Revoke all tokens")
     _safe_print("")
 
     paranoia = ask_choice(
@@ -372,17 +494,14 @@ def run_wizard() -> dict:
     if not fleet_dry:
         warn("Fleet Sentinel dry-run is OFF -- COLLUDING verdicts will escalate to Guardian Brain.")
 
-    # ── FLEET LAYER ──────────────────────────────────────────────────────────
-    section("  9 / 10  *  Fleet Layer (v0.9.0)")
+    # ── 8 / 11 FLEET LAYER ───────────────────────────────────────────────────
+    section("  8 / 11  *  Fleet Layer (v0.9.0)")
     info("Multi-agent awareness: correlation detection, trust graph, Fleet Sentinel hemisphere.")
     tip("  Defaults are safe for production. Skip unless you have specific scaling needs.")
     _safe_print("")
 
     if ask_bool("Configure fleet layer settings?", default=False):
-        if deploy_mode == "docker":
-            fleet_db_default = "/data/fleet.db"
-        else:
-            fleet_db_default = "./fleet.db"
+        fleet_db_default = "/data/fleet.db" if deploy_mode == "docker" else "./fleet.db"
         cfg["BUTTERCLAW_FLEET_DB_PATH"] = ask(
             "Fleet DB path (separate from butterclaw.db, I-07-fleet)",
             default=fleet_db_default,
@@ -424,27 +543,23 @@ def run_wizard() -> dict:
             default="60", validator=valid_positive_int,
         )
     else:
-        if deploy_mode == "docker":
-            cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH", "/data/fleet.db")
-        else:
-            cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH", "./fleet.db")
-        cfg.setdefault("BUTTERCLAW_SENTINEL_INTERVAL_HOURS",    "4")
-        cfg.setdefault("BUTTERCLAW_SENTINEL_MIN_AGENTS",        "2")
-        cfg.setdefault("BUTTERCLAW_COLLUSION_WINDOW_SECONDS",   "180")
-        cfg.setdefault("BUTTERCLAW_CORRELATION_FLEET_THRESHOLD","3")
-        cfg.setdefault("BUTTERCLAW_TRUST_PROPAGATION_DEPTH",    "1")
-        cfg.setdefault("BUTTERCLAW_REPUTATION_DECAY_RATIO",     "3.0")
-        cfg.setdefault("BUTTERCLAW_MAX_CONCURRENT_LLM",         "2")
-        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD",  "3")
-        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS", "60")
+        cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH", "/data/fleet.db" if deploy_mode == "docker" else "./fleet.db")
+        cfg.setdefault("BUTTERCLAW_SENTINEL_INTERVAL_HOURS",         "4")
+        cfg.setdefault("BUTTERCLAW_SENTINEL_MIN_AGENTS",             "2")
+        cfg.setdefault("BUTTERCLAW_COLLUSION_WINDOW_SECONDS",        "180")
+        cfg.setdefault("BUTTERCLAW_CORRELATION_FLEET_THRESHOLD",     "3")
+        cfg.setdefault("BUTTERCLAW_TRUST_PROPAGATION_DEPTH",         "1")
+        cfg.setdefault("BUTTERCLAW_REPUTATION_DECAY_RATIO",          "3.0")
+        cfg.setdefault("BUTTERCLAW_MAX_CONCURRENT_LLM",              "2")
+        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD",       "3")
+        cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS",   "60")
 
-    # ── R3 MEMORY WATCHDOG ───────────────────────────────────────────────────
-    section("  10 / 10  *  Memory Watchdog (v0.9.2 R3)")
+    # ── 9 / 11 R3 MEMORY WATCHDOG ────────────────────────────────────────────
+    section("  9 / 11  *  Memory Watchdog (v0.9.2 R3)")
     info("Fallback maturation daemon that fires when dream_engine has been")
     info("  silent for longer than the configured threshold.")
     info("  Prevents memory activations from freezing if dream_engine stalls.")
     tip("  Defaults (enabled, 6h threshold, 5-min poll) are safe for production.")
-    tip("  Change only if your dream_engine cycle is longer than 6 hours.")
     _safe_print("")
 
     watchdog_enabled = ask_bool("Enable memory maturation watchdog?", default=True)
@@ -466,8 +581,36 @@ def run_wizard() -> dict:
         cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", "300")
         warn("Memory watchdog disabled — dream_engine stalls will not trigger fallback maturation.")
 
-    # ── ADVANCED ─────────────────────────────────────────────────────────────
-    section("  8 / 10  *  Advanced Settings")
+    # ── 10 / 11 SKILLGUARD SUPPLY-CHAIN DEFENSE (v0.9.3) ─────────────────────
+    section("  10 / 11  *  SkillGuard Supply-Chain (v0.9.3)")
+    info("Static & runtime defense for SKILL.md agent packages (Gate M5 / M10).")
+    info("  Inspects YAML frontmatter, references/, and scripts/ before activation,")
+    info("  and enforces SHA-256 Merkle integrity on every MCP tool call.")
+    _safe_print("")
+
+    skill_root_default = "/data/skills" if deploy_mode == "docker" else "./skills"
+    if ask_bool("Configure custom SkillGuard settings?", default=False):
+        cfg["BUTTERCLAW_SKILL_ROOT"] = ask(
+            "Allowed SKILL.md root directory (Gate M10 path containment)",
+            default=skill_root_default,
+        )
+        cfg["BUTTERCLAW_SKILL_RISK_THRESHOLD"] = ask(
+            "Quarantine risk score threshold (1-100, lower = stricter)",
+            default="25",
+            validator=valid_int_range(1, 100),
+        )
+        strict_toctou = ask_bool(
+            "Enforce runtime Merkle anti-TOCTOU check on every MCP tool call (Gate M5)?",
+            default=True,
+        )
+        cfg["BUTTERCLAW_SKILL_STRICT_TOCTOU"] = "true" if strict_toctou else "false"
+    else:
+        cfg.setdefault("BUTTERCLAW_SKILL_ROOT",           skill_root_default)
+        cfg.setdefault("BUTTERCLAW_SKILL_RISK_THRESHOLD", "25")
+        cfg.setdefault("BUTTERCLAW_SKILL_STRICT_TOCTOU",  "true")
+
+    # ── 11 / 11 ADVANCED ─────────────────────────────────────────────────────
+    section("  11 / 11  *  Advanced Settings")
     info("Sensible defaults are pre-filled. Skip unless you have specific needs.")
     _safe_print("")
 
@@ -478,10 +621,6 @@ def run_wizard() -> dict:
         tip("  COOKIE_SECURE -- disable only when running plain HTTP locally.")
         _safe_print("")
 
-        #base_url_default = (
-        #    "http://127.0.0.1:5000" if deploy_mode == "baremetal"
-        #    else "https://butterclaw.yourdomain.com"
-        #)
         if deploy_mode == "baremetal":
             base_url_default = "http://127.0.0.1:5000"
         elif deploy_mode == "docker":
@@ -556,10 +695,6 @@ def run_wizard() -> dict:
         cfg["BUTTERCLAW_CONFIDENCE_THRESHOLD"] = ask("Confidence threshold", default="85", validator=valid_int_range(0, 100))
 
     else:
-        #base_url_default = (
-        #    "http://127.0.0.1:5000" if deploy_mode == "baremetal"
-        #    else "https://butterclaw.yourdomain.com"
-        #)
         if deploy_mode == "baremetal":
             base_url_default = "http://127.0.0.1:5000"
         elif deploy_mode == "docker":
@@ -585,13 +720,9 @@ def run_wizard() -> dict:
         cfg.setdefault("BUTTERCLAW_LIVE_CRYSTALLIZATION_ENABLED", "true")
         cfg.setdefault("BUTTERCLAW_ATTRACTOR_DECAY_DAYS",   "30")
 
-    # Fleet layer quick-path defaults (set in section 9 wizard block above,
-    # but guard here too for the fast-path branch)
+    # Fast-path guards
     cfg.setdefault("FLEET_SENTINEL_DRY_RUN",                     "true")
-    if cfg.get("_deploy_mode", "docker") == "docker":
-        cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH",               "/data/fleet.db")
-    else:
-        cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH",               "./fleet.db")
+    cfg.setdefault("BUTTERCLAW_FLEET_DB_PATH",                   "/data/fleet.db" if deploy_mode == "docker" else "./fleet.db")
     cfg.setdefault("BUTTERCLAW_SENTINEL_INTERVAL_HOURS",         "4")
     cfg.setdefault("BUTTERCLAW_SENTINEL_MIN_AGENTS",             "2")
     cfg.setdefault("BUTTERCLAW_COLLUSION_WINDOW_SECONDS",        "180")
@@ -601,12 +732,12 @@ def run_wizard() -> dict:
     cfg.setdefault("BUTTERCLAW_MAX_CONCURRENT_LLM",              "2")
     cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_THRESHOLD",       "3")
     cfg.setdefault("BUTTERCLAW_CIRCUIT_BREAKER_RESET_SECONDS",   "60")
-
-    # R3 memory watchdog quick-path defaults (set in section 10 above,
-    # guard here too for any fast-path that skips sections)
     cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_ENABLED",            "true")
     cfg.setdefault("BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS",   "6.0")
     cfg.setdefault("BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", "300")
+    cfg.setdefault("BUTTERCLAW_SKILL_ROOT",                      "/data/skills" if deploy_mode == "docker" else "./skills")
+    cfg.setdefault("BUTTERCLAW_SKILL_RISK_THRESHOLD",            "25")
+    cfg.setdefault("BUTTERCLAW_SKILL_STRICT_TOCTOU",             "true")
 
     cfg["PYTHONUNBUFFERED"] = "1"
     return cfg
@@ -624,7 +755,7 @@ def render_env(cfg: dict) -> str:
 
     lines = [
         f"# =============================================",
-        f"# ButterClaw v0.9.2 -- Environment Configuration",
+        f"# ButterClaw v0.9.3 -- Environment Configuration",
         f"# Generated by setup_wizard.py on {now}",
         f"# Deploy mode : {deploy_mode}",
         f"# Brain mode  : {brain_mode}",
@@ -726,7 +857,6 @@ def render_env(cfg: dict) -> str:
     if cfg.get("BUTTERCLAW_MCP_SCRIPT"):
         lines += [f"BUTTERCLAW_MCP_SCRIPT={cfg['BUTTERCLAW_MCP_SCRIPT']}"]
     else:
-        # Old: lines += [f"# BUTTERCLAW_MCP_SCRIPT=./butterclaw_mcp.py  # default"]
         lines += [f"# BUTTERCLAW_MCP_SCRIPT=  # dynamically resolved in src/ layout"]
 
     lines += [
@@ -751,6 +881,11 @@ def render_env(cfg: dict) -> str:
         f"BUTTERCLAW_MEMORY_WATCHDOG_ENABLED={cfg.get('BUTTERCLAW_MEMORY_WATCHDOG_ENABLED', 'true')}",
         f"BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS={cfg.get('BUTTERCLAW_MEMORY_MATURATION_FALLBACK_HOURS', '6.0')}",
         f"BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC={cfg.get('BUTTERCLAW_MEMORY_WATCHDOG_CHECK_INTERVAL_SEC', '300')}",
+        f"",
+        f"# --- SkillGuard Supply-Chain Defense (v0.9.3 Gate M5/M10) ---",
+        f"BUTTERCLAW_SKILL_ROOT={cfg.get('BUTTERCLAW_SKILL_ROOT', './skills')}",
+        f"BUTTERCLAW_SKILL_RISK_THRESHOLD={cfg.get('BUTTERCLAW_SKILL_RISK_THRESHOLD', '25')}",
+        f"BUTTERCLAW_SKILL_STRICT_TOCTOU={cfg.get('BUTTERCLAW_SKILL_STRICT_TOCTOU', 'true')}",
         f"",
         f"# --- Docker / Python ---",
         f"PYTHONUNBUFFERED=1",
@@ -812,7 +947,7 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
         _safe_print(f"  {bold(str(step)+'.')} Generate local TLS certificates for nginx:")
         _safe_print(f"       {dim('mkdir -p nginx/certs')}")
         _safe_print("       " + dim('docker run --rm -v "${PWD}/nginx/certs:/certs" alpine/openssl req -x509 -nodes \\'))
-        _safe_print(f"       {dim('  -days 365 -newkey rsa:2048 -keyout /certs/butterclaw.key -out /certs/butterclaw.crt -subj \"/CN=localhost\"')}")
+        _safe_print("       " + dim('  -days 365 -newkey rsa:2048 -keyout /certs/butterclaw.key -out /certs/butterclaw.crt -subj "/CN=localhost"'))
         step += 1
 
         _safe_print(f"  {bold(str(step)+'.')} Ignite the stack:")
@@ -835,9 +970,6 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Start the server:")
         _safe_print(f"       {dim('python -m butterclaw.server')}")
-        # Old:_safe_print(f"       {dim('python -m butterclaw.server.py')}")
-        #_safe_print(f"  {bold(str(step)+'.')} Start the server:")
-        #_safe_print(f"       {dim('python server.py')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Your {yellow('bootstrap admin API key')} is safely stored in your .env file.")
         _safe_print(f"       {dim('Keep it secret. Keep it safe.')}")
@@ -864,6 +996,11 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
     if dry_run_on:
         _safe_print(f"  {bold(str(step)+'.')} {yellow('Test safely')} -- dry-run is ON, no kinetic actions will fire:")
         _safe_print(f"       {dim('python scripts/test_attack.py')}")
+        _safe_print(f"       {dim('python tests/test_skill_guard.py')}")
+        step += 1
+        _safe_print(f"  {bold(str(step)+'.')} Audit & attest SKILL.md packages before agent use:")
+        _safe_print(f"       {dim('python setup_wizard.py --audit-skill ./skills/<skill-folder>')}")
+        _safe_print(f"       {dim('python setup_wizard.py --list-skills')}")
         step += 1
         _safe_print(f"  {bold(str(step)+'.')} Ready for production? Flip the switches in your .env:")
         _safe_print(f"       {dim('BUTTERCLAW_DRY_RUN=false')}")
@@ -876,9 +1013,10 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
         step += 1
 
     # Fix #5: platform-aware dashboard launcher
-    dash_cmd = "dash.bat" if sys.platform == "win32" else "./dash"
-    _safe_print(f"  {bold(str(step)+'.')} Launch the TUI dashboard:")
+    dash_cmd = "dash.bat" if sys.platform == "win32" else "./dash.sh"
+    _safe_print(f"  {bold(str(step)+'.')} Launch the TUI dashboard (or check SkillGuard status):")
     _safe_print(f"       {dim(dash_cmd)}")
+    _safe_print(f"       {dim(f'{dash_cmd} skills')}")
     _safe_print("")
     _safe_print(dim(f"  .env written to: {os.path.abspath(output_path)}"))
     _safe_print(dim(f"  Full deployment guide: docs/DEPLOYMENT.md"))
@@ -895,20 +1033,37 @@ def print_next_steps(cfg_snapshot: dict, output_path: str):
 def main():
     _configure_stdout_encoding()  # Fix #7: upgrade Windows stdout to UTF-8 before any print
     parser = argparse.ArgumentParser(
-        description="ButterClaw interactive setup wizard -- generates a .env file",
+        description="ButterClaw interactive setup wizard & SkillGuard CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             Examples:
-              python setup_wizard.py                     # write .env in current dir
+              python setup_wizard.py                              # write .env interactively
               python setup_wizard.py -o /etc/butterclaw.env
-              python setup_wizard.py --no-backup         # overwrite existing .env silently
+              python setup_wizard.py --no-backup                  # overwrite existing .env silently
+              python setup_wizard.py --audit-skill ./skills/foo   # pre-flight scan & Merkle-lock a skill
+              python setup_wizard.py --list-skills                # list all attested skills in SQLite
         """),
     )
     parser.add_argument("--output", "-o", default=".env",
                         help="Destination path for the generated .env (default: .env)")
     parser.add_argument("--no-backup", action="store_true",
                         help="Skip backup of an existing .env before overwriting")
+    parser.add_argument("--audit-skill", metavar="SKILL_DIR", default=None,
+                        help="Run SkillGuard static & Merkle attestation on a SKILL.md folder and exit")
+    parser.add_argument("--list-skills", action="store_true",
+                        help="Display all attested SKILL.md packages stored in SQLite and exit")
+    parser.add_argument("--db", metavar="DB_PATH", default=None,
+                        help="Optional SQLite DB path override for --audit-skill / --list-skills")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit with code 2 when --audit-skill verdicts QUARANTINED (for CI/CD)")
     args = parser.parse_args()
+
+    # Handle direct SkillGuard CLI modes before interactive wizard
+    if args.audit_skill:
+        sys.exit(cli_audit_skill(args.audit_skill, db_path=args.db, strict=args.strict))
+    if args.list_skills:
+        sys.exit(cli_list_skills(db_path=args.db))
+
     output_path = args.output
 
     print_banner()
@@ -923,7 +1078,6 @@ def main():
 
     brain_mode  = cfg.get("_brain_mode",  "local")
     deploy_mode = cfg.get("_deploy_mode", "docker")
-    dry_run_on  = cfg.get("BUTTERCLAW_MCP_DRY_RUN") == "true" or cfg.get("BUTTERCLAW_DRY_RUN") == "true"
 
     env_text = render_env(cfg)
     print_preview(env_text)
@@ -945,12 +1099,16 @@ def main():
 
     ok(f"Written to {bold(output_path)}")
 
-    # Ensure openclaw_gateway.log exists so Docker never mounts a rogue directory
+    # Ensure openclaw_gateway.log and ./skills directory exist for Docker volume mounts
     if deploy_mode == "docker":
         log_path = Path("openclaw_gateway.log")
         if not log_path.exists():
             log_path.touch()
             ok(f"Created blank {bold('openclaw_gateway.log')} for Docker volume mount")
+    skills_dir = Path("skills")
+    if not skills_dir.exists():
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        ok(f"Created local {bold('skills/')} directory for SkillGuard packages")
 
     cfg["_brain_mode_snapshot"]  = brain_mode
     cfg["_deploy_mode_snapshot"] = deploy_mode

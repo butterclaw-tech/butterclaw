@@ -1,25 +1,25 @@
 <div align="center">
-  <a href="https://butterclaw.tech">
+  <a href="https://butterclaw.tech" alt="ButterClaw.tech">
 <pre>
 ██████╗ ██╗   ██╗████████╗████████╗███████╗██████╗  ██████╗██╗      █████╗ ██╗    ██╗
 ██╔══██╗██║   ██║╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║     ██╔══██╗██║    ██║
 ██████╔╝██║   ██║   ██║      ██║   █████╗  ██████╔╝██║     ██║     ███████║██║ █╗ ██║
 ██╔══██╗██║   ██║   ██║      ██║   ██╔══╝  ██╔══██╗██║     ██║     ██╔══██║██║███╗██║
 ██████╔╝╚██████╔╝   ██║      ██║   ███████╗██║  ██║╚██████╗███████╗██║  ██║╚███╔███╔╝
-╚═════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+╚════╝  ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
 </pre>
   </a>
 </div>
 
-<h1 align="center">ButterClaw: The Agentic SOC</h1>
+<h1 align="center">The Agentic SOC</h1>
 
 <p align="center"><b>Runtime security enforcement for autonomous AI agents.</b><br>
-Local LLM reasoning. Persistent memory. Fleet collusion detection. Zero outbound telemetry. OS-level SIGKILL intervention.
+Local LLM reasoning. SkillGuard supply-chain defense. Persistent memory. Fleet collusion detection. Zero outbound telemetry. OS-level SIGKILL intervention.
 </p>
 
 <p align="center">
   <a href="CHANGELOG.md">
-    <img src="https://img.shields.io/badge/version-0.9.2-blue.svg" alt="Version">
+    <img src="https://img.shields.io/badge/version-0.9.3-blue.svg" alt="Version">
   </a>
   <a href="https://doi.org/10.5281/zenodo.23201528">
     <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.23201528.svg" alt="DOI">
@@ -39,42 +39,49 @@ Local LLM reasoning. Persistent memory. Fleet collusion detection. Zero outbound
 </p>
 
 <p align="center">
-  <img src="assets/setup_wizard.png" alt="ButterClaw Environment CLI Setup Wizard">
+  <img src="assets/skill_guard-panel.png" alt="ButterClaw's SkillGuard">
 </p>
+
+<p align="center">The ButterClaw WebUI - SkillGuard</p>
 
 <p align="center">
-  <img src="assets/bc_demo-small.gif" alt="ButterClaw Live-Fire Test gif">
+  <img src="assets/skill_guard.png" alt="ButterClaw's WebUI Home">
 </p>
 
-<p align="center">Regex signatures test against the policy engine, displayed live in the TUI and WebUI.</p>
+<p align="center">The ButterClaw ENV Setup Wizard</p>
 
 <p align="center">
-  <img src="assets/test-event-stream.png" alt="ButterClaw Live-Fire Test Screenshot">
+  <img src="assets/setup_wizard.png" alt="ButterClaw Setup Wizard CLI">
 </p>
-
-<p align="center">
-  <img src="assets/butterclaw-log.png" alt="ButterClaw Live WebUI">
-</p>
-
-Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. With a **Positive Security Capability Matrix**, a **Physical STDIO Firewall**, **persistent three-tier memory** that accumulates institutional knowledge across sessions, and **fleet-scale multi-agent threat detection** — the Sentinel ships anywhere. **Evaluation before Execution.**
-
-Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection** or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry — and in v0.9.0, reasoning across the entire observed **fleet** of agents to detect coordinated attacks no single-agent monitor can see.
 
 ---
 
-> **Not affiliated with** `butterclaw.ai`, OpenClaw, or any OpenClaw forks.
-> ButterClaw Tech has its own architecture, runtime, and execution semantics.
-> Looking for a hosted agent framework? → [`butterclaw.ai`](https://butterclaw.ai) or OpenClaw.
-> Looking for a local-first kinetic security layer? → You're here.
+## What Is ButterClaw Tech?
+
+Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. With **SkillGuard supply-chain attestation** (`SKILL.md` AST/steganography scanning + SHA-256 Merkle anti-TOCTOU), a **Positive Security Capability Matrix**, a **Physical STDIO Firewall**, **persistent three-tier memory** that accumulates institutional knowledge across sessions, and **fleet-scale multi-agent threat detection** — the Sentinel ships anywhere. **Evaluation before Execution.**
+
+Traditional security perimeters fail when an authorized AI Agent is compromised via an **Indirect Prompt Injection**, a **Trojanized `SKILL.md` package**, or **Cross-Site WebSocket Hijacking (CSWH)**. ButterClaw acts as an "LLM-in-the-middle" Security Operations Center (SOC), actively monitoring raw OS-level telemetry — and reasoning across the entire observed **fleet** of agents to detect coordinated attacks no single-agent monitor can see.
+
+---
+
+> **Not affiliated with `butterclaw.ai` or OpenClaw.**
+> **ButterClaw Tech (`butterclaw.tech`)** is an independent, clean-room security engine with its own runtime, memory substrate, and execution semantics. While ButterClaw can monitor and terminate compromised OpenClaw or MCP agent processes at the OS boundary, it is a **security enforcement layer** — not a hosted agent wrapper.
 
 ---
 
 ## How It Works
 
 ```text
-Incoming agent log / tool call / spatial telemetry event
+Incoming agent log / SKILL.md load / tool call / spatial telemetry event
          │
          ▼
+┌─────────────────────────┐
+│  SkillGuard (v0.9.3)    │  ← Pre-flight AST, Unicode stego & HTML comment scan
+│  Gate M5 + Gate M10     │    SHA-256 Merkle-root anti-TOCTOU check on Stage 2/3
+│  (/data/skills:ro)      │    QUARANTINED or TAMPERED → immediate block + taint
+└────────────┬────────────┘
+             │ attested & intact
+             ▼
 ┌─────────────────────────┐
 │  Arsenal (pre-brain)    │  ← 7 regex signatures, fires in milliseconds
 │  sig_kin_01, sig_cswh_01│    SIGKILL or BLOCK on match — LLM never called
@@ -117,7 +124,7 @@ Incoming agent log / tool call / spatial telemetry event
 │  Capability Matrix      │  ← Positive Security: 4-Tier Agent RBAC & tool scopes
 │  (pre_tool gate)        │    STDIO Physical Firewall (byte-level memory boundary)
 └────────────┬────────────┘
-             │ CRITICAL verdict / COLLUDING fleet verdict
+             │ CRITICAL verdict / COLLUDING fleet / TOCTOU breach
              ▼
 ┌─────────────────────────┐
 │  Kinetic Response       │  ← SIGKILL rogue process and/or Gibson credential shred
@@ -126,7 +133,7 @@ Incoming agent log / tool call / spatial telemetry event
 
 ```
 
-Everything runs on your machine. Two SQLite databases for state (`butterclaw.db` + `fleet.db`). No outbound data. No cloud inference. The Fleet Sentinel never co-transacts the two databases — they are always distinct files on distinct inodes (I-07-fleet).
+Everything runs on your machine. Two SQLite databases for state (`butterclaw.db` + `fleet.db`). No outbound data. No cloud inference required. The Fleet Sentinel never co-transacts the two databases — they are always distinct files on distinct inodes (I-07-fleet).
 
 ---
 
@@ -138,7 +145,8 @@ Everything runs on your machine. Two SQLite databases for state (`butterclaw.db`
 | **LLM reasoning** | Local Ollama — stays on your machine | Cloud API calls | None | None |
 | **Telemetry** | Zero — SQLite only, no outbound data | Sent to Halo cloud | Sent to vendor cloud | Network-layer only |
 | **Agent framework** | Model-agnostic — any agent producing log output | Specific LLM provider APIs | LangChain / LlamaIndex native | None |
-| **What it monitors** | OS-level telemetry + MCP tool call chain + fleet | LLM API calls | LLM traces and spans | Network traffic |
+| **What it monitors** | OS telemetry + `SKILL.md` packages + MCP chain + fleet | LLM API calls | LLM traces and spans | Network traffic |
+| **Supply-chain (`SKILL.md`) defense** | ✅ SkillGuard — AST/stego scan + SHA-256 Merkle anti-TOCTOU (v0.9.3) | ❌ | ❌ | ❌ |
 | **Pre-LLM gate** | ✅ Arsenal — 7 regex signatures fire before inference | ❌ | ❌ | ❌ |
 | **Behavioral drift** | ✅ Last 5 MCP calls + COLD semantic memory context | ❌ | ✅ Tracing only — no enforcement | ❌ |
 | **Verdict mechanism** | Five hemispheres: Guardian (0.3) + Auditor (0.0) + Dream Weaver (0.7) + Loop Proposer (0.4) + Fleet Sentinel (0.5) | Single LLM evaluation | Logging only | Rule-based |
@@ -150,8 +158,8 @@ Everything runs on your machine. Two SQLite databases for state (`butterclaw.db`
 | **Credential shredding** | ✅ Active HTTP revocation + local vault wipe | ❌ | ❌ | ❌ |
 | **Deterministic policy engine** | ✅ 15 operators, no eval(), 3 scopes | ❌ | ❌ | ✅ Varies |
 | **Physical I/O boundary** | ✅ Byte-level STDIO memory firewall | ❌ | ❌ | Varies |
-| **Live-fire test suite** | ✅ 25/25 reproducible — clone and run | ❌ | ❌ | Varies |
-| **Dependencies** | 7 pip packages | Managed service | Managed service | Varies |
+| **Live-fire test suite** | ✅ 25/25 Arsenal + 7/7 SkillGuard — clone and run | ❌ | ❌ | Varies |
+| **Dependencies** | 7 pip packages (0 added for v0.8–v0.9.3) | Managed service | Managed service | Varies |
 | **License** | Apache 2.0 | Proprietary | Apache 2.0 | Varies |
 
 > LangSmith and LangFuse are **observability** tools — they log what your agent did.
@@ -192,11 +200,11 @@ pip install -e .
 # 2. Run the Interactive Wizard (Auto-generates your .env and infrastructure keys)
 python -m butterclaw.setup_wizard
 
-# 3. Ignite the Exoskeleton (if deploying via Docker)
-docker compose up -d --build
+# 3. Build the Exoskeleton image
+docker compose build --no-cache
 
-# 4. Launch the live TUI dashboard
-./dash
+# 4. Launch the containerized SOC stack
+docker compose up -d
 
 ```
 
@@ -206,41 +214,71 @@ Dashboard → **https://localhost** · ntfy UI → **http://localhost:2586**
 
 ---
 
-> **Fleet Layer note:** On first boot, `fleet.db` is created alongside `butterclaw.db` at `/data/fleet.db` (Docker) or `./fleet.db` (bare-metal). The Fleet Sentinel starts in dry-run mode (`FLEET_SENTINEL_DRY_RUN=true` by default) — verdicts are logged and visible at `GET /api/fleet/sentinel/log` but do not trigger kinetic escalation until you follow the RUNBOOK rollout procedure and flip to `false`.
+> **Fleet Layer note:** On first boot, `fleet.db` is created alongside `butterclaw.db` at `/data/fleet.db` (Docker) or `./fleet.db` (bare-metal). The Fleet Sentinel starts in dry-run mode (`BUTTERCLAW_FLEET_SENTINEL_DRY_RUN=true` by default) — verdicts are logged and visible at `GET /api/fleet/sentinel/log` but do not trigger kinetic escalation until you follow the RUNBOOK rollout procedure and flip to `false`.
 
 ---
 
-## 🧪 Explore & Test
+## Explore & Test
 
-Once the stack is running, there are three ways to interact with ButterClaw:
+Once the stack is running, there are five ways to interact with ButterClaw:
 
 **1. Terminal TUI (Live SOC View)**
 
-The real-time, double-buffered terminal dashboard. Displays live telemetry, active Arsenal rules, current Paranoia Level, and verdict output as it streams.
+The real-time, resize-proof terminal dashboard. Displays live semantic, spatial, and SkillGuard telemetry, active Arsenal rules, current Paranoia Level, and verdict output as it streams.
 
 ```bash
-./dash
+./dash.sh
+
+```
+
+```powershell
+# Windows: pop open a dedicated GPU-rendered Windows Terminal SOC window
+wt -d . powershell -NoExit -Command ".\dash.bat"
+
 ```
 
 **2. Web UI (Nginx → https://localhost)**
 
-A full browser-accessible dashboard served through the Nginx reverse proxy built into the Docker stack. Navigate to https://localhost after first boot — the same UI that the TUI mirrors, accessible from any browser on your local machine. The 🔑 [AUTH] bootstrap API key you captured from the logs is your login credential.
+A full browser-accessible dashboard served through the Nginx reverse proxy built into the Docker stack. Navigate to `https://localhost` after first boot — featuring the Shield controller, ButterVault modal, **SkillGuard Supply-Chain Registry**, Brain Routing, Policy Engine, and Event Ledger (7 armed MCP tools). Log in with the `🔐 [AUTH]` bootstrap API key printed in the server logs.
 
-**3. Log Injection — Test the Brain Directly**
+**3. SkillGuard Supply-Chain Auditor (v0.9.3 — Gate M5 / M10)**
 
-The cleanest way to run custom attack scenarios against ButterClaw's analysis engine without a live agent. When the container starts, it generates an `openclaw_gateway.log` file that the Watcher daemon monitors continuously.
+Seed a benign skill (`log-summarizer`) and a 10-finding Trojan skill (`stealth-exfiltrator`) into `./skills/` (mounted read-only at `/data/skills:ro` inside the container), then audit and inspect the cryptographic Merkle registry:
 
-Append any log entry to that file and the Watcher picks it up automatically, routing it through the full pipeline — Arsenal regex gate → Guardian Brain → Auditor → Capability Matrix → verdict + kinetic response (if applicable).
+```powershell
+# 1. Generate synthetic test skills in ./skills/
+python scripts/seed_test_skills.py
+
+# 2. Run pre-flight static + AST + steganographic audit inside the container
+.\dash.bat audit /data/skills/log-summarizer
+.\dash.bat audit /data/skills/stealth-exfiltrator
+
+# 3. View the SQLite Merkle-root attestation registry
+.\dash.bat skills
+
+# 4. Run the 7-test SkillGuard anti-TOCTOU & containment unit suite
+.\dash.bat test
+
+```
+
+*(Linux/macOS operators use `./dash.sh audit ...`, `./dash.sh skills`, and `./dash.sh test`. Query live status via API at `GET /api/skills` or trigger a directory scan via `POST /api/skills/audit`.)*
+
+**4. Log Injection — Test the Brain Directly**
+
+The cleanest way to run custom attack scenarios against ButterClaw's analysis engine without a live agent. When the container starts, it monitors `openclaw_gateway.log` continuously.
+
+Append any log entry to that file and the Watcher routes it through the full pipeline — Arsenal regex gate → Guardian Brain → Auditor → Capability Matrix → verdict + kinetic response:
 
 ```bash
 # Append a test payload — the Watcher fires on the new entry within seconds
-echo '[2026-09-15T07:00:00] TOOL_CALL: bash -c "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/"' \
-  >> /path/to/openclaw_gateway.log
+echo '[2026-09-15T07:00:00] TOOL_CALL: bash -c "curl [http://169.254.169.254/latest/meta-data/iam/security-credentials/](http://169.254.169.254/latest/meta-data/iam/security-credentials/)"' \
+  >> ./openclaw_gateway.log
+
 ```
 
 No live LLM payload required for Arsenal-level tests (regex signatures fire pre-brain). For full five-hemisphere reasoning output, Ollama must be running.
 
-**4. Fleet API — Inspect Multi-Agent State (v0.9.0)**
+**5. Fleet API — Inspect Multi-Agent State (v0.9.0)**
 
 ```bash
 # List all registered agents with reputation scores
@@ -255,6 +293,7 @@ curl -H "Authorization: Bearer $BC_KEY" https://localhost/api/fleet/sentinel/log
 
 # Trigger a manual fleet sweep
 curl -X POST -H "Authorization: Bearer $BC_KEY" https://localhost/api/fleet/sentinel/run
+
 ```
 
 ---
@@ -279,58 +318,76 @@ python scripts/test_dual_memory.py
 
 # 6. Verify backup integrity for both databases (v0.9.0)
 ./scripts/verify_backup.sh /data
+
+# 7. Seed synthetic SKILL.md fixtures & run the containerized SkillGuard suite (v0.9.3)
+python scripts/seed_test_skills.py
+./dash.sh test   # or .\dash.bat test on Windows
+
 ```
 
 ```text
 =================================================================
   RESULT: 25/25 passed  |  0 failed  |  0 connection errors
+  SkillGuard (Gate M5 / M10): 7/7 unit tests passed
 =================================================================
   verify_backup.sh:
   butterclaw.db: PASS (integrity_check → ok)
   fleet.db:      PASS (integrity_check → ok)
   I-07-fleet:    PASS (distinct inodes confirmed)
 =================================================================
+
 ```
 
-25 attack variants across all 7 signatures. Payloads pre-sanitized to match real engine input. CI-compatible — exits with code 1 on any failure.
+25 attack variants across all 7 Arsenal signatures plus 7 supply-chain / anti-TOCTOU assertions in `tests/test_skill_guard.py`. CI-compatible — exits non-zero on failure.
 
 ---
 
 ## Key Features
 
+**SkillGuard Supply-Chain Defense — Gate M5 & Gate M10 (v0.9.3)**
+
+* **Pre-Flight Static, Steganographic & AST Quarantine** — Scans `SKILL.md` frontmatter, markdown instructions, `references/`, and `scripts/*.py` for zero-width/tag-block Unicode smuggling, hidden HTML comments, policy-override directives, undeclared URLs, restricted Python imports (`socket`, `urllib.request`, `subprocess`), `os.environ` harvesting, and `eval()`/`exec()`.
+* **SHA-256 Merkle-Root Attestation (Gate M5)** — Hashes every file inside an approved skill directory into a deterministic Merkle root stored in `butterclaw.db`. Re-verifies the Merkle root at runtime before Stage 2/3 progressive skill disclosure or MCP tool execution, catching post-audit TOCTOU tampering immediately.
+* **Read-Only Container Isolation & Path Containment (Gate M10)** — Skills mount into Docker as `:ro` (`/data/skills:ro`), blocking in-container disk tampering at the kernel level while `Gate M10` rejects symlinks and `..` path traversal outside `SKILL_ROOT`.
+
 **Five-Hemisphere Cognitive Architecture (v0.9.0)**
-- **Guardian Brain** (`0.3`) — Decisive per-request threat evaluation with behavioral drift context and COLD semantic memory injection (I-12).
-- **Auditor** (`0.0`) — Independent skeptical verification fires 30s after every CRITICAL verdict. Catches false positives before kinetic action.
-- **Dream Weaver** (`0.7`, v0.8) — Idle-triggered threat synthesis. Fires after ≥15 min inactivity. Crystallises threat patterns into the COLD semantic graph so the Brain sees what it has seen before.
-- **Loop Proposer** (`0.4`, v0.8) — Every-6-hours autoresearch. Shadow-evaluates Arsenal and DRIFT policies against the historical ledger. Proposes amendments — all human-gated, none auto-applied.
-- **Fleet Sentinel** (`0.5`, v0.9) — Fires reactively on `CorrelationEvent` / `CollusionEvent` and proactively every 4 hours. Reasons across the entire observed fleet. Verdicts: `ISOLATED`, `CORRELATED`, `COLLUDING`, `INSUFFICIENT_DATA`.
+
+* **Guardian Brain** (`0.3`) — Decisive per-request threat evaluation with behavioral drift context and COLD semantic memory injection (I-12).
+* **Auditor** (`0.0`) — Independent skeptical verification fires 30s after every CRITICAL verdict. Catches false positives before kinetic action.
+* **Dream Weaver** (`0.7`, v0.8) — Idle-triggered threat synthesis. Fires after ≥15 min inactivity. Crystallises threat patterns into the COLD semantic graph so the Brain sees what it has seen before.
+* **Loop Proposer** (`0.4`, v0.8) — Every-6-hours autoresearch. Shadow-evaluates Arsenal and DRIFT policies against the historical ledger. Proposes amendments — all human-gated, none auto-applied.
+* **Fleet Sentinel** (`0.5`, v0.9) — Fires reactively on `CorrelationEvent` / `CollusionEvent` and proactively every 4 hours. Reasons across the entire observed fleet. Verdicts: `ISOLATED`, `CORRELATED`, `COLLUDING`, `INSUFFICIENT_DATA`.
 
 **Fleet-Scale Multi-Agent Awareness (v0.9.0)**
-- **Persistent agent registry** — Every observed agent tracked across container restarts with `first_seen`, `session_count`, `taint_count`, and asymmetric reputation scoring (taint hits 3× harder than recovery).
-- **Directed trust graph** — Spawn, communication, and peer edges between agents persist in `fleet.db`. Taint propagates 1 hop upstream by default (configurable to 2 hops).
-- **Correlation Engine** — Detects the *same* attack pattern across N≥3 distinct agents within a 30-minute window (copycat / broadcast attack).
-- **Collusion Detector** — Detects *complementary* semantic roles (`scout`, `encoder`, `exfiltrator`, `persister`, `injector`) across distinct agents within 3 minutes (divided-labor kill chain).
-- **Two-step quarantine** — `POST /api/fleet/agents/<id>/quarantine` issues a 60-second confirmation token. Confirm to set reputation to 0.0, block new sessions, and propagate taint through the trust graph. Does NOT terminate active processes — use `/api/spatial/block` for that.
 
-**Persistent Three-Tier Memory (v0.8.0)**
-- **HOT tier** — In-process RAM deque for sub-millisecond event access during a live session.
-- **WARM tier** — SQLite episodic ledger (`telemetry_events`, `sessions`, `memory_signatures`) persisted across restarts.
-- **COLD tier** — Semantic entity graph with weighted edges. Entities mature from WARM to COLD via observation count threshold. COLD context is injected read-only into Guardian Brain prompts.
+* **Persistent agent registry** — Every observed agent tracked across container restarts with `first_seen`, `session_count`, `taint_count`, and asymmetric reputation scoring (taint hits 3× harder than recovery).
+* **Directed trust graph** — Spawn, communication, and peer edges between agents persist in `fleet.db`. Taint propagates 1 hop upstream by default (configurable to 2 hops).
+* **Correlation Engine** — Detects the *same* attack pattern across N≥3 distinct agents within a 30-minute window (copycat / broadcast attack).
+* **Collusion Detector** — Detects *complementary* semantic roles (`scout`, `encoder`, `exfiltrator`, `persister`, `injector`) across distinct agents within 3 minutes (divided-labor kill chain).
+* **Two-step quarantine** — `POST /api/fleet/agents/<id>/quarantine` issues a 60-second confirmation token. Confirm to set reputation to 0.0, block new sessions, and propagate taint through the trust graph. Does NOT terminate active processes — use `/api/spatial/block` for that.
+
+**Persistent Three-Tier Memory (v0.8.0–v0.9.2)**
+
+* **HOT tier** — In-process RAM deque for sub-millisecond event access during a live session.
+* **WARM tier** — SQLite episodic ledger (`telemetry_events`, `sessions`, `memory_signatures`) persisted across restarts.
+* **COLD tier** — Semantic entity graph with weighted edges and an autonomous **Memory Watchdog** (`v0.9.2` R3) keeping maturation ticks active even when Dream Weaver is idle or disabled.
 
 **Spatial SOC — Real-Time Primitive Interception (v0.8.0)**
-- Every raw computer-use action (click, type, scroll, navigate, screenshot) is gated through the full DRIFT pipeline *before* execution.
-- Topology lineage graph traces causal chains from session spawn to tool execution. Taint propagates upstream when a CRITICAL verdict fires mid-chain.
-- Kinetic velocity and spatial jitter heuristics flag statistically anomalous pointer patterns that are signatures of automated tool abuse.
+
+* Every raw computer-use action (click, type, scroll, navigate, screenshot) is gated through the full DRIFT pipeline *before* execution.
+* Topology lineage graph traces causal chains from session spawn to tool execution. Taint propagates upstream when a CRITICAL verdict fires mid-chain.
+* Kinetic velocity and spatial jitter heuristics flag statistically anomalous pointer patterns that are signatures of automated tool abuse.
 
 **The Exoskeleton (v0.6.x–v0.7.x)**
-- **Capability Matrix (Positive Security Model)** — 4-tier IAM role hierarchy (`infrastructure`, `admin`, `operator`, `viewer`) mapping agents to allowed tool scopes. Fail-closed at runtime.
-- **STDIO Physical Firewall** — Byte-level memory boundary (`max_payload_bytes`), auto pipe draining, strict UTF-8 decoding on local process transport. Prevents buffer poisoning.
-- **The Paranoia Dial** — Level 1 (Observe), Level 2 (SIGKILL), Level 3 (SIGKILL + vault shred). Switch at runtime without restart.
-- **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub and OAuth providers to invalidate tokens globally, then shreds local data atomically.
-- **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
-- **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
-- **4-Tier User RBAC** — HMAC-SHA256 API keys and session tokens for dashboard access.
-- **77 API routes** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
+
+* **Capability Matrix (Positive Security Model)** — 4-tier IAM role hierarchy (`infrastructure`, `admin`, `operator`, `viewer`) mapping agents to allowed tool scopes. Fail-closed at runtime.
+* **STDIO Physical Firewall** — Byte-level memory boundary (`max_payload_bytes`), auto pipe draining, strict UTF-8 decoding on local process transport. Prevents buffer poisoning.
+* **The Paranoia Dial** — Level 1 (Observe), Level 2 (SIGKILL), Level 3 (SIGKILL + vault shred). Switch at runtime without restart.
+* **ButterVault + Gibson Kill Switch** — Fernet-encrypted credential vault. On compromise: fires live HTTP DELETE/POST to GitHub and OAuth providers to invalidate tokens globally, then shreds local data atomically.
+* **Deterministic Policy Engine** — 3-scope pipeline (pre-brain / post-brain / pre-tool), 15 safe operators, no `eval()`. Implements the DRIFT framework pattern.
+* **6 Alert Channels** — ntfy (self-hosted), Discord, Telegram, SMTP, Webhook (HMAC-SHA256 signed), Gotify. Fires before any kinetic action.
+* **4-Tier User RBAC** — HMAC-SHA256 API keys and session tokens for dashboard access.
+* **80 API routes & 7 MCP tools** — full programmatic control over every subsystem. → [`docs/API.md`](docs/API.md)
 
 ---
 
@@ -338,24 +395,27 @@ python scripts/test_dual_memory.py
 
 | Doc | Contents |
 | --- | --- |
-| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Five-hemisphere reasoning, fleet layer invariants (I-01–I-07), three-tier memory model, data flow walkthroughs, design decisions D-01 through D-26 |
-| [`API.md`](docs/API.md) | All 77 endpoints, roles, request/response shapes, fleet endpoint quarantine lifecycle |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Five-hemisphere reasoning, SkillGuard Gate M5/M10, fleet layer invariants (I-01–I-07), three-tier memory model, data flow walkthroughs |
+| [`API.md`](docs/API.md) | All 80 endpoints, roles, request/response shapes, SkillGuard & fleet quarantine lifecycles |
 | [`RUNBOOK.md`](docs/RUNBOOK.md) | Quarantine vs. Block decision flowchart, Fleet Sentinel dry-run rollout procedure, alert response procedures, backup verification (v0.9.0) |
 | [`DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker, systemd, bare-metal, nginx TLS, backup/restore |
 | [`SECURITY.md`](docs/SECURITY.md) | OWASP ASI mapping, threat model |
-| [`CHANGELOG.md`](CHANGELOG.md) | Full version history from v0.1.0 |
+| [`CHANGELOG.md`](CHANGELOG.md) | Full version history from v0.1.0 through v0.9.3 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Architecture decision process, PR requirements |
 
 ---
 
 ## Environment Configuration
 
-Run `python -m butterclaw.setup_wizard` for interactive configuration (9 sections, Docker-aware defaults). Key v0.9.0 fleet variables:
+Run `python -m butterclaw.setup_wizard` for interactive configuration (10 sections, Docker-aware defaults) or `--audit-skill` / `--list-skills` for SkillGuard package management. Key v0.9.x variables:
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `BUTTERCLAW_SKILL_ROOT` | `/data/skills` | Canonical root directory for `SKILL.md` packages (Gate M10 containment boundary, v0.9.3) |
+| `BUTTERCLAW_SKILL_RISK_THRESHOLD` | `25` | Risk score ceiling (`1–100`) above which `SkillGuard` quarantines a package (v0.9.3) |
+| `BUTTERCLAW_SKILL_STRICT_TOCTOU` | `true` | Enforce live SHA-256 Merkle-root re-verification on Stage 2/3 loads and tool calls (v0.9.3) |
 | `BUTTERCLAW_FLEET_DB_PATH` | `/data/fleet.db` | Fleet database path — must differ from `BUTTERCLAW_DB_PATH` (I-07-fleet) |
-| `FLEET_SENTINEL_DRY_RUN` | `true` | Log Fleet Sentinel verdicts only — no Guardian Brain escalation. Follow RUNBOOK before setting `false`. |
+| `BUTTERCLAW_FLEET_SENTINEL_DRY_RUN` | `true` | Log Fleet Sentinel verdicts only — no Guardian Brain escalation. Follow RUNBOOK before setting `false`. |
 | `BUTTERCLAW_SENTINEL_INTERVAL_HOURS` | `4` | Proactive Fleet Sentinel sweep interval |
 | `BUTTERCLAW_COLLUSION_WINDOW_SECONDS` | `180` | Sliding window for collusion role accumulation |
 | `BUTTERCLAW_CORRELATION_FLEET_THRESHOLD` | `3` | Distinct agents needed to fire a CorrelationEvent |
@@ -400,8 +460,9 @@ If you use ButterClaw in your research, please cite the permanent archive:
 ---
 
 <p align="center"><br>
-<strong>🦞 ButterClaw v0.9.2 (Mega Release) — The Fleet Layer, Package Architecture & Research Paper 🦞</strong><br>
-<em>Deterministic guardrails for probabilistic reasoning. Evaluation before execution.</em><br>
+<img src="favicon.png" width="28" alt="ButterClaw"><br>
+<strong>ButterClaw v0.9.3<br>(added Skill Guard)<br>The Fleet Layer, Package Architecture & Research Paper</strong><br>
+<em>Deterministic guardrails for probabilistic reasoning  ·  Evaluation before execution</em><br>
 <em>Five minds. One fleet. The Sentinel never goes silent.</em><br>
 <em>We watch the room.</em><br>
 <a href="https://butterclaw.tech">butterclaw.tech</a> · <a href="https://github.com/butterclaw-tech/butterclaw">GitHub</a>

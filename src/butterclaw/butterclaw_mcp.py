@@ -1,5 +1,5 @@
 """
-ButterClaw v0.8.1 — The Claws (MCP Execution Layer)
+ButterClaw v0.9.3 — The Claws (MCP Execution Layer) - src layout
 =====================================================================
 Changelog:
   [v0.3]   Context Shift: Local keys destroyed by ButterVault.
@@ -25,8 +25,10 @@ Changelog:
            - SSE transport runs a threaded HTTP server (stdlib, zero new deps)
            - stdio remains the default for local child process mode
            - Protocol logic unchanged — only I/O layer refactored
-  [v0.8.1] The Package Architecture Update (src/ Layout) 
-           - Import updated for src layout refactor
+  [v0.9.3] SkillGuard Supply-Chain & TOCTOU Defense:
+           - Added SkillGuard integration (audit_skill, load_skill_stage)
+           - M5: Runtime Merkle verification & session taint capability gate
+           - M10: Path traversal containment on skill resource loads
 
 *** KINETIC OS ACTIONS REMAIN IN DRY RUN / SIMULATION MODE ***
 """
@@ -39,15 +41,14 @@ import sys
 import os
 import platform
 import socket
+from pathlib import Path
 
 from butterclaw.mcp_transport import create_transport
+from butterclaw.skill_guard import SkillGuard
 
 # =====================================================================
 # LOGGING — strictly stderr to protect the JSON-RPC stdout pipe
 # [M3] Module-level basicConfig is architecturally correct here.
-# This file runs as a standalone subprocess (spawned by server.py),
-# never imported as a library. The v0.3.2 I6 fix (move to function
-# scope) addressed import-time collision, which does not apply.
 # =====================================================================
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(message)s")
@@ -57,7 +58,7 @@ logger = logging.getLogger("butterclaw.mcp")
 # CONFIGURATION
 # =====================================================================
 
-VERSION = "0.6.3.2"
+VERSION = "0.9.3"
 PROTOCOL_VERSION = "2024-11-05"  # MCP spec version this server speaks
 # Set BUTTERCLAW_MCP_DRY_RUN=false to enable live kinetic actions
 DRY_RUN = os.environ.get("BUTTERCLAW_MCP_DRY_RUN", "true").lower() != "false"
@@ -65,6 +66,9 @@ DRY_RUN = os.environ.get("BUTTERCLAW_MCP_DRY_RUN", "true").lower() != "false"
 # Strict allowlists for SSRF prevention [M9]
 SCAN_PORT_HOST_ALLOWLIST = {"127.0.0.1", "localhost", "host.docker.internal"}
 SCAN_PORT_ALLOWLIST = {11434}  # Ollama default
+
+# Shared SkillGuard engine instance
+SKILL_GUARD = SkillGuard()
 
 
 # =====================================================================
@@ -106,13 +110,14 @@ def execute_gibson_kill(target_process="openclaw"):
         )
 
 
-def system_status():
+def system_status(active_skill=None):
     """Returns current ButterClaw system health metrics."""
     return json.dumps({
         "version": VERSION,
         "dry_run": DRY_RUN,
         "platform": platform.system(),
         "python": platform.python_version(),
+        "active_skill_taint": active_skill,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }, indent=2)
 
@@ -139,6 +144,15 @@ def log_event(severity="INFO", message="No message provided"):
     entry = f"[{severity}] [{time.strftime('%H:%M:%S')}] {message}"
     logger.log(getattr(logging, severity, logging.INFO), entry)
     return f"Logged: {entry}"
+
+
+def audit_skill(skill_path):
+    """
+    [v0.9.3] Pre-flight static & Merkle scanner for SKILL.md packages.
+    Inspects YAML frontmatter, Markdown body, references/, and scripts/.
+    """
+    report = SKILL_GUARD.audit_and_attest(skill_path)
+    return json.dumps(report, indent=2)
 
 
 # =====================================================================
@@ -176,7 +190,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "system_status",
-        "description": "Returns current ButterClaw system health: version, platform, DRY_RUN state.",
+        "description": "Returns current ButterClaw system health: version, platform, DRY_RUN state, and active skill taint.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -222,6 +236,39 @@ TOOL_DEFINITIONS = [
             },
             "required": ["message"]
         }
+    },
+    {
+        "name": "audit_skill",
+        "description": "Pre-flight static scanner for SKILL.md directories. Computes SHA-256 Merkle root and records APPROVED or QUARANTINED status in SQLite.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "skill_path": {
+                    "type": "string",
+                    "description": "Filesystem path to the SKILL.md package directory."
+                }
+            },
+            "required": ["skill_path"]
+        }
+    },
+    {
+        "name": "load_skill_stage",
+        "description": "Stage 2/3 loader for attested SKILL.md packages. Verifies Merkle integrity before returning SKILL.md or references/ content and taints the active session.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "skill_name": {
+                    "type": "string",
+                    "description": "Registered name of the skill to activate or read from."
+                },
+                "resource_path": {
+                    "type": "string",
+                    "description": "Relative file path inside the skill folder (defaults to 'SKILL.md').",
+                    "default": "SKILL.md"
+                }
+            },
+            "required": ["skill_name"]
+        }
     }
 ]
 
@@ -234,10 +281,11 @@ for _td in TOOL_DEFINITIONS:
 # Dispatch table — maps tool name → callable
 TOOL_DISPATCH = {
     "execute_gibson_kill": execute_gibson_kill,
-    "rotate_keys":        rotate_keys,
-    "system_status":      lambda **_: system_status(),
-    "scan_port":          scan_port,
-    "log_event":          log_event,
+    "rotate_keys":         rotate_keys,
+    "system_status":       lambda **_: system_status(),
+    "scan_port":           scan_port,
+    "log_event":           log_event,
+    "audit_skill":         audit_skill,
 }
 
 
@@ -252,10 +300,41 @@ class ButterClawMCPServer:
     The I/O layer (stdio, SSE, etc.) is handled by mcp_transport.
     """
 
-    def __init__(self):
+    def __init__(self, skill_guard=None):
         self.initialized = False
         self.tools = TOOL_DEFINITIONS
-        self.dispatch = TOOL_DISPATCH
+        self.skill_guard = skill_guard or SKILL_GUARD
+        self.active_skill = None  # [M5] Tracks Stage 2/3 session taint
+
+        # Instance-level dispatch binds stateful handlers cleanly
+        self.dispatch = dict(TOOL_DISPATCH)
+        self.dispatch["system_status"] = lambda **_: system_status(active_skill=self.active_skill)
+        self.dispatch["load_skill_stage"] = self._handle_load_skill_stage
+
+    def _handle_load_skill_stage(self, skill_name, resource_path="SKILL.md"):
+        """
+        [M5 / M10] Verifies Merkle root before Stage 2/3 progressive disclosure load.
+        Taints the session with active_skill on success; triggers kinetic defense on TOCTOU tampering.
+        """
+        is_valid, reason, record = self.skill_guard.verify_runtime_integrity(skill_name)
+        if not is_valid:
+            logger.error(f"🚨 [SkillGuard] Stage load blocked for '{skill_name}': {reason}")
+            if "TOCTOU MERKLE MISMATCH" in reason:
+                kill_msg = execute_gibson_kill(target_process="openclaw")
+                rot_msg = rotate_keys(provider="OpenRouter")
+                raise PermissionError(f"{reason} | KINETIC RESPONSE: {kill_msg} | {rot_msg}")
+            raise PermissionError(f"SkillGuard blocked '{skill_name}': {reason}")
+
+        # [M10] Prevent relative path traversal outside the attested skill directory
+        skill_dir = Path(record["package_path"]).resolve()
+        target_file = (skill_dir / resource_path).resolve()
+        if not str(target_file).startswith(str(skill_dir)) or not target_file.is_file():
+            raise PermissionError(f"Invalid or unauthorized skill resource path: '{resource_path}'")
+
+        # Apply session taint
+        self.active_skill = skill_name
+        logger.info(f"🔒 [SkillGuard] Session tainted by active skill '{skill_name}' (loaded '{resource_path}').")
+        return target_file.read_text(encoding="utf-8", errors="replace")
 
     # ----- MCP Method Handlers -----
 
@@ -322,6 +401,34 @@ class ButterClawMCPServer:
                 }
             }
 
+        # [M5] Runtime SkillGuard Taint & Anti-TOCTOU Gate
+        if self.active_skill is not None:
+            is_valid, reason, record = self.skill_guard.verify_runtime_integrity(self.active_skill)
+            if not is_valid:
+                logger.error(f"🚨 [Gate M5] Integrity failure on active skill '{self.active_skill}': {reason}")
+                kill_res = execute_gibson_kill(target_process="openclaw")
+                rot_res = rotate_keys(provider="OpenRouter")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"[GATE M5 BLOCK] {reason} | {kill_res} | {rot_res}"}],
+                        "isError": True
+                    }
+                }
+
+            allowed_mcp_tools = set(record.get("allowed_mcp_tools", []))
+            if tool_name not in allowed_mcp_tools:
+                logger.warning(f"🛡️ [Gate M5] Tainted session ('{self.active_skill}') attempted unauthorized tool '{tool_name}'.")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"[GATE M5 BLOCK] Active skill '{self.active_skill}' is not authorized to invoke tool '{tool_name}'."}],
+                        "isError": True
+                    }
+                }
+
         try:
             result = self.dispatch[tool_name](**tool_args)
             return {
@@ -346,11 +453,11 @@ class ButterClawMCPServer:
     # ----- Method Dispatch Table -----
 
     METHOD_MAP = {
-        "initialize":               "handle_initialize",
+        "initialize":                "handle_initialize",
         "notifications/initialized": "handle_initialized_notification",
-        "ping":                     "handle_ping",
-        "tools/list":               "handle_tools_list",
-        "tools/call":               "handle_tools_call",
+        "ping":                      "handle_ping",
+        "tools/list":                "handle_tools_list",
+        "tools/call":                "handle_tools_call",
     }
 
     def route(self, request):
@@ -428,9 +535,6 @@ Examples:
 
 # =====================================================================
 # MAIN LOOP — Transport-agnostic
-# [v0.5.0] Refactored to use BaseTransport interface.
-# The protocol handler (ButterClawMCPServer) takes a dict and returns
-# a dict. The transport handles all I/O serialization.
 # =====================================================================
 
 def main():
@@ -485,20 +589,18 @@ def main():
                     transport.write(response)
 
             except json.JSONDecodeError as e:
-                # No valid request exists — id must be None per JSON-RPC spec
                 logger.error(f"❌ JSON parse error: {e}")
                 err = {"jsonrpc": "2.0", "id": None,
                        "error": {"code": -32700, "message": f"Parse error: {e}"}}
                 transport.write(err)
 
             except Exception as e:
-                # [M1] Correlate error response to request id when available
                 correlated_id = last_request.get("id") if last_request else None
                 logger.error(f"❌ Unhandled exception (id={correlated_id}): {e}")
                 err = {"jsonrpc": "2.0", "id": correlated_id,
                        "error": {"code": -32603, "message": f"Internal error: {e}"}}
                 transport.write(err)
-                last_request = {}  # Reset after error
+                last_request = {}
 
     except KeyboardInterrupt:
         logger.info("📡 [MCP] Interrupted. Shutting down.")

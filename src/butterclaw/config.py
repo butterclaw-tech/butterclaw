@@ -1,5 +1,5 @@
 """
-ButterClaw v0.9.2 — Configuration Module - src layout Mega
+ButterClaw v0.9.3 — Configuration Module - src layout Mega
 ==========================================
 Single source of truth for all runtime configuration.
 
@@ -16,7 +16,7 @@ Loads from (in priority order):
 
 Design decisions:
   - Zero new pip dependencies — .env parsing is ~30 lines of stdlib
-  - No third-party dotenv library required
+  - No thirdparty dotenv library required
   - Singleton pattern: `from config import cfg`
   - try/except ImportError in consumers for backward compat
   - Secrets never appear in to_dict() output
@@ -30,16 +30,6 @@ Usage:
   db_path = cfg.DB_PATH
   port = cfg.PORT
   confidence = cfg.CONFIDENCE_THRESHOLD
-
-Integration points (server.py, auth.py, policy_engine.py,
-                    alert_dispatcher.py, buttervault.py):
-  - Replace per-module BASE_DIR / DB_PATH with cfg.DB_PATH
-  - Replace hardcoded ALLOWED_ORIGINS with cfg.CORS_ORIGINS
-  - Replace hardcoded model_name with cfg.MODEL_NAME
-  - Replace hardcoded OLLAMA_LOCAL_BASE with cfg.OLLAMA_BASE_URL
-  - Replace hardcoded CONFIDENCE_THRESHOLD with cfg.CONFIDENCE_THRESHOLD
-  - Replace app.run(host, port, debug) with cfg values
-  - All consumers use try/except ImportError for backward compat
 """
 
 import os
@@ -47,41 +37,33 @@ import sys
 import logging
 from pathlib import Path
 
-# Anchors to repo root: <root>/src/butterclaw/config.py -> <root>
-# PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-# Anchor to the Current Working Directory (/app in Docker, repo root locally)
-# Allows an environment variable override just in case.
-#PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path.cwd())).resolve()
+# Anchor to repo root: <root>/src/butterclaw/config.py -> <root>
 PROJECT_ROOT = Path(os.environ.get("BUTTERCLAW_ROOT", Path(__file__).resolve().parents[2])).resolve()
 DB_PATH = Path(os.environ.get("BUTTERCLAW_DB_PATH", PROJECT_ROOT / "butterclaw.db")).resolve()
 FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
-EVIDENCE_LOCKER_DIR = Path(os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if Path("/data").exists() else PROJECT_ROOT / "data")) / "evidence_locker"
+
+# Only treat /data as a container volume on non-Windows POSIX systems
+_IN_DOCKER_DATA = os.name != "nt" and Path("/data").exists()
+
+SKILL_ROOT = Path(
+    os.environ.get(
+        "BUTTERCLAW_SKILL_ROOT",
+        "/data/skills" if (os.name != "nt" and Path("/data").exists()) else PROJECT_ROOT / "skills",
+    )
+).resolve()
+EVIDENCE_LOCKER_DIR = Path(
+    os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if (os.name != "nt" and Path("/data").exists()) else PROJECT_ROOT / "data")
+) / "evidence_locker"
 
 # Canonical Root File Paths (Static)
 CAPABILITIES_PATH = Path(os.environ.get("BUTTERCLAW_CAPABILITIES_PATH", PROJECT_ROOT / "capabilities.json")).resolve()
 DEFAULT_SIGNATURES_PATH = Path(os.environ.get("BUTTERCLAW_DEFAULT_SIGNATURES_PATH", PROJECT_ROOT / "default_signatures.json")).resolve()
 
 # Runtime State Paths (Dynamic - persist alongside data)
-DATA_DIR = Path(os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if Path("/data").exists() else PROJECT_ROOT / "data")).resolve()
+DATA_DIR = Path(os.environ.get("BUTTERCLAW_DATA_DIR", "/data" if (os.name != "nt" and Path("/data").exists()) else PROJECT_ROOT / "data")).resolve()
 RETRY_QUEUE_PATH = Path(os.environ.get("BUTTERCLAW_RETRY_QUEUE_PATH", DATA_DIR / "retry_queue.json")).resolve()
 
 GATEWAY_LOG_PATH = Path(os.environ.get("BUTTERCLAW_GATEWAY_LOG_PATH", PROJECT_ROOT / "openclaw_gateway.log")).resolve()
-
-
-# Canonical Root File Paths
-#CAPABILITIES_PATH = PROJECT_ROOT / "capabilities.json"
-#DEFAULT_SIGNATURES_PATH = PROJECT_ROOT / "default_signatures.json"
-#RETRY_QUEUE_PATH = PROJECT_ROOT / "retry_queue.json"
-
-#DB_PATH = PROJECT_ROOT / "butterclaw.db"
-
-#GATEWAY_LOG_PATH = PROJECT_ROOT / "openclaw_gateway.log"
-
-#EVIDENCE_LOCKER_DIR = PROJECT_ROOT / "data" / "evidence_locker"
-
-# Canonical Root File Paths (Fleet Layer)
-#FLEET_DB_PATH = Path(os.environ.get("BUTTERCLAW_FLEET_DB_PATH", PROJECT_ROOT / "fleet.db")).resolve()
 
 logger = logging.getLogger("butterclaw.config")
 
@@ -90,7 +72,7 @@ logger = logging.getLogger("butterclaw.config")
 # CONSTANTS
 # =============================================
 
-CONFIG_VERSION = "0.9.2"
+CONFIG_VERSION = "0.9.3"
 
 # All environment variable names used by ButterClaw.
 # Prefixed with BUTTERCLAW_ to avoid collision with system vars.
@@ -115,8 +97,6 @@ def _load_dotenv(path):
 
     Does NOT override existing environment variables —
     env vars set by Docker/systemd/shell always take precedence.
-    This is the correct behavior for 12-factor apps.
-
     Returns the number of variables loaded (for diagnostics).
     """
     loaded = 0
@@ -159,9 +139,6 @@ def _load_dotenv(path):
                         # Only split on ' #' (space + hash) to avoid breaking URLs
                         if " #" in value:
                             value = value[:value.index(" #")].strip()
-                else:
-                    # Single character or empty — use as-is
-                    pass
 
                 # Don't override existing env vars
                 if key not in os.environ:
@@ -245,7 +222,7 @@ class ButterClawConfig:
     Immutable after __init__ — no runtime mutation.
 
     Categories:
-      - Paths        (DB, MCP script, base directory)
+      - Paths        (DB, Fleet DB, Skill root, MCP script, base directory)
       - Server       (host, port, debug)
       - CORS         (allowed origins)
       - Brain/Ollama (model, endpoint, confidence, dry-run)
@@ -254,16 +231,15 @@ class ButterClawConfig:
       - Alerts       (delivery timeout, retries, brute-force)
       - OAuth        (state TTL)
       - Identity     (instance ID)
+      - Memory R3    (watchdog enabled, fallback hours, poll interval)
+      - SkillGuard   (skill root, risk threshold, strict TOCTOU)
     """
 
     def __init__(self):
         # ── Resolve base directory FIRST ──
-        # This is the directory containing config.py itself.
-        # All relative paths are resolved from here.
         self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
         # ── Load .env file (won't override existing env vars) ──
-        #dotenv_path = os.path.join(self.BASE_DIR, ".env")
         dotenv_path = str(PROJECT_ROOT / ".env")
         self._dotenv_loaded = _load_dotenv(dotenv_path)
         self._dotenv_path = dotenv_path if os.path.isfile(dotenv_path) else None
@@ -274,7 +250,7 @@ class ButterClawConfig:
             str(PROJECT_ROOT / "butterclaw.db"),
         )
 
-        # New v0.9.2 Fleet Layer DB
+        # v0.9.2 Fleet Layer DB
         self.FLEET_DB_PATH = _env_str(
             "FLEET_DB_PATH",
             str(PROJECT_ROOT / "fleet.db"),
@@ -338,21 +314,21 @@ class ButterClawConfig:
         self.INSTANCE_ID = _env_str("INSTANCE_ID", "butterclaw-local")
 
         # ── R3 — Memory Watchdog ──────────────────────────────────────────────
-        # Controls the maturation fallback thread in memory_engine.py.
-        # All three values mirror the _MemoryCfg dataclass defaults but are
-        # exposed here so operators can tune them via env vars without touching
-        # source code.  memory_engine.py reads _cfg (its own dataclass) at
-        # module load time; these cfg fields are what server.py passes through
-        # if it ever needs to override the defaults at startup.
-        self.MEMORY_WATCHDOG_ENABLED            = _env_bool(
+        self.MEMORY_WATCHDOG_ENABLED = _env_bool(
             "MEMORY_WATCHDOG_ENABLED", True
         )
-        self.MEMORY_MATURATION_FALLBACK_HOURS   = _env_float(
+        self.MEMORY_MATURATION_FALLBACK_HOURS = _env_float(
             "MEMORY_MATURATION_FALLBACK_HOURS", 6.0
         )
         self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC = _env_float(
             "MEMORY_WATCHDOG_CHECK_INTERVAL_SEC", 300.0
         )
+
+        # ── v0.9.3 — SkillGuard Supply-Chain Defense (Gate M5 / M10) ──────────
+        default_skill_root = "/data/skills" if _IN_DOCKER_DATA else str(PROJECT_ROOT / "skills")
+        self.SKILL_ROOT = _env_str("SKILL_ROOT", default_skill_root)
+        self.SKILL_RISK_THRESHOLD = _env_int("SKILL_RISK_THRESHOLD", 25)
+        self.SKILL_STRICT_TOCTOU = _env_bool("SKILL_STRICT_TOCTOU", True)
 
         # ── Validate ──
         self._validate()
@@ -388,6 +364,13 @@ class ButterClawConfig:
                 f"(must be 0-100)"
             )
 
+        # SkillGuard risk threshold
+        if self.SKILL_RISK_THRESHOLD < 1 or self.SKILL_RISK_THRESHOLD > 100:
+            errors.append(
+                f"Invalid skill risk threshold: {self.SKILL_RISK_THRESHOLD} "
+                f"(must be 1-100)"
+            )
+
         # MCP transport
         if self.MCP_TRANSPORT not in ("stdio", "sse"):
             errors.append(
@@ -410,7 +393,7 @@ class ButterClawConfig:
         ]:
             if val < 1:
                 errors.append(f"Invalid rate limit {name}: {val} (must be >= 1)")
-            
+
             # Floor check to prevent Watcher starvation
             if name == "AUTH_RATE_INFRASTRUCTURE" and val < 500:
                 logger.warning(
@@ -480,11 +463,6 @@ class ButterClawConfig:
         """
         Export config as dict for /api/config endpoint.
         Redacts secrets by default — safe for API responses.
-
-        Redacted fields:
-          - MCP SSE token (truncated)
-          - MCP SSE URL (truncated if contains token-like paths)
-          - Google API Key
         """
         d = {
             "version": CONFIG_VERSION,
@@ -551,6 +529,11 @@ class ButterClawConfig:
                 "fallback_hours":       self.MEMORY_MATURATION_FALLBACK_HOURS,
                 "check_interval_sec":   self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC,
             },
+            "skill_guard": {                                # v0.9.3 Gate M5/M10
+                "skill_root":           self.SKILL_ROOT,
+                "risk_threshold":       self.SKILL_RISK_THRESHOLD,
+                "strict_toctou":        self.SKILL_STRICT_TOCTOU,
+            },
         }
         return d
 
@@ -594,6 +577,10 @@ class ButterClawConfig:
             "MEMORY_WATCHDOG_ENABLED":            self.MEMORY_WATCHDOG_ENABLED,
             "MEMORY_MATURATION_FALLBACK_HOURS":   self.MEMORY_MATURATION_FALLBACK_HOURS,
             "MEMORY_WATCHDOG_CHECK_INTERVAL_SEC": self.MEMORY_WATCHDOG_CHECK_INTERVAL_SEC,
+            # v0.9.3 — SkillGuard
+            "SKILL_ROOT":                         self.SKILL_ROOT,
+            "SKILL_RISK_THRESHOLD":               self.SKILL_RISK_THRESHOLD,
+            "SKILL_STRICT_TOCTOU":                self.SKILL_STRICT_TOCTOU,
         }
 
     # ─────────────────────────────────────────
@@ -648,8 +635,8 @@ if __name__ == "__main__":
           repr(cfg))
 
     # ── Test 2: Version matches ──
-    _test(2, "Config version is 0.9.2",
-          CONFIG_VERSION == "0.9.2",
+    _test(2, "Config version is 0.9.3",
+          CONFIG_VERSION == "0.9.3",
           f"CONFIG_VERSION = {CONFIG_VERSION}")
 
     # ── Test 3: BASE_DIR is a real directory ──
@@ -714,7 +701,8 @@ if __name__ == "__main__":
            "brain" in d and
            "mcp" in d and
            "auth" in d and
-           "alerts" in d,
+           "alerts" in d and
+           "skill_guard" in d,
            f"Keys: {list(d.keys())}")
 
     # ── Test 13: to_dict() redacts secrets ──
@@ -729,14 +717,16 @@ if __name__ == "__main__":
     flat = cfg.to_flat_dict()
     expected_keys = [
         "BASE_DIR", "DB_PATH", "MCP_SCRIPT", "HOST", "PORT", "DEBUG",
-        "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL", 
+        "BASE_URL", "COOKIE_SECURE", "CORS_ORIGINS", "OLLAMA_BASE_URL",
         "OLLAMA_CHAT_PATH", "MODEL_NAME", "GOOGLE_API_KEY",
         "CONFIDENCE_THRESHOLD", "DRY_RUN", "MCP_TRANSPORT", "MCP_SSE_URL",
-        "MCP_SSE_TOKEN", "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN", 
-        "AUTH_RATE_OPERATOR", "AUTH_RATE_VIEWER", "SESSION_TTL", 
-        "ALERT_DELIVERY_TIMEOUT", "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF", 
-        "AUTH_FAILURE_THRESHOLD", "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL", 
-        "INSTANCE_ID",
+        "MCP_SSE_TOKEN", "AUTH_RATE_INFRASTRUCTURE", "AUTH_RATE_ADMIN",
+        "AUTH_RATE_OPERATOR", "AUTH_RATE_VIEWER", "SESSION_TTL",
+        "ALERT_DELIVERY_TIMEOUT", "ALERT_MAX_RETRIES", "ALERT_RETRY_BACKOFF",
+        "AUTH_FAILURE_THRESHOLD", "AUTH_FAILURE_WINDOW", "OAUTH_STATE_TTL",
+        "INSTANCE_ID", "MEMORY_WATCHDOG_ENABLED",
+        "MEMORY_MATURATION_FALLBACK_HOURS", "MEMORY_WATCHDOG_CHECK_INTERVAL_SEC",
+        "SKILL_ROOT", "SKILL_RISK_THRESHOLD", "SKILL_STRICT_TOCTOU",
     ]
     missing = [k for k in expected_keys if k not in flat]
     _test(14, f"to_flat_dict() includes all {len(expected_keys)} config fields",
@@ -758,7 +748,6 @@ if __name__ == "__main__":
             f.write("INVALID LINE WITHOUT EQUALS\n")
             f.write("=empty_key\n")
 
-        # Clear any existing test vars
         for k in list(os.environ.keys()):
             if k.startswith("BUTTERCLAW_TEST_"):
                 del os.environ[k]
@@ -778,7 +767,6 @@ if __name__ == "__main__":
                all_ok,
                f"Results: {results}")
 
-        # Cleanup test vars
         for k in list(os.environ.keys()):
             if k.startswith("BUTTERCLAW_TEST_"):
                 del os.environ[k]
@@ -822,7 +810,6 @@ if __name__ == "__main__":
                raised,
                "ValueError raised as expected" if raised else "No error raised!")
     finally:
-        # Restore original
         if cfg.PORT != 99999:
             os.environ["BUTTERCLAW_PORT"] = str(cfg.PORT)
         else:
@@ -879,6 +866,29 @@ if __name__ == "__main__":
     _test(21, "config_source present in to_dict()",
            "dotenv_loaded" in cs and "dotenv_path" in cs and "env_override_active" in cs,
            f"config_source = {cs}")
+
+    # ── Test 22: SkillGuard config valid and exported ──
+    sg = d.get("skill_guard", {})
+    _test(22, "SkillGuard config valid (threshold 1-100) and in to_dict()",
+           1 <= cfg.SKILL_RISK_THRESHOLD <= 100 and
+           isinstance(cfg.SKILL_STRICT_TOCTOU, bool) and
+           "skill_root" in sg and "risk_threshold" in sg,
+           f"skill_guard = {sg}")
+
+    # ── Test 23: Invalid SkillGuard risk threshold raises ValueError ──
+    try:
+        os.environ["BUTTERCLAW_SKILL_RISK_THRESHOLD"] = "150"
+        raised = False
+        try:
+            test_cfg = ButterClawConfig()
+        except ValueError:
+            raised = True
+        _test(23, "Invalid SKILL_RISK_THRESHOLD (150) raises ValueError",
+               raised,
+               "ValueError raised as expected" if raised else "No error raised!")
+    finally:
+        if "BUTTERCLAW_SKILL_RISK_THRESHOLD" in os.environ:
+            del os.environ["BUTTERCLAW_SKILL_RISK_THRESHOLD"]
 
     # ── Summary ──
     print()

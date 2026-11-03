@@ -1,6 +1,6 @@
-# 🏗️ ButterClaw Architecture (v0.9.2)
+# 🏗️ ButterClaw Architecture (v0.9.3)
 
-ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fully local, event-driven behavioral analysis pipeline for autonomous AI agents. It intercepts raw telemetry and evaluates it through multiple deterministic and probabilistic layers before allowing any kinetic execution.
+ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fully local, event-driven behavioral analysis and supply-chain enforcement pipeline for autonomous AI agents. It attests modular agent skills before disclosure and intercepts raw runtime telemetry through multiple deterministic and probabilistic layers before allowing any kinetic execution.
 
 ---
 
@@ -8,16 +8,20 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│  Fleet Layer (v0.9.0)                           │
+│  SkillGuard Supply-Chain Layer (v0.9.3)         │
+│  SKILL.md AST/stego scan, SHA-256 Merkle roots, │
+│  Gate M5 anti-TOCTOU, Gate M10 path containment │
+├─────────────────────────────────────────────────┤
+│  Fleet Layer & Memory Watchdog (v0.9.0–v0.9.2)  │
 │  5th hemisphere, fleet DB, trust graph,         │
-│  correlation + collusion detection, fleet API   │
+│  correlation + collusion, R3 maturation ticker  │
 ├─────────────────────────────────────────────────┤
 │  Spatial SOC & Unified Memory Substrate (v0.8.0)│
 │  4-hemisphere cognition, dual memory engine,    │
 │  spatial telemetry gateway, autoresearch loop   │
 ├─────────────────────────────────────────────────┤
 │  Deployment Layer (v0.7.2+)                     │
-│  setup_wizard.py, Docker, systemd, nginx        │
+│  setup_wizard.py, Docker (:ro mounts), nginx    │
 ├─────────────────────────────────────────────────┤
 │  Physical Firewall & Capability Matrix (v0.7.0) │
 │  capabilities.json, mcp_stdio_transport.json    │
@@ -37,8 +41,6 @@ ButterClaw is an **LLM-in-the-middle Security Operations Center (SOC)** — a fu
 │  Core (v0.1–v0.4)                               │
 │  Watcher, ButterVault, Dashboard, Ollama        │
 └─────────────────────────────────────────────────┘
-
-
 ```
 
 ---
@@ -51,44 +53,72 @@ flowchart TD
     B -->|retry_queue.json on failure| B
     B -->|Bearer token, /api/analyze| C[server.py — Flask API]
 
-    C --> PRE[pre_brain policy gate\nDRIFT scope: payload / threat_type / source_ip]
+    C --> PRE["pre_brain policy gate\nDRIFT scope: payload / threat_type / source_ip"]
     PRE -->|block| DENY[403 — Blocked by Policy]
-    PRE -->|pass| D[Guardian Brain\nask_guardian_agent]
+    PRE -->|pass| D["Guardian Brain\nask_guardian_agent"]
 
     D -->|local| OL[Ollama LLM]
-    D -->|fallback| RM[Remote LLM API\nDomain-Gated]
+    D -->|fallback| RM["Remote LLM API\nDomain-Gated"]
     OL --> VERDICT[verdict / confidence / chain]
     RM --> VERDICT
 
-    VERDICT --> POST[post_brain policy gate\nDRIFT scope: verdict / confidence / reasoning]
+    VERDICT --> POST["post_brain policy gate\nDRIFT scope: verdict / confidence / reasoning"]
     POST -->|override| VERDICT
     POST -->|pass| SSE[SSE Broadcast → Browser UI]
 
-    SSE --> CHAIN{has_chain AND\nPARANOIA ≥ 2?}
-    CHAIN -->|no| ALERT[Alert Dispatcher\nWebhook · Discord · Telegram · ntfy · SMTP · Gotify]
-    CHAIN -->|yes| CE[ChainExecutor\nmax 10 steps · 60s timeout]
+    SSE --> CHAIN{"has_chain AND\nPARANOIA >= 2?"}
+    CHAIN -->|no| ALERT["Alert Dispatcher\nWebhook · Discord · Telegram · ntfy · SMTP · Gotify"]
+    CHAIN -->|yes| CE["ChainExecutor\nmax 10 steps · 60s timeout"]
 
-    CE --> CAPMATRIX[Capability Matrix Check\nAgent Profile vs 4-Tier RBAC]
+    CE --> CAPMATRIX["Capability Matrix Check\nAgent Profile vs 4-Tier RBAC"]
     CAPMATRIX -->|fail| CE
-    CAPMATRIX -->|pass| PRETOOL[pre_tool policy gate\nDRIFT scope: tool_name / tool_args / chain_step]
+    CAPMATRIX -->|pass| PRETOOL["pre_tool policy gate\nDRIFT scope: tool_name / tool_args / chain_step"]
     
     PRETOOL -->|skip_tool| CE
-    PRETOOL -->|pass| MCP[MCP Tool Call\nstdio or SSE transport]
+    PRETOOL -->|pass| MCP["MCP Tool Call (7 Armed Tools)\nGate M5/M10 SkillGuard + stdio or SSE transport"]
     MCP -->|result logged to mcp_events| CE
 
     CE --> P3{Paranoia Level 3?}
-    P3 -->|yes| GIBSON[Gibson Kill Switch\nbutter_keys — vault wipe + auth destroy]
+    P3 -->|yes| GIBSON["Gibson Kill Switch\nbutter_keys — vault wipe + auth destroy"]
     P3 -->|no| ALERT
 
-    VERDICT -->|30s delay| AUDIT[Auditor\nsecond LLM pass — false-positive check]
-    AUDIT -->|result logged| LEDGER[Event Ledger\nmcp_events SQLite]
-
-
+    VERDICT -->|30s delay| AUDIT["Auditor\nsecond LLM pass — false-positive check"]
+    AUDIT -->|result logged| LEDGER["Event Ledger\nmcp_events SQLite"]
 ```
 
 ---
 
-## Spatial Telemetry & Memory Data Flow (v0.8.0)
+## SkillGuard Supply-Chain & Anti-TOCTOU Data Flow (v0.9.3)
+
+Before an agent can disclose Stage 2 (`SKILL.md` instructions) or Stage 3 (`references/` and `scripts/`) content — or invoke any skill-bound MCP tool — `SkillGuard` enforces pre-flight static/AST attestation and live SHA-256 Merkle-root verification against `butterclaw.db`.
+
+```mermaid
+flowchart TD
+    PKG["SKILL.md Package Directory\n(SKILL.md · references/ · scripts/)"] --> M10A["Gate M10: Path Containment\nResolve realpath · reject symlinks & '..'"]
+    M10A -->|violation| REJ[Reject Path Containment Error]
+    M10A -->|contained| SCAN["Pre-Flight Static Audit\nFrontmatter · Unicode stego · HTML comments · Python AST"]
+    SCAN --> HASH["Compute Per-File SHA-256 Digests\n& Canonical Package Merkle Root"]
+    HASH --> SCORE{"risk_score >= threshold\n(default 25%)?"}
+    SCORE -->|yes| QUAR["Write status=QUARANTINED\nto skill_attestations (butterclaw.db)"]
+    SCORE -->|no| APPR["Write status=APPROVED\nto skill_attestations (butterclaw.db)"]
+
+    subgraph RUNTIME ["Runtime Disclosure & Tool Execution (/data/skills:ro)"]
+        REQ[Stage 2/3 Load or MCP Tool Call] --> M10B[Gate M10: Canonical Root Check]
+        M10B --> M5["Gate M5: verify_runtime_integrity()\nRecompute live SHA-256 Merkle Root on disk"]
+        M5 --> MATCH{"status == APPROVED\nAND live_merkle == db_merkle?"}
+        MATCH -->|no: QUARANTINED or TOCTOU drift| KINETIC["BLOCK + Taint Session\nKinetic Fallback (execute_gibson_kill + rotate_keys)"]
+        MATCH -->|yes| CAP["Verify Declared Skill Capabilities\n(allowed_tools · allow_network · allow_env)"]
+        CAP -->|unauthorized| KINETIC
+        CAP -->|authorized| EXEC[Allow Disclosure / Execute MCP Tool]
+    end
+
+    QUAR -.-> M5
+    APPR -.-> M5
+```
+
+---
+
+## Spatial Telemetry & Memory Data Flow (v0.8.0–v0.9.2)
 
 A second, independent data path runs alongside the log-based flow above. It never
 touches `ask_guardian_agent()` or the DRIFT policy engine — spatial verdicts are
@@ -97,17 +127,17 @@ termination directly, without an LLM call or a Paranoia Dial check in the loop.
 
 ```mermaid
 flowchart TD
-    AG[AI Agent] -->|coordinates, keystrokes| GW["POST /api/spatial/telemetry\n(memory_api.py + spatial_telemetry_gateway)"]
+    AG[AI Agent] -->|coordinates, keystrokes| GW["POST /api/spatial/telemetry\n(spatial_telemetry_gateway)"]
     GW --> REG[Register agent_id / session_id\nin SQLite topology]
     REG --> EVAL[Memory Engine\nevaluate_spatial_intent]
 
-    EVAL --> FAST{Cold Memory\nsignature match?}
+    EVAL --> FAST{"Cold Memory\nsignature match?"}
     FAST -->|"yes, O(1)"| BLOCK[BLOCK verdict]
-    FAST -->|no| SLOW[Spatial Heuristics\nkinetic velocity · spatial jitter · entropy]
-    SLOW -->|threat_score ≥ 0.75| BLOCK
+    FAST -->|no| SLOW["Spatial Heuristics\nkinetic velocity · spatial jitter · entropy"]
+    SLOW -->|threat_score >= 0.75| BLOCK
     SLOW -->|clean| ALLOW[ALLOW verdict]
 
-    ALLOW --> ING[Event Ingester\nRAM queue → batched SQLite write]
+    ALLOW --> ING["Event Ingester\nRAM queue → batched SQLite write"]
     BLOCK --> ING
 
     BLOCK --> STORE["memory_engine.store()\nthreat_type=Spatial Telemetry"]
@@ -115,15 +145,16 @@ flowchart TD
     STORE -->|repeats 3x, same session| CRYSTAL[Live Crystallization]
     CRYSTAL --> SIGDB
 
-    BLOCK --> TAINT[Topology Manager\napply_kinetic_taint — recursive CTE]
-    TAINT -->|quarantine agent + child PIDs| WATCH[Watcher Daemon\nsuspend → kill via psutil]
-    TAINT --> EVID[Preserve Evidence\nRAM disk → /data/evidence_locker]
+    BLOCK --> TAINT["Topology Manager\napply_kinetic_taint — recursive CTE"]
+    TAINT -->|quarantine agent + child PIDs| WATCH["Watcher Daemon\nsuspend → kill via psutil"]
+    TAINT --> EVID["Preserve Evidence\nRAM disk → /data/evidence_locker"]
 
-    subgraph OFFLINE [Offline / Idle-Triggered]
-        DREAMER[Dreamer Daemon\nN-gram attractor synthesis\nfrom tainted sessions] --> SIGDB[(memory_signatures)]
-        ARCHIVER[Archiver Daemon\nretention + RAM sweep] --> EPISODIC
-        DREAM[Dream Engine — Dream Weaver\nidle ≥ 15 min: maturation tick\n+ optional REM synthesis] --> EPISODIC
-        LOOP[Loop Engine — Loop Proposer\nevery 6 hrs: replay mcp_events,\nscore, commit/revert] --> SIGDB
+    subgraph OFFLINE ["Offline / Idle / Watchdog Lifecycle"]
+        DREAMER["Dreamer Daemon\nN-gram attractor synthesis\nfrom tainted sessions"] --> SIGDB[(memory_signatures)]
+        ARCHIVER["Archiver Daemon\nretention + RAM sweep"] --> EPISODIC
+        DREAM["Dream Engine — Dream Weaver\nidle >= 15 min: maturation tick\n+ optional REM synthesis"] --> EPISODIC
+        WATCHDOG["Memory Watchdog (v0.9.2 R3)\n6h fallback maturation ticker"] --> EPISODIC
+        LOOP["Loop Engine — Loop Proposer\nevery 6 hrs: replay mcp_events,\nscore, commit/revert"] --> SIGDB
         LOOP -->|policy artifact type| POLDB[(policies)]
     end
 
@@ -136,46 +167,50 @@ flowchart TD
 
 | Component | File | Role | NOT Responsible For | Failure Mode |
 | --- | --- | --- | --- | --- |
-| **Config** | `src/butterclaw/config.py` | Singleton env-driven configuration, 26 fields across 9 categories | Runtime decisions; validation logic | Missing required keys → `ConfigError` at boot, not at runtime |
-| **Server** | `src/butterclaw/server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, SSE broadcaster. Uses SQLite WAL mode for concurrency. As of v0.8.0, also constructs and starts the Dream Engine and Loop Engine, registers `memory_api.py`'s routes, and resolves the Guardian Brain / Auditor persona preamble through `memory_engine.get_prompt_override()`. | Log ingestion; credential storage; policy authoring; memory tier storage (delegated to `memory_engine.py`) | Ollama offline → falls back to remote LLM if configured; no fallback blocks analysis |
+| **Config** | `src/butterclaw/config.py` | Singleton env-driven configuration, 36 exported fields across 11 categories (including R3 Memory Watchdog and v0.9.3 SkillGuard), POSIX-scoped `_IN_DOCKER_DATA` volume resolution, 23 boot self-tests | Runtime decisions; policy/verdict evaluation | Invalid config values → fail-fast `ValueError` at import time, not at runtime |
+| **Server** | `src/butterclaw/server.py` | Flask core — Guardian Brain, ChainExecutor, Auditor, `MCPProcessManager` / `MCPSSEClient`, SSE broadcaster, SkillGuard API (`/api/skills*`), static UI/favicon serving. Uses SQLite WAL mode for concurrency. Constructs and starts the Dream Engine, Loop Engine, Memory Watchdog, and Fleet Layer; registers all **80 API routes** across submodules; resolves Guardian Brain / Auditor persona preambles through `memory_engine.get_prompt_override()`. | Log ingestion; credential encryption; policy authoring; memory tier storage (delegated to `memory_engine.py`); static AST skill parsing (delegated to `skill_guard.py`) | Ollama offline → falls back to remote LLM if configured; missing optional modules degrade cleanly (`503` on disabled subsystem routes) |
+| **SkillGuard** (v0.9.3) | `src/butterclaw/skill_guard.py` | Pre-flight `SKILL.md` static auditor (frontmatter capabilities, zero-width/tag Unicode stego, HTML comments, Python AST inspection), SHA-256 Merkle-root SQLite attestation (`skill_attestations`), Gate M5 runtime anti-TOCTOU verification, Gate M10 path containment | Executing MCP tools directly; LLM semantic inference | Unattested, `QUARANTINED`, path-escaped, or Merkle-drifted package → hard-blocks Stage 2/3 load or tool call |
 | **Auth** | `src/butterclaw/auth.py` | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed session tokens, rate limiting, 7 routes | Credential encryption; log ingestion; policy evaluation | Gibson destroys all key hashes + invalidates session cache simultaneously |
-| **Policy Engine** | `src/butterclaw/policy_engine.py` | DRIFT policy runtime — pre_brain / post_brain / pre_tool scopes. Manages Hit Counters via non-blocking `queue.Queue` background worker. | Making trust decisions; storing credentials; LLM inference | Misconfigured allow-all rule logs only — never crashes; policy errors surface in audit log |
-| **Alert Dispatcher** | `src/butterclaw/alert_dispatcher.py` | Multi-channel alert fanout bounded by a `ThreadPoolExecutor` (max 10 workers). | Determining threat severity; storing history; rate limiting per channel | Per-channel failures are independent — a broken webhook never blocks the verdict pipeline |
-| **ButterVault** | `src/butterclaw/buttervault.py` | Fernet AES-128-CBC+HMAC-SHA256 encrypted credential store, OS keyring master key, Gibson | Policy evaluation; session management; alert dispatch | Master key absent from keyring → vault operations error; server degrades gracefully |
-| **MCP Client** | `src/butterclaw/butterclaw_mcp.py` | MCP dual-transport abstraction — `MCPProcessManager` (stdio) + `MCPSSEClient` (remote SSE) | Tool implementation; credential management; policy decisions | MCP process crash → ChainExecutor catches per-step; chain aborts with partial results logged |
-| **MCP Transport** | `src/butterclaw/mcp_transport.py` | Low-level MCP transport primitives enforcing a strict byte-level physical memory boundary on incoming payloads. | — | Payload exceeds byte limit → active pipe draining to prevent fragment poisoning |
-| **Setup Wizard** | `src/butterclaw/setup_wizard.py` | Zero-dependency interactive Python configuration utility for environment bootstrapping. | Runtime execution | — |
+| **Policy Engine** | `src/butterclaw/policy_engine.py` | DRIFT policy runtime — `pre_brain` / `post_brain` / `pre_tool` scopes, lenient Arsenal loader (`collusion_role` tags), Capability Matrix check. Manages Hit Counters via non-blocking `queue.Queue` background worker. | Making trust decisions; storing credentials; LLM inference | Misconfigured allow-all rule logs only — never crashes; malformed regex skipped with warning (R-04); policy errors surface in audit log |
+| **Alert Dispatcher** | `src/butterclaw/alert_dispatcher.py` | Multi-channel alert fanout bounded by a `ThreadPoolExecutor` (max 10 workers). | Determining threat severity; rate limiting per API key | Per-channel failures are independent — a broken webhook never blocks the verdict pipeline |
+| **ButterVault** | `src/butterclaw/buttervault.py` | Fernet AES-128-CBC+HMAC-SHA256 encrypted credential store, OS keyring master key, active remote token revocation + Gibson | Policy evaluation; session management; alert dispatch | Master key absent from keyring → vault operations error; server degrades gracefully |
+| **MCP Execution Server** | `src/butterclaw/butterclaw_mcp.py` | JSON-RPC 2.0 MCP execution server exposing **7 armed tools** (`execute_gibson_kill`, `rotate_keys`, `system_status`, `scan_port`, `log_event`, plus 2 SkillGuard progressive-disclosure/verification tools). Enforces Gate M5 Merkle checks, capability allowlists, and session taint escalation. | Credential management; HTTP routing | MCP process crash → ChainExecutor catches per-step; unauthorized or TOCTOU-tampered skill call blocks execution, taints session, and fires kinetic fallback |
+| **MCP Transport** | `src/butterclaw/mcp_transport.py` | Low-level MCP transport primitives enforcing a strict byte-level physical memory boundary on incoming payloads (`StdioTransport` + `SSETransport`). | — | Payload exceeds byte limit → active pipe draining to prevent fragment poisoning |
+| **Setup Wizard & CLI** | `src/butterclaw/setup_wizard.py` | Zero-dependency 10-section interactive Python configuration utility plus SkillGuard CLI (`--audit-skill`, `--list-skills`, `--strict`) with Windows `_guard_windows_docker_path` host protection. | Daemon runtime execution | Refuses host runs targeting container `/data` paths on Windows to prevent drive pollution |
 | **Watcher** | `src/butterclaw/watcher.py` | Log tail daemon — monitors `openclaw_gateway.log`, sanitizes lines, POSTs to `/api/analyze` | Parsing log structure; interpreting semantics; auth decisions | Server offline → enqueues up to 100 entries in `retry_queue.json` (persisted on SIGTERM); singleton enforced via PID lock |
-| **TUI Dashboard** | `src/butterclaw/tui_dashboard.py` | Read-only terminal operational view, launched via cross-platform harnesses (`dash.sh`, `dash.bat`). | Any write or control operations; auth enforcement | Crash does not affect server — read-only |
-| **nginx** | `nginx/` | TLS termination, reverse proxy — the only internet-facing component | Auth; policy; any application logic | Trust boundary: all inbound traffic is untrusted until auth middleware in server.py accepts it |
-| **Memory Engine** (v0.8.0) | `src/butterclaw/memory_engine.py` | Unified Deep (HOT/WARM/COLD episodic + semantic) and Surface (spatial telemetry, Cold Memory signatures) memory substrate. `store()`/`retrieve_context()` inject read-only recalled context into the Guardian Brain prompt; `evaluate_spatial_intent()` gates every spatial telemetry event. | Kinetic action of any kind; LLM inference; policy rule storage | `memory_signatures` table missing → Cold Memory fast-path logs and continues; deep tier is unaffected |
+| **TUI Dashboard** | `src/butterclaw/tui_dashboard.py` | Read-only, resize-proof (`_fit_line` ANSI truncation) terminal operational view merging Semantic, Spatial, and SkillGuard Gate M5 events via container-bound harnesses (`dash.sh`, `dash.bat`). | Any write or control operations; auth enforcement | Crash or detach (`Ctrl+C`) restores cursor/wrap state and does not affect background daemons |
+| **nginx** | `nginx/` | TLS termination, reverse proxy — the only internet-facing component | Auth; policy; any application logic | Trust boundary: all inbound traffic is untrusted until auth middleware in `server.py` accepts it |
+| **Memory Engine & Watchdog** (v0.8–v0.9.2) | `src/butterclaw/memory_engine.py` | Unified Deep (HOT/WARM/COLD episodic + semantic) and Surface (spatial telemetry, Cold Memory signatures) memory substrate, plus R3 `_maturation_fallback_loop` watchdog with `_maturation_tick_lock` mutex. `store()`/`retrieve_context()` inject read-only recalled context into the Guardian Brain prompt; `evaluate_spatial_intent()` gates every spatial telemetry event. | Kinetic action of any kind; LLM inference; policy rule storage | `memory_signatures` table missing → Cold Memory fast-path logs and continues; if `dream_engine` stalls > 6h, R3 watchdog fires maturation tick independently without double-decay |
 | **Dream Engine** (v0.8.0) | `src/butterclaw/dream_engine.py` | Idle-triggered (≥ 15 min) consolidation daemon — the "Dream Weaver" hemisphere. Runs `run_maturation_tick()` every cycle and optionally synthesizes speculative threat scenarios from the semantic graph via an injected `llm_caller`. | Any kinetic action — `DREAM_DRY_RUN=True` is a hardcoded, un-overridable constant (I-13-mem) | LLM unreachable → consolidation still runs; scenario synthesis is silently skipped, logged |
 | **Loop Engine** (v0.8.0) | `src/butterclaw/loop_engine.py` | Karpathy-style autoresearch loop — the "Loop Proposer" hemisphere. Proposes one signature or policy change, replays the last N `mcp_events` through a side-effect-free shadow evaluator, scores baseline vs. candidate, commits or reverts. | Writing to `.py` files (I-15-mem, enforced at runtime via `_reject_python_targets`); auto-approving prompt changes | `policy_engine.py` import failure takes `loop_engine.py` — and `server.py`'s boot — down with it (unguarded, matching every other v0.8.0 module import) |
-| **Memory API** (v0.8.0) | `src/butterclaw/memory_api.py` | 12 Flask routes for memory/dream/loop management, registered via `register_memory_routes(app, dream_engine, loop_engine)` | Any write to `policies` or `memory_signatures` outside the Loop Engine's own scoring cycle | — |
+| **Memory API** (v0.8–v0.9.2) | `src/butterclaw/memory_api.py` | 13 Flask routes for memory/dream/loop management and R3 maturation watchdog status (`GET /api/memory/status`), registered via `register_memory_routes(app, dream_engine, loop_engine)` | Any write to `policies` or `memory_signatures` outside the Loop Engine's own scoring cycle | — |
 | **Event Ingester** (v0.8.0) | `src/butterclaw/event_ingester.py` | High-speed asynchronous batch writer — buffers spatial telemetry in a bounded RAM queue (max 1000), flushes to SQLite in transactions of 50 or every 0.5s | Evaluating threat — pure I/O, never blocks the gateway | Queue full → telemetry dropped, logged; never raises back to the caller |
 | **Topology Manager** (v0.8.0) | `src/butterclaw/topology_manager.py` | OS-level process lineage tracking via a recursive SQLite CTE. Propagates taint down an agent's full process tree; preserves screenshot evidence from the hot RAM disk | Evaluating threat; deciding whether to kill — only executes taint/evidence steps already decided | — |
 | **Watcher Daemon** (v0.8.0) | `src/butterclaw/watcher_daemon.py` | The kinetic actuator for spatial verdicts — suspends then kills a process tree via `psutil`, including OS-level children never tracked in ButterClaw's own SQLite topology (e.g. a bare `bash`/`curl` spawned outside the agent's registered PID) | Evaluating threat; identifying which PIDs to target | Orchestrator's own PID is cached at init and hardcoded-refused as a kill target, regardless of what the topology query returns |
 | **Dreamer Daemon** (v0.8.0) | `src/butterclaw/dreamer_daemon.py` | Offline, always-on (2s poll) consolidation loop — distills tainted/ended session trajectories into Cold Memory attractors via sliding N-grams and terminal-cascade slicing. Distinct from `dream_engine.py`: no idle detection, no LLM call, surface-tier only. | Idle detection; LLM calls; live (same-session) crystallization | — |
 | **Archiver Daemon** (v0.8.0) | `src/butterclaw/archiver_daemon.py` | Retention + RAM-disk sweeping — secures tainted-session screenshots to `/data/evidence_locker` before the 60-second volatile purge clears them, and monthly-archives + incrementally vacuums aged telemetry | — | — |
 | **TUI Execution Harness** (v0.8.0) | `src/butterclaw/tui_execution_harness.py` | Pseudo-TTY wrapper that bootstraps and monitors an agent process, registering it into the SQLite topology and routing its spatial actions through the Memory Engine | — | Graceful `cleanup()` on exit or interrupt — surgically kills the orphaned child and marks the session `TERMINATED`, no zombie PIDs |
+| **Fleet Layer** (v0.9.0) | `src/butterclaw/fleet_*.py`, `trust_graph.py`, `correlation_engine.py`, `collusion_detector.py`, `hemisphere_scheduler.py` | Isolated `fleet.db` (8 tables), persistent agent registry (3:1 asymmetric reputation), directed trust graph, spatial/temporal correlation, 5-role collusion detection, 5th LLM hemisphere (`FleetSentinel`, temp `0.5`), priority scheduler + circuit breaker, 14 `/api/fleet/*` routes | Direct process termination (escalates via Guardian Brain per I-04-fleet); co-transacting `butterclaw.db` (I-07-fleet) | `fleet.db` unavailable at boot → fatal startup stop (I-01-fleet); consecutive LLM errors open scheduler circuit breaker while exempting Guardian Brain |
 
 ---
 
 ## Trust Boundaries & Security Model
 
-ButterClaw operates across **seven trust zones**. Components communicate across zone boundaries only through defined, authenticated interfaces.
+ButterClaw operates across **eleven trust zones**. Components communicate across zone boundaries only through defined, authenticated, or cryptographically attested interfaces.
 
 | Zone | Components | Trust Level | Notes |
 | --- | --- | --- | --- |
 | **Internet-Facing** | nginx | Untrusted | TLS termination only; all traffic treated as adversarial until validated by auth middleware |
-| **Localhost / Watcher** | watcher.py → server.py | Semi-trusted (localhost only) | Watcher communicates over `127.0.0.1:5000` without per-request Bearer auth (see D-03). `/api/analyze` **must not** be exposed on external interfaces |
+| **Localhost / Watcher** | watcher.py → server.py | Semi-trusted (localhost only) | Watcher communicates over local bridge (see D-03; authenticated via `BUTTERCLAW_API_KEY` `infrastructure` role in v0.6.3.1+). `/api/analyze` **must not** be exposed on external interfaces without auth |
 | **LLM Output** | Ollama / Remote LLM API response | Untrusted | Brain output is treated as untrusted data. `post_brain` policy gates are the enforcement point before any verdict-driven action is taken |
-| **MCP Tools** | MCPProcessManager (stdio) / MCPSSEClient (remote) | Untrusted | Each tool call passes through a `pre_tool` policy gate and Capability Matrix check. ChainExecutor enforces step limits. |
+| **MCP Tools** | MCPProcessManager (stdio) / MCPSSEClient (remote) | Untrusted | Each tool call passes through a `pre_tool` policy gate, Capability Matrix check, and Gate M5/M10 checks on skill-bound invocations. ChainExecutor enforces step limits. |
 | **Physical Transport** | mcp_transport.py | Hardware Level | Enforces strict byte-size limits and UTF-8 validation before payloads hit the JSON parser, preventing buffer poisoning. |
-| **Credential Plane** | buttervault.py + OS keyring | Trusted | Master key never touches disk or environment variables. Only ButterVault and session key derivation in auth.py access the keyring |
+| **Skill Supply-Chain Plane** (v0.9.3) | `/data/skills:ro` + `skill_guard.py` | Untrusted until attested, immutable at runtime | Mounted read-only (`:ro`) inside Docker (`Errno 30` on write attempts). Packages must pass pre-flight AST/stego scan (`APPROVED`) and pass live SHA-256 Merkle verification (Gate M5) inside `SKILL_ROOT` (Gate M10) on every Stage 2/3 load and tool call |
+| **Credential Plane** | buttervault.py + OS keyring | Trusted | Master key never touches disk or environment variables. Only ButterVault and session key derivation in `auth.py` access the keyring |
 | **Policy Plane** | policy_engine.py | Trusted | Policies are configuration, not secrets. They survive Gibson by design. No `eval()`, `exec()`, or dynamic code execution — 15 safe operators only |
 | **Memory Plane** (v0.8.0) | memory_engine.py (deep tier), dream_engine.py | Trusted, read-only enrichment | Never triggers kinetic action directly — Deep Memory context is injected into the Guardian Brain prompt as enrichment only (I-12-mem). Only `sha256(raw_data)` persists; raw payloads never stored (I-10-mem). Dream Engine's `DREAM_DRY_RUN` is a hardcoded constant, not config-overridable, same pattern as Gibson's `DRY_RUN` check (I-13-mem) |
-| **Spatial Telemetry Plane** (v0.8.0) | memory_engine.py (surface tier), topology_manager.py, watcher_daemon.py | Untrusted input, trusted enforcement | Raw agent coordinates/keystrokes are untrusted data. A `BLOCK` verdict from the Memory Engine authorizes Topology Manager + Watcher Daemon to act **directly** — this is a separate, faster kinetic pathway from the Paranoia-Dial-mediated one below (see Four-Hemisphere Reasoning), with no LLM call and no Paranoia Dial check in the loop |
+| **Spatial Telemetry Plane** (v0.8.0) | memory_engine.py (surface tier), topology_manager.py, watcher_daemon.py | Untrusted input, trusted enforcement | Raw agent coordinates/keystrokes are untrusted data. A `BLOCK` verdict from the Memory Engine authorizes Topology Manager + Watcher Daemon to act **directly** — this is a separate, faster kinetic pathway from the Paranoia-Dial-mediated one below (see Five-Hemisphere Reasoning), with no LLM call and no Paranoia Dial check in the loop |
+| **Fleet Plane** (v0.9.0) | `fleet.db` + `fleet_sentinel.py` + `trust_graph.py` | Trusted cross-agent state, untrusted LLM output | Physically isolated SQLite inode (I-07-fleet); `COLLUDING` verdicts escalate through Guardian Brain + DRIFT + Paranoia Dial (I-04-fleet), while quarantine is two-step human-gated (R-06) |
 
 ---
 
@@ -187,7 +222,7 @@ These are properties that must always hold. A code change that violates any inva
 The ButterVault master key exists exclusively in the OS native keyring (`keyring.get_password`). It is never written to disk, environment variables, config files, or log output.
 
 **I-02 — Barrier Always Encrypts**
-All credentials stored in `butterclaw.db` pass through Fernet encryption before being written. The SQLite layer is untrusted — a compromised database file without the master key yields only encrypted ciphertext. Write-Ahead Logging (WAL) ensures concurrent thread safety.
+All credentials stored in `butterclaw.db` pass through Fernet encryption before being written. The SQLite layer is untrusted — a compromised database file without the master key yields only encrypted ciphertext. Write-Ahead Logging (WAL) and `busy_timeout=5000` ensure concurrent thread safety.
 
 **I-03 — Gibson Atomicity**
 The Gibson sequence (`butter_keys`) executes as: (1) overwrite all ciphertext rows with cryptographic garbage using a new random Fernet poison key, (2) call `auth.destroy_all_api_keys()` to delete all HMAC hashes, (3) invalidate the in-memory session signing key cache. If `DRY_RUN` is set, `butter_keys()` returns immediately — this check is hardcoded and **not** config-overridable at runtime.
@@ -215,6 +250,18 @@ Unbounded string buffering is strictly prohibited in local MCP transport. All in
 
 ---
 
+## SkillGuard Supply-Chain Invariants (v0.9.3)
+
+| ID | Invariant |
+| --- | --- |
+| **I-01-skill (Gate M5 Pre-Flight)** | No `SKILL.md` package may disclose Stage 2/3 instructions or execute skill-bound MCP tools without an existing `status='APPROVED'` row in `skill_attestations` (`risk_score < SKILL_RISK_THRESHOLD`). Unattested and `QUARANTINED` skills fail closed. |
+| **I-02-skill (Gate M5 Anti-TOCTOU)** | When `SKILL_STRICT_TOCTOU=true` (default), `SkillGuard.verify_runtime_integrity()` recomputes the live SHA-256 Merkle root across all files in the skill directory on every Stage 2/3 load and tool call. Any byte modification, added file, or deleted file post-audit triggers `TOCTOU MERKLE MISMATCH`, blocks execution, taints the session, and invokes kinetic fallback. |
+| **I-03-skill (Gate M10 Containment)** | Every skill directory and nested resource (`references/`, `scripts/`) is resolved via `Path.resolve()` and verified to reside strictly beneath `cfg.SKILL_ROOT`. Symlinks, `..` traversal segments, and out-of-root paths are rejected prior to file I/O. |
+| **I-04-skill (Read-Only Runtime & Gibson Survival)** | Production Docker deployments mount `./skills:/data/skills:ro` so in-container processes receive kernel `Errno 30 (Read-only file system)` on write attempts. Like `policies` and `memory_*`, `skill_attestations` is forensic/security metadata and survives Gibson credential wipes. |
+| **I-05-skill (Host Volume Isolation)** | Container `/data` auto-detection (`_IN_DOCKER_DATA`) is gated by `os.name != "nt"`, and CLI audit commands reject `/data/*` targets on Windows hosts, guaranteeing developer host drives are never polluted with stray container SQLite files. |
+
+---
+
 ## Fleet Layer Invariants (v0.9.0)
 
 | ID | Invariant |
@@ -223,13 +270,13 @@ Unbounded string buffering is strictly prohibited in local MCP transport. All in
 | **I-02-fleet** | A trust score of 0.0 does NOT kill processes or block active sessions. It informs the Fleet Sentinel hemisphere only. Kinetic action flows through Guardian Brain + DRIFT + Paranoia Dial. |
 | **I-03-fleet** | Cross-fleet entity promotion (`scope='session'→'fleet'` in `memory_semantic`) requires a human gate. No automated code path may write `scope='fleet'`. |
 | **I-04-fleet** | Fleet Sentinel verdicts escalate through the existing Guardian Brain + DRIFT + Paranoia Dial chain. The Fleet Sentinel perceives; the exoskeleton decides. |
-| **I-05-fleet** | Taint propagation depth is 1-hop by default. 2-hop requires `TRUST_PROPAGATION_DEPTH=2` in config. Never automated beyond 2 hops. |
+| **I-05-fleet** | Taint propagation depth is 1-hop by default. 2-hop requires `BUTTERCLAW_TRUST_PROPAGATION_DEPTH=2` in config. Never automated beyond 2 hops. |
 | **I-06-fleet** | Arsenal patterns (`default_signatures.json`) are the single signature system for both single-agent and collusion detection. No second signature system exists. |
 | **I-07-fleet** | `fleet.db` and `butterclaw.db` are NEVER co-transacted. No code path may hold an open transaction on one while acquiring a connection to the other. Enforced by test fixture `assert_distinct_db_connections` (autouse). |
 
 ---
 
-## Memory & Cognition Invariants (v0.8.0)
+## Memory & Cognition Invariants (v0.8.0–v0.9.2)
 
 These govern `memory_engine.py`, `dream_engine.py`, and `loop_engine.py` specifically.
 They are numbered as a **separate series from the Core System Invariants above**
@@ -289,6 +336,13 @@ is forced to `status="needs_review"` regardless of `LOOP_DRY_RUN`, since there i
 deterministic replay score for prompt quality the way there is for a regex or
 policy condition match.
 
+**I-17-mem — Single-Flight Maturation Mutex (v0.9.2 R3)**
+`memory_engine.py`'s `_maturation_tick_lock` is acquired non-blockingly (`blocking=False`)
+inside `run_maturation_tick()`. If the Dream Engine and the R3 `_maturation_fallback_loop`
+watchdog ever attempt to run a maturation tick within the same window, the second caller
+returns `{"status": "skipped"}` immediately — guaranteeing activation scores are never
+double-decayed.
+
 ---
 
 ## Data Flow Walkthroughs
@@ -304,7 +358,7 @@ policy condition match.
 7. **Guardian Brain** (`ask_guardian_agent`) sends prompt to Ollama (local) or remote LLM; returns `{verdict, confidence, reasoning, chain}`
 8. **post_brain policy scope** evaluates; can `override_critical`, `override_benign`, or enforce `require_confidence` threshold
 9. Verdict broadcast via **SSE stream** to all connected browser clients
-10. If `CRITICAL` and `has_chain`: **ChainExecutor** begins; per-step: Capability Matrix → `pre_tool` gate → MCP tool call → result logged to `mcp_events` → condition evaluated → next step or abort
+10. If `CRITICAL` and `has_chain`: **ChainExecutor** begins; per-step: Capability Matrix → `pre_tool` gate → MCP tool call (with Gate M5/M10 verification on skill tools) → result logged to `mcp_events` → condition evaluated → next step or abort
 11. **Alert Dispatcher** fans out to all configured channels independently; channel failures do not block the pipeline
 12. **Paranoia Dial check**: Level 2 → terminate offending process; Level 3 → trigger Gibson + lockdown
 13. **30 seconds post-CRITICAL**: Auditor fires a second LLM pass for false-positive detection; result logged to Event Ledger
@@ -316,7 +370,7 @@ policy condition match.
 3. `auth.invalidate_session_cache()` — all active sessions immediately unverifiable
 4. For each provider (or all if global): generate Fernet poison key; overwrite all ciphertext in `vault` and `oauth_tokens` tables
 5. `auth.destroy_all_api_keys()` — `DELETE FROM api_keys`
-6. `policy_rules` and `policy_events` are **not touched** — policies survive Gibson by design
+6. `policies`, `policy_events`, `memory_*`, and `skill_attestations` are **not touched** — security rules, institutional memory, and supply-chain attestations survive Gibson by design
 7. System is in credential-wiped state: no valid sessions, no valid API keys, vault cryptographically poisoned
 
 ### Flow C — Spatial Telemetry → Memory Verdict → Kinetic Block (v0.8.0)
@@ -327,16 +381,16 @@ kinetic pathway decided entirely inside the Memory Engine.
 1. An AI agent's coordinates/keystrokes reach `POST /api/spatial/telemetry` (min role: `operator`)
 2. The gateway registers the `agent_id`/`session_id` into the SQLite topology if not already present (`INSERT OR IGNORE`)
 3. `memory_engine.evaluate_spatial_intent()` runs: **Fast Path** — check the proposed action's abstracted trajectory against the Cold Memory signature cache (O(1), refreshed every 5s); **Slow Path** (only if no signature match) — `SpatialHeuristics.evaluate_trajectory()` scores kinetic velocity, spatial jitter, and string entropy against the last 10 seconds of that session's telemetry
-4. `Event Ingester` logs the attempt to a RAM queue **before** any kinetic action is taken — the incident is on the record even if the process dies mid-block
-5. On `BLOCK`: the verdict is written to `memory_episodic` via `store()` (so it enters the same maturation/semantic lifecycle as every other verdict); if this exact trajectory has now recurred 3+ times within this same session, it crystallizes into a new Cold Memory signature (I-15-mem's live-crystallization path, tagged `live:` in `threat_category`)
+4. `Event Ingester` logs the attempt to a RAM queue **before** any kinetic action is taken — the incident is on the record even if the process dies mid-block (and `correlation_engine.ingest_tool_event()` feeds the v0.9.0 Fleet Layer non-blockingly)
+5. On `BLOCK`: the verdict is written to `memory_episodic` via `store()` (so it enters the same maturation/semantic lifecycle as every other verdict); if this exact trajectory has now recurred 3+ times within this same session, it crystallizes into a new Cold Memory signature (tagged `live:` in `threat_category`)
 6. `Topology Manager.apply_kinetic_taint()` propagates taint down the agent's full process tree via a recursive CTE and returns the PIDs to terminate
 7. `Watcher Daemon.submit_kill_request()` suspends (freezing the process tree so it cannot fork children to evade termination), then kills each PID — including OS-level children never tracked in ButterClaw's own topology
 8. `Topology Manager.preserve_evidence()` moves any screenshots for the blocked session from the volatile RAM disk to `/data/evidence_locker` before the Archiver Daemon's 60-second sweep would otherwise delete them
 
-### Flow D — Dream Cycle (v0.8.0)
+### Flow D — Dream Cycle & R3 Watchdog Fallback (v0.8.0–v0.9.2)
 
 1. `dream_engine.py`'s worker thread polls every `poll_interval_seconds` (default 60s); if the system has been idle ≥ `idle_threshold_minutes` (default 15), a cycle starts
-2. **Consolidation:** `memory_engine.run_maturation_tick()` recomputes `activation_strength` for every episodic record, promotes matured ones to the semantic graph, prunes stale ones, and decays low-confidence Cold Memory signatures
+2. **Consolidation:** `memory_engine.run_maturation_tick(caller="dream_engine")` acquires `_maturation_tick_lock` and recomputes `activation_strength` for every episodic record via batched SQL, promotes matured ones to the semantic graph, prunes stale ones, and decays low-confidence Cold Memory signatures. *(If `dream_engine` is silent beyond `MEMORY_MATURATION_FALLBACK_HOURS`, default 6h, the R3 `_maturation_fallback_loop` watchdog runs this step independently as `caller="watchdog_fallback"`.)*
 3. The engine re-checks for live traffic (I-14-mem); if activity reappeared since the cycle started, it aborts immediately with `status="interrupted"`
 4. **REM synthesis** (only if an `llm_caller` was wired at construction): the top entities from the semantic graph are sent to the LLM asking it to imagine one plausible novel scenario combining two or more of them; the response is written to memory via `store(..., source="dream")` — never anything that resembles a real verdict (`verdict="SIMULATED"`, `confidence=0.0`)
 5. The cycle's stats are logged to `dream_log`, retrievable via `GET /api/dream/log`; `POST /api/dream/trigger` (operator role) can force step 2 onward immediately, still fully subject to I-13-mem/I-14-mem
@@ -382,24 +436,36 @@ Fleet Sentinel LLM call (temp 0.5)
 
 ---
 
+### Flow G — SkillGuard Pre-Flight Audit & Gate M5 Anti-TOCTOU (v0.9.3)
+
+1. Operator places a `SKILL.md` package into `./skills/<name>` (mounted read-only at `/data/skills/<name>:ro` inside `butterclaw-server`) and runs `dash.bat audit /data/skills/<name>` (or clicks **Scan Skills Dir** → `POST /api/skills/audit`).
+2. **Gate M10** resolves canonical real paths (`Path.resolve()`) and verifies every file resides strictly inside `cfg.SKILL_ROOT` with zero symlinks or `..` traversal segments.
+3. `SkillGuard.audit_and_attest()` parses YAML frontmatter capabilities (`allowed_tools`, `allow_network`, `allow_env_access`), scans `SKILL.md` and `references/` for zero-width/tag-block Unicode steganography, hidden HTML comments, stealth policy overrides, and undeclared URLs, and walks Python ASTs in `scripts/*.py` for restricted imports (`socket`, `urllib.request`, `subprocess`, `http.client`, `ctypes`), `os.environ` harvesting, and `eval()`/`exec()`/`__import__()`.
+4. Deterministic per-file SHA-256 digests are rolled into a package **Merkle Root** and persisted in `skill_attestations` (`butterclaw.db`) as `APPROVED` (`risk_score < SKILL_RISK_THRESHOLD`, default 25) or `QUARANTINED` (`risk_score >= 25`).
+5. At runtime (on every Stage 2/3 progressive skill load or MCP tool invocation in `butterclaw_mcp.py`, as well as live `GET /api/skills` Web UI polls), **Gate M5** (`verify_runtime_integrity()`) recomputes the live SHA-256 Merkle root from disk and compares it to `skill_attestations`. Any post-audit modification immediately trips `TOCTOU MERKLE MISMATCH`, flips dashboard status to `TAMPERED (TOCTOU)`, blocks execution, taints the active session, and triggers kinetic fallback (`execute_gibson_kill` + `rotate_keys`).
+
+---
+
 ## Paranoia Dial — Response Levels
 
 | Level | Name | Behavior | Trigger |
 | --- | --- | --- | --- |
-| **1** | Observe | Log + SSE broadcast + alert channels. No active response. | Default |
-| **2** | Active Defense | Level 1 + terminate the offending process | CRITICAL verdict with chain + Paranoia ≥ 2 |
-| **3** | Lockdown | Level 2 + Gibson (full credential wipe) + system lockdown | CRITICAL verdict with chain + Paranoia = 3, or manual trigger |
+| **1** | Observe | Log + SSE broadcast + alert channels. No active response. | `BUTTERCLAW_PARANOIA=1` |
+| **2** | Active Defense | Level 1 + terminate the offending process / rotate keys via MCP (Vault stays sealed locally) | CRITICAL verdict + Paranoia = 2 (default) |
+| **3** | Lockdown | Level 2 + Gibson (full credential wipe) + system lockdown | CRITICAL verdict + Paranoia = 3, or manual trigger |
 
 > **Note:** `DRY_RUN=true` hard-blocks Level 3 destruction. Not overridable at runtime.
 
-> **Two independent kinetic pathways (v0.8.0):** the Paranoia Dial above governs
+> **Three independent enforcement pathways (v0.8.0–v0.9.3):** the Paranoia Dial above governs
 > process termination decided by the **Guardian Brain** — an LLM verdict, gated by
-> `chain` + Paranoia level. Spatial telemetry verdicts (Flow C above) are a
+> `chain`/fallback + Paranoia level. Spatial telemetry verdicts (Flow C above) are a
 > **second, entirely separate pathway**: the Memory Engine decides `BLOCK`
 > directly from Cold Memory signature matches or spatial heuristics, with no LLM
 > call and no Paranoia Dial check anywhere in the loop — Topology Manager and
-> Watcher Daemon act immediately on that verdict. Both pathways can independently
-> terminate a process; neither one gates the other.
+> Watcher Daemon act immediately on that verdict. **SkillGuard Gate M5/M10** (Flow G above)
+> forms a **third deterministic boundary** at the MCP layer, blocking unattested or
+> Merkle-tampered `SKILL.md` packages before disclosure or tool execution and escalating
+> to session taint + kinetic fallback.
 
 ---
 
@@ -408,18 +474,17 @@ Fleet Sentinel LLM call (temp 0.5)
 ButterClaw's LLM evaluation layer is not a single model call — as of v0.7.x it was two
 independent passes with opposing mandates, different temperatures, and different
 system prompts (the original "dual-hemisphere" architecture: one hemisphere decisive
-and action-oriented, the other skeptical and corrective). v0.8.0 adds two more,
-extending the metaphor to four hemispheres — one per Guardian Brain request, one
-30 seconds after every CRITICAL verdict, one on system idle, and one on a fixed
-schedule:
+and action-oriented, the other skeptical and corrective). v0.8.0 added two more
+(Dream Weaver on system idle and Loop Proposer on a 6-hour schedule), and v0.9.0
+extended the architecture to five hemispheres with the fleet-wide Fleet Sentinel:
 
-| Hemisphere | Temp | Fires When | Mandate |
-| --- | --- | --- | --- |
-| Guardian Brain | `0.3` | Every request that clears `pre_brain` | Evaluate and propose action |
-| Auditor | `0.0` | 30s after every CRITICAL verdict | Was I wrong? |
-| Dream Weaver (v0.8.0) | `0.7` | Idle ≥ 15 min | What haven't I seen? |
-| Loop Proposer (v0.8.0) | `0.4` | Every 6 hours | How can I get better? |
-| Fleet Sentinel (v0.9.0) | `0.5` | Correlation/collusion event, or every 4 hrs | Are these agents working together against me? |
+| Hemisphere | Temp | Priority | Fires When | Mandate |
+| --- | --- | --- | --- | --- |
+| Guardian Brain | `0.3` | `0` (cap-exempt) | Every request that clears `pre_brain` | Evaluate and propose action |
+| Auditor | `0.0` | `1` | 30s after every CRITICAL verdict | Was I wrong? |
+| Fleet Sentinel (v0.9.0) | `0.5` | `1` (reactive) / `2` (proactive) | Correlation/collusion event, or every 4 hrs | Are these agents working together against me? |
+| Loop Proposer (v0.8.0) | `0.4` | `3` | Every 6 hours | How can I get better? |
+| Dream Weaver (v0.8.0) | `0.7` | `4` | Idle ≥ 15 min | What haven't I seen? |
 
 ### Hemisphere 1 — The Guardian Brain (`ask_guardian_agent()`)
 
@@ -432,7 +497,7 @@ The Guardian Brain receives:
 * The current threat type and raw log payload
 * A sliding window of recent agent actions as `timeline_context` (see Behavioral Drift Tracking below)
 * The current Paranoia level, which modifies the system prompt instructions
-* The list of available MCP tools and their descriptions
+* The list of available MCP tools and their descriptions (7 armed tools in v0.9.3)
 * A strict JSON output schema: `{verdict, confidence, primary_gate, reasoning, chain?}`
 
 The Brain produces a verdict (`CRITICAL` / `WARNING` / `BENIGN`) and, for CRITICAL events,
@@ -452,8 +517,8 @@ The Auditor receives:
 * The original threat that triggered the CRITICAL verdict
 * A system prompt with a single goal: `audit_verdict: AGREEMENT | FALSE_POSITIVE`
 
-If the Auditor returns `FALSE_POSITIVE`, the event is flagged in the Event Ledger and
-the TUI Dashboard with an amber 🤔 indicator. No automatic reversal of kinetic actions
+If the Auditor returns `FALSE_POSITIVE`, the event is flagged in the Oopsie Logs and
+the dashboard with an amber 🧐 indicator. No automatic reversal of kinetic actions
 occurs — the Auditor is a diagnostic instrument, not an undo mechanism. Reversing a
 Gibson sequence is a deliberate operator decision, not an automated one.
 
@@ -468,7 +533,8 @@ benefits from creative recombination rather than deterministic output.
 The Dream Weaver's cycle has two parts. First, unconditionally: `run_maturation_tick()`
 ages every episodic record's `activation_strength`, promotes matured ones into the
 semantic graph, prunes stale ones, and decays low-confidence Cold Memory signatures —
-consolidation work that exists independently of any LLM call. Second, only if an
+consolidation work that exists independently of any LLM call (and is backed up by the
+v0.9.2 R3 Memory Watchdog if `dream_engine` is stalled). Second, only if an
 `llm_caller` is wired: it samples the most-observed entities from the semantic graph
 and asks the model to imagine one plausible novel attack scenario combining two or
 more of them — patterns the system has learned individually but never seen chained
@@ -507,7 +573,7 @@ The Fleet Sentinel receives:
 
 Verdicts: `ISOLATED` (no cross-agent signal), `CORRELATED` (same pattern, N agents), `COLLUDING` (complementary roles, distributed kill chain), `INSUFFICIENT_DATA` (fewer than 2 agents, or event coalescing window too short). A `COLLUDING` verdict with confidence ≥ 0.8 escalates through the existing Guardian Brain + DRIFT + Paranoia Dial chain per I-04-fleet. The Fleet Sentinel **perceives**; the existing exoskeleton **decides**.
 
-Key constraints: FLEET_SENTINEL_DRY_RUN=true by default (suppress escalation during validation). HemisphereScheduler circuit breaker protects Guardian Brain from any Fleet Sentinel LLM failures.
+Key constraints: `BUTTERCLAW_FLEET_SENTINEL_DRY_RUN=true` by default (suppresses escalation during validation). `HemisphereScheduler` circuit breaker protects Guardian Brain from any Fleet Sentinel LLM failures.
 
 ### Why Five Calls, Not Four
 
@@ -540,22 +606,23 @@ Event Ledger for the 5 most recent successful MCP tool calls. These events are f
 
 | File / Directory | Approx. Lines | Owns | Key Entry Points |
 | --- | --- | --- | --- |
-| `src/butterclaw/server.py` | ~1,800 | Flask core — Guardian Brain, Auditor, ChainExecutor, SSE broadcaster, 30 routes | `ask_guardian_agent()`, `run_self_audit()`, `ChainExecutor.run()`, `/api/analyze` |
-| `src/butterclaw/policy_engine.py` | ~900 | DRIFT policy runtime, rule CRUD, 3-scope evaluators, `policy_events` audit log | `evaluate_policy(scope, context)`, `test_payload()` |
-| `src/butterclaw/buttervault.py` | ~700 | Fernet vault, OS keyring master key, Gibson, OAuth token lifecycle | `store_key()`, `retrieve_key()`, `butter_keys()`, `refresh_oauth_token()` |
-| `src/butterclaw/auth.py` | ~650 | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed sessions, rate limiter, 7 routes | `verify_api_key()`, `require_auth()`, `destroy_all_api_keys()`, `ROUTE_CLASSIFICATION` |
-| `src/butterclaw/alert_dispatcher.py` | ~300 | Multi-channel alert fanout (6 channels, 9 event types), 13 routes | `dispatch_alert(verdict, context)` |
-| `src/butterclaw/butterclaw_mcp.py` | ~400 | MCP dual-transport, `BaseMCPManager` interface | `MCPProcessManager`, `MCPSSEClient`, `get_available_tools()`, `call_tool()` |
-| `src/butterclaw/mcp_transport.py` | ~200 | Low-level MCP transport primitives | — |
+| `src/butterclaw/server.py` | ~2,500 | Flask core (`v0.9.3`) — Guardian Brain, Auditor, ChainExecutor, `MCPProcessManager` / `MCPSSEClient`, SSE broadcaster, SkillGuard API, static UI/favicon routes (orchestrates **80 total routes**) | `ask_guardian_agent()`, `run_self_audit()`, `ChainExecutor.execute()`, `/api/analyze`, `/api/skills` |
+| `src/butterclaw/skill_guard.py` (v0.9.3) | ~480 | `SKILL.md` frontmatter/stego/AST static scanner, SHA-256 Merkle-root SQLite attestation (`skill_attestations`), Gate M5 anti-TOCTOU, Gate M10 path containment | `SkillGuard.audit_and_attest()`, `.verify_runtime_integrity()`, `.check_capability()` |
+| `src/butterclaw/policy_engine.py` | ~900 | DRIFT policy runtime, rule CRUD, 3-scope evaluators, lenient Arsenal loader (`collusion_role`), Capability Matrix check, `policy_events` audit log | `evaluate_policies(scope, context)`, `validate_tool_skill()`, `list_signatures()`, `test_payload()` |
+| `src/butterclaw/buttervault.py` | ~700 | Fernet vault, OS keyring master key, Gibson, OAuth token lifecycle | `store_key()`, `get_key()`, `butter_keys()`, `refresh_token_if_needed()` |
+| `src/butterclaw/auth.py` | ~890 | HMAC-SHA256 API keys, 4-tier RBAC, HMAC-signed sessions, rate limiter, 7 routes | `verify_api_key()`, `require_auth()`, `destroy_all_api_keys()`, `bootstrap_infrastructure_keys_auto_heal()` |
+| `src/butterclaw/alert_dispatcher.py` | ~1,560 | Multi-channel alert fanout (6 channels, 9 event types), HMAC webhook signing, cooldowns, 13 routes | `dispatch_alert(event_type, context)`, `register_alert_routes()` |
+| `src/butterclaw/butterclaw_mcp.py` | ~550 | JSON-RPC 2.0 MCP execution server (**7 armed tools**), Gate M5/M10 skill runtime hooks, session taint escalation | `ButterClawMCPServer.route()`, `handle_tools_call()` |
+| `src/butterclaw/mcp_transport.py` | ~250 | Low-level byte-bounded `StdioTransport` physical firewall + threaded `SSETransport` | `create_transport()` |
 | `src/butterclaw/watcher.py` | ~250 | Log tail, blacklist sanitizer, retry queue, PID lock, log rotation detection | `watch_log()`, `send_to_server()`, `main()` |
-| `src/butterclaw/setup_wizard.py` | ~400 | Environment bootstrap | `main()` |
-| `src/butterclaw/oauth_config.py` | ~150 | OAuth provider registry (GitHub + generic), token revocation logic | `get_provider_config()` |
-| `src/butterclaw/config.py` | ~300 | Singleton config loader, `cfg` object, 26 fields / 9 categories | `cfg` (singleton), `ConfigError` |
-| `src/butterclaw/tui_dashboard.py` | ~350 | Read-only TUI operational view | `main()` |
-| `src/butterclaw/memory_engine.py` (v0.8.0) | ~1,900 | Unified Deep + Surface memory substrate — HOT/WARM/COLD tiers, activation maturation, spatial telemetry, Cold Memory signatures, `loop_experiments`/`prompt_overrides` tables | `store()`, `retrieve_context()`, `reconsolidate()`, `run_maturation_tick()`, `evaluate_spatial_intent()`, `ingest_telemetry_event()` |
-| `src/butterclaw/dream_engine.py` (v0.8.0) | ~450 | Idle-triggered consolidation + REM scenario synthesis — the Dream Weaver hemisphere | `DreamEngine.start()`, `.trigger_now()`, `._run_dream_cycle()` |
+| `src/butterclaw/setup_wizard.py` | ~780 | 10-section environment bootstrap + SkillGuard CLI (`--audit-skill`, `--list-skills`, `--strict`) | `main()`, `cli_audit_skill()`, `cli_list_skills()` |
+| `src/butterclaw/oauth_config.py` | ~150 | OAuth provider registry (Google, GitHub, etc.), token revocation metadata | `get_provider()`, `list_oauth_capable()` |
+| `src/butterclaw/config.py` | ~630 | Singleton config loader, `cfg` object, 36 exported fields / 11 categories, `_IN_DOCKER_DATA` guard, **23 self-tests** | `cfg` (singleton), `ButterClawConfig` |
+| `src/butterclaw/tui_dashboard.py` | ~270 | Resize-proof, ANSI-truncated (`_fit_line`) read-only TUI operational view (Semantic + Spatial + SkillGuard Gate M5) | `render_loop()` |
+| `src/butterclaw/memory_engine.py` (v0.8–v0.9.2) | ~2,000 | Unified Deep + Surface memory substrate — HOT/WARM/COLD tiers, activation maturation, R3 `_maturation_fallback_loop` watchdog, spatial telemetry, Cold Memory signatures, `loop_experiments`/`prompt_overrides` tables | `store()`, `retrieve_context()`, `reconsolidate()`, `run_maturation_tick()`, `start_fallback_ticker()`, `evaluate_spatial_intent()`, `ingest_telemetry_event()` |
+| `src/butterclaw/dream_engine.py` (v0.8.0) | ~460 | Idle-triggered consolidation + REM scenario synthesis — the Dream Weaver hemisphere | `DreamEngine.start()`, `.trigger_now()`, `._run_dream_cycle()` |
 | `src/butterclaw/loop_engine.py` (v0.8.0) | ~720 | Karpathy-style autoresearch loop — the Loop Proposer hemisphere | `LoopEngine.run_cycle()`, `SignatureArtifactAdapter`, `PolicyArtifactAdapter`, `PromptArtifactAdapter` |
-| `src/butterclaw/memory_api.py` (v0.8.0) | ~230 | 12 Flask routes for memory/dream/loop management | `register_memory_routes(app, dream_engine, loop_engine)` |
+| `src/butterclaw/memory_api.py` (v0.8–v0.9.2) | ~260 | **13 Flask routes** for memory/dream/loop management + R3 watchdog status (`GET /api/memory/status`) | `register_memory_routes(app, dream_engine, loop_engine)` |
 | `src/butterclaw/event_ingester.py` (v0.8.0) | ~110 | High-speed async batch writer for spatial telemetry | `EventIngester.log_event()` |
 | `src/butterclaw/topology_manager.py` (v0.8.0) | ~110 | Process lineage tracking, taint propagation, evidence preservation | `TopologyManager.apply_kinetic_taint()`, `.preserve_evidence()` |
 | `src/butterclaw/watcher_daemon.py` (v0.8.0) | ~125 | Kinetic actuator — suspends and kills process trees via `psutil` | `WatcherDaemon.submit_kill_request()` |
@@ -571,11 +638,13 @@ Event Ledger for the 5 most recent successful MCP tool calls. These events are f
 | `src/butterclaw/fleet_sentinel.py` (v0.9.0) | ~515 | 5th LLM hemisphere (temp 0.5), reactive + proactive, event coalescing, INSUFFICIENT_DATA guard | `FleetSentinel.analyze_reactive()`, `.run_proactive_cycle()` |
 | `src/butterclaw/fleet_api.py` (v0.9.0) | ~555 | 14 `/api/fleet/*` routes, two-step quarantine (R-06), operator feedback, 4-tier RBAC | `register_fleet_routes(app, ...)` |
 | `src/butterclaw/hemisphere_scheduler.py` (v0.9.0) | ~360 | Priority queue for all 5 hemispheres, Guardian Brain cap-exempt, circuit breaker (R-05) | `HemisphereScheduler.submit()`, `.get_status()` |
+| `index.html`, `routing.html`, `favicon.png` | ~2,950 | Zero-build Tailwind Web UI (Dark Mode v2, SkillGuard Registry card, dynamic 7-tool Event Ledger, unified brand icon) | Served by `server.py` behind `nginx` |
+| `dash.bat`, `dash.sh` | ~60 | Container-bound operator launchers (`TUI`, `skills`, `audit`, `test`) | `docker compose exec -it butterclaw ...` |
 | `capabilities.json` | — | Positive Security Model matrix defining agent profiles | Loaded by `policy_engine.py` |
 | `default_signatures.json` | — | Threat Signature Arsenal — regex patterns for `pre_brain` scan; v0.9 adds `collusion_role` + `fleet_scope` fields (I-06-fleet, R-04) | Loaded by `policy_engine.py` at startup |
 | `nginx/` | — | TLS proxy — the internet-facing trust boundary | `butterclaw.conf`, `default.conf` |
-| `systemd/` | — | Service unit files | `butterclaw.service`, `watcher.service` |
-| `scripts/` | — | Diagnostics and live-fire test scripts | `test_dual_memory.py`, `test_attack.py`, `test_mcp.py`, `add_rule.py` |
+| `systemd/` | — | Service unit files | `butterclaw.service` |
+| `scripts/` & `tests/` | — | Diagnostics, synthetic `SKILL.md` fixtures, and live-fire / pytest suites | `seed_test_skills.py`, `test_skill_guard.py`, `test_dual_memory.py`, `test_attack.py`, `test_mcp.py`, `add_rule.py` |
 
 ---
 
@@ -583,7 +652,7 @@ Event Ledger for the 5 most recent successful MCP tool calls. These events are f
 
 | Scope | When | Available Context Fields | Valid Actions |
 | --- | --- | --- | --- |
-| `pre_brain` | Before LLM call | `payload`, `threat_type`, `payload_length`, `source_ip`, `hour_of_day`, `day_of_week` | `allow`, `block` |
+| `pre_brain` | Before LLM call | `payload`, `threat_type`, `payload_length`, `source_ip`, `hour_of_day`, `day_of_week` | `allow`, `block`, `override_critical`, `override_benign` |
 | `post_brain` | After LLM verdict | All `pre_brain` fields + `verdict`, `confidence`, `primary_gate`, `reasoning`, `has_chain` | `allow`, `block`, `override_critical`, `override_benign`, `require_confidence` |
 | `pre_tool` | Before each MCP tool call | All prior fields + `tool_name`, `tool_args`, `chain_step` | `allow`, `block`, `skip_tool` |
 
@@ -599,8 +668,8 @@ Zero new pip dependencies — stdlib `hmac`, `hashlib`, `secrets` only. JWTs add
 **D-02 — Policy engine uses no `eval()`**
 15 safe operators using stdlib only. Policies are configuration, not code — this is an explicit trust boundary.
 
-**D-03 — Watcher → Server is unauthenticated on localhost**
-Intentional design tradeoff: watcher and server are co-located. Adding mutual auth would require the watcher to hold credentials, introducing management complexity this architecture avoids. `/api/analyze` **must not** be exposed on external interfaces.
+**D-03 — Watcher → Server co-located bridge**
+Intentional design tradeoff: watcher and server are co-located (authenticating via the bootstrapped `BUTTERCLAW_API_KEY` `infrastructure` role). `/api/analyze` **must not** be exposed unauthenticated on external interfaces.
 
 **D-04 — `allow` policy action never short-circuits**
 Prevents policy authors from accidentally suppressing subsequent block rules with a blanket allow.
@@ -615,7 +684,7 @@ An allowlist would corrupt log entries and reduce the Brain's ability to analyze
 Wiping policies during incident response would leave the system defenseless upon recovery. Credential wipe + policy preservation allows immediate re-authentication and continued enforcement.
 
 **D-08 — Two LLM Calls Instead of One (Dual-Hemisphere Architecture)**
-A single prompt cannot simultaneously optimize for decisive threat response and skeptical false-positive review — combining these goals produces hedged output that underperforms at both. *(v0.8.0 extended this same reasoning to a third and fourth hemisphere — Dream Weaver and Loop Proposer — each with its own mandate and trigger condition rather than folding more goals into the original two; see Four-Hemisphere Reasoning above.)*
+A single prompt cannot simultaneously optimize for decisive threat response and skeptical false-positive review — combining these goals produces hedged output that underperforms at both. *(v0.8.0 and v0.9.0 extended this same reasoning to Dream Weaver, Loop Proposer, and Fleet Sentinel — each with its own mandate and trigger condition rather than folding more goals into the original two; see Five-Hemisphere Reasoning above.)*
 
 **D-09 — Drift Window is 5 Events, Success-Only**
 Five events is sufficient to reveal a multi-step attack sequence without flooding the prompt context window with noise.
@@ -670,15 +739,32 @@ Guardian Brain is cap-exempt (priority 0); Fleet Sentinel reactive invocations a
 **D-26 — Journal-backed correlation windows (replaces ephemeral D-20 windows)**
 Correlation windows are appended to `correlation_journal` in `fleet.db` on every event. On restart, `_replay_journal()` rebuilds in-memory state. Pod eviction without a mounted volume still loses in-progress windows — accepted residual risk per spec.
 
+---
+
+**D-27 — Pure-Stdlib Skill Inspection Over External Parsers (v0.9.3)**
+`SkillGuard` parses `SKILL.md` frontmatter, Unicode codepoints, and Python ASTs using Python's standard library (`ast`, `hashlib`, `re`, `unicodedata`) rather than adding `PyYAML` or third-party linters — preserving ButterClaw's minimal dependency footprint and eliminating parser-deserialization attack surface when scanning hostile packages.
+
+**D-28 — Dual-Layer Anti-TOCTOU: Kernel `:ro` Mount + Merkle Re-Verification (v0.9.3)**
+Mounting `./skills:/data/skills:ro` blocks in-container writes at the Linux VFS layer (`Errno 30`), while Gate M5's runtime SHA-256 Merkle check catches external/host-side modifications occurring after `audit_and_attest()`. Either layer alone leaves a gap; combining both closes in-band and out-of-band tampering.
+
+**D-29 — Skill Attestations Survive Gibson (v0.9.3)**
+Like `policies` (D-07) and `memory_*` (I-11-mem), `skill_attestations` stores cryptographic hashes and quarantine findings — never credentials. Preserving the registry across a Gibson wipe ensures known-malicious `QUARANTINED` packages remain blocked immediately upon re-bootstrapping.
+
+**D-30 — POSIX-Scoped `/data` Detection (`_IN_DOCKER_DATA`, v0.9.3)**
+`config.py` checks `os.name != "nt" and Path("/data").exists()` before defaulting paths to `/data`, preventing Windows developer machines from resolving `/data` to `C:\data` and splintering SQLite state outside the `butterclaw-data` Docker volume.
+
+---
+
 ## Extension Points
 
 | Extension | Interface | Notes |
 | --- | --- | --- |
-| **LLM Backend** | `ask_guardian_agent()` in `server.py` | Swap between local Ollama and any OpenAI-compatible remote API via `butterclaw.yml` |
-| **MCP Transport** | `BaseMCPManager` in `butterclaw_mcp.py` | Subclass for custom transports |
+| **Agent Skill Packages** (v0.9.3) | `skills/<name>/SKILL.md` audited via `SkillGuard.audit_and_attest()` | Must declare `allowed_tools` / `allow_network` / `allow_env_access` in frontmatter, pass static/AST threshold (`< 25%`), and reside inside `cfg.SKILL_ROOT` (Gate M5 / M10) |
+| **LLM Backend** | `ask_guardian_agent()` in `server.py` | Swap between local Ollama and any OpenAI-compatible remote API via runtime settings / `.env` |
+| **MCP Transport & Tools** | `BaseMCPManager` + `butterclaw_mcp.py` | Subclass for custom transports, or register new tools in `butterclaw_mcp.py` (auto-discovered via `tools/list` handshake) |
 | **Alert Channels** | Channel config in `alert_dispatcher.py` | 6 built-in types; extend the channel dispatcher |
 | **Policy Operators** | Operator registry in `policy_engine.py` | Add to dispatch table — no `eval()`, must be an explicit handler |
-| **Signature Patterns** | `default_signatures.json` | Requires restart to recompile |
+| **Signature Patterns** | `default_signatures.json` | Supports `collusion_role` and `fleet_scope` tags; reloadable via `reload_signatures()` |
 | **RBAC Roles** | `ROLE_HIERARCHY` in `auth.py` | `infrastructure` is machine-to-machine only — do not issue to human operators |
 | **Prompt Personas** (v0.8.0) | `prompt_overrides` table via `POST /api/loop/prompts/<key>` | Only the identity/persona preamble is swappable per hemisphere (`guardian_brain_preamble`, `auditor_preamble`); the operational scaffolding around it is not — see D-18 |
 | **Loop Artifact Types** (v0.8.0) | `SignatureArtifactAdapter` / `PolicyArtifactAdapter` / `PromptArtifactAdapter` in `loop_engine.py` | Adding a fourth artifact type means adding a new adapter with its own `score()`/`commit()` — never bypass `_reject_python_targets()` (I-15-mem) |
@@ -689,8 +775,8 @@ Correlation windows are appended to `correlation_journal` in `fleet.db` on every
 
 ## Related Documentation
 
-* [`API.md`](API.md) — Full endpoint reference (77 routes, 4-tier RBAC)
+* [`API.md`](API.md) — Full endpoint reference (80 routes, 4-tier RBAC)
 * [`RUNBOOK.md`](RUNBOOK.md) — Fleet quarantine vs. block flowchart, dry-run rollout, alert procedures (v0.9.0)
 * [`SECURITY.md`](SECURITY.md) — Threat model, attack surfaces, responsible disclosure
-* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker, systemd, nginx, backup configuration
+* [`DEPLOYMENT.md`](DEPLOYMENT.md) — Docker (`:ro` mounts), systemd, nginx, backup configuration
 * [`THREAT_MODEL.md`](THREAT_MODEL.md) — Updated threat model

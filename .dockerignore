@@ -15,3 +15,4 @@ LICENSE
 .dockerignore
 docker-compose*.yml
 systemd/
+!favicon.png

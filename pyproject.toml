@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "butterclaw"
-version = "0.9.2"
+version = "0.9.3"
 description = "AI-native network-security monitor with MCP integration, fleet-layer correlation, and Guardian Brain."
 readme = "README.md"
 requires-python = ">=3.11"

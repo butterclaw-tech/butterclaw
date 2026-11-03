@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brain Routing | ButterClaw 🦞</title>
+  <title>ButterClaw | The Agentic SOC | Routing</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
 
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self';
@@ -282,7 +283,7 @@
     <div>
       <div class="p-6 flex items-center justify-between">
         <div class="flex items-center space-x-3">
-          <span class="text-3xl">🦞</span>
+          <img src="/favicon.png" alt="ButterClaw" class="w-8 h-8 rounded-lg object-contain flex-shrink-0">
           <h1 class="text-xl font-bold tracking-tight text-dark">Butter<span class="text-butter-500">Claw</span></h1>
         </div>
         <button id="closeSidebarBtn" class="md:hidden text-slate-400 hover:text-dark transition">
@@ -300,6 +301,10 @@
         <a href="index.html"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
           <span class="group-hover:scale-110 transition-transform">🔐</span><span>ButterVault (Keys)</span>
+        </a>
+        <a href="index.html#skillGuardSection"
+           class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
+          <span class="group-hover:scale-110 transition-transform">🧩</span><span>SkillGuard (M5)</span>
         </a>
         <a href="index.html#oopsieSection"
            class="flex items-center space-x-3 hover:bg-slate-50 text-slate-500 hover:text-dark px-4 py-3 rounded-xl font-medium transition group">
@@ -362,7 +367,7 @@
         <div id="connectionDot" class="h-3 w-3 bg-slate-400 rounded-full"></div>
         <div id="connectionText" class="text-xs font-bold text-slate-500 tracking-wide uppercase">Checking...</div>
       </div>
-      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.9.2</div>
+      <div class="mt-3 text-center text-[10px] text-slate-300 font-mono tracking-wider">ButterClaw v0.9.3</div>
     </div>
   </aside>
 
@@ -963,7 +968,7 @@
   <div id="authLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] hidden flex items-center justify-center opacity-0 transition-opacity duration-300">
     <div id="authLoginContent" class="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl border border-slate-200 transform scale-95 transition-transform duration-300">
       <div class="flex items-center space-x-3 mb-2">
-        <span class="text-3xl">🦞</span>
+        <img src="/favicon.png" alt="ButterClaw" class="w-8 h-8 rounded-lg object-contain flex-shrink-0">
         <h3 class="text-2xl font-extrabold text-dark tracking-tight">Butter<span class="text-butter-500">Claw</span></h3>
       </div>
       <p class="text-sm text-slate-500 mb-6 leading-relaxed">
@@ -981,7 +986,7 @@
           <span>🔐</span><span>Authenticate</span>
         </button>
       </div>
-      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.9.2</p>
+      <p class="text-[10px] text-slate-300 text-center mt-6 font-mono tracking-wider">ButterClaw v0.9.3</p>
     </div>
   </div>
 
@@ -2876,6 +2881,20 @@
           }
           mcpToolsList.appendChild(card);
         });
+        
+      // [v0.9.3] Sync discovered tools into Event Ledger filter dropdown
+      if (ledgerFilterTool) {
+        const existing = new Set(Array.from(ledgerFilterTool.options).map(o => o.value));
+        tools.forEach(tool => {
+          if (tool.name && !existing.has(tool.name)) {
+            const opt = document.createElement('option');
+            opt.value = tool.name;
+            opt.textContent = tool.name;
+            ledgerFilterTool.appendChild(opt);
+          }
+        });
+      }      
+
       } catch (e) {
         if (e.message === 'auth_required') return;
         mcpToolsList.innerHTML = '';

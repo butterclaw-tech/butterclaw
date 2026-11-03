@@ -17,12 +17,22 @@ __pycache__/
 htmlcov/
 
 # --- Local Data & Secrets (CRITICAL) ---
-# Never commit the local database containing encrypted/shredded keys
+# Never commit local SQLite databases or WAL/SHM journals
 butterclaw.db
+fleet.db
+*.db
+*.db-wal
+*.db-shm
 data/
-# Never commit local environment variable files
+# Never commit local environment variable files or wizard backups
 .env
-.env.local
+.env.*
+!.env.example
+
+# --- SkillGuard Local Packages & Test Fixtures (v0.9.3) ---
+# Keep the directory for Docker bind-mounts, ignore local/synthetic payloads
+skills/*
+!skills/.gitkeep
 
 # --- Logs ---
 *.log

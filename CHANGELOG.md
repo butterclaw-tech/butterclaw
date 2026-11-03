@@ -10,7 +10,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 | Version | Codename | Date | Milestone |
 | --- | --- | --- | --- |
-| **v0.9.2** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-06 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
+| **v0.9.3** | SkillGuard Supply-Chain Defense | 2026-11-03 | `SKILL.md` static AST/Unicode steganography scanner, SHA-256 Merkle-root attestation, Gate M5 runtime anti-TOCTOU & capability jail, Gate M10 path containment, Web UI + TUI registry |
+| **v0.9.2** | Maturation Watchdog & Container Polish | 2026-10-06 | Memory Watchdog daemon (R3), `src/` layout daemon config unification, `BUTTERCLAW_ROOT` Docker overrides, backup archiver sync |
+| **v0.9.0** | The Fleet Layer, Package Architecture & Academic Artifact | 2026-10-06 | Five-hemisphere cognition, fleet-scope trust graph, cross-agent correlation + collusion detection, Fleet Sentinel LLM hemisphere, 14 new `/api/fleet/*` routes, lenient Arsenal loader (R-04) |
 | **v0.8.0** | The Spatial SOC & Unified Memory Substrate | 2026-09-12 | Spatial telemetry gateway, Topology Lineage taint propagation (Part 1); merged Deep + Surface memory engine, Dream Weaver, Loop Proposer, and Memory API — full four-hemisphere cognition (Part 2) |
 | **v0.7.2** | ENV Setup Wizard | 2026-09-03 | Interactive setup wizard, Docker container alignment, pseudo-TTY (`-it`) TUI artifact fixes, dynamic `.env` API key extraction, and deprecated `install.sh` pipeline |
 | **v0.7.1** | Full Policy Hotfix & Concurrency Hardening | 2026-08-29 | Exfiltration domain gate, brute-force window fix, thread pool/queue defusal, SQLite WAL mode, RBAC & bootstrap key corrections, Populated explicit agent profiles to map local and remote routing options to the operator tier |
@@ -35,10 +37,72 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 | **v0.1.0** | Initial Release | 2026-03-17 | Core analysis, watcher, dashboard, MCP tools |
 
 ---
+---
+
+## [0.9.3] - SkillGuard Supply-Chain Defense (Gate M5 & Gate M10) - Last Minute Polish - 2026-11-03
+
+`docs/ARCHITECTURE.md` is updated below to **v0.9.3** (aligned to **80 routes**), incorporating SkillGuard, the `v0.9.2` Memory Watchdog, and several drift fixes from the `v0.9.2` baseline:
+
+* **Layered Defense & Mermaid Data Flow:** Added the `SkillGuard Supply-Chain Layer (v0.9.3)` to the Exoskeleton stack, wired Gate M5/M10 into the MCP execution node, and added a dedicated GitHub-safe Mermaid diagram (with quoted labels to avoid Mermaid parenthesis crashes) plus **Flow G** covering pre-flight attestation and runtime anti-TOCTOU enforcement.
+
+
+* **Component & Source Code Maps Reconciled:** Updated `config.py` from the stale `26 fields across 9 categories` to its actual **36 exported fields across 11 categories (23 self-tests)**, bumped `memory_api.py` from `12` to **13 routes** (reflecting `GET /api/memory/status` from `v0.9.2` R3), updated `tui_dashboard.py` and `setup_wizard.py`, and added `skill_guard.py`, `seed_test_skills.py`, and `test_skill_guard.py`.
+
+
+* **Trust Zones, Invariants & Design Decisions:** Reconciled the trust-zone count to **eleven trust zones** (adding the `Skill Supply-Chain Plane` mounted `:ro` at `/data/skills` and the `Fleet Plane`), added **SkillGuard Invariants (`I-01-skill` → `I-05-skill`)**, and documented **Design Decisions `D-27` → `D-30**`.
+
+
+* **Fixed Broken Relative `docs/` Links:** All five footer links in `ARCHITECTURE.md` previously pointed to `(docs/...)` from inside `docs/` (which resolves to `docs/docs/...` and 404s on GitHub) and stated `77 routes`; all five now use clean sibling paths and reference **80 routes**. (Quick tip: in `docs/API.md`, make sure the `GET /api/memory/status` row is also listed in the Memory table so `7 + 8 + 13 + 5 + 7 + 10 + 1 + 13 + 14 + 2 = 80`.)
 
 ---
 
-## [0.9.2] - The Fleet Layer, Package Architecture & Academic Artifact - 2026-10-06 - (Summary, detailed further below)
+## [0.9.3] - SkillGuard Supply-Chain Defense (Gate M5 & Gate M10) - 2026-10-26
+
+**New runtime dependencies:** 0<br>
+**New Files:** `src/butterclaw/skill_guard.py`, `scripts/seed_test_skills.py`, `tests/test_skill_guard.py`, `favicon.png`, `skills/.gitkeep`<br>
+**Files Changed:** `src/butterclaw/butterclaw_mcp.py`, `src/butterclaw/config.py`, `src/butterclaw/setup_wizard.py`, `src/butterclaw/server.py`, `src/butterclaw/tui_dashboard.py`, `dash.bat`, `dash.sh`, `index.html`, `routing.html`, `Dockerfile`, `docker-compose.yml`, `.gitignore`, `.dockerignore`, `pyproject.toml`, `CHANGELOG.md`, `README.md`
+
+ButterClaw `v0.9.3` introduces **SkillGuard**, a zero-dependency supply-chain verification and runtime anti-TOCTOU subsystem protecting modular agent skills (`SKILL.md` packages). SkillGuard pairs pre-flight static/AST/steganographic quarantine with cryptographic SHA-256 Merkle-root attestation in SQLite (`butterclaw.db`), enforcing read-only container mounts (`:ro`), Gate M5 runtime integrity checks on progressive Stage 2/3 loads, and Gate M10 path-traversal containment before any MCP tool executes.
+
+### Added
+- **SkillGuard Pre-Flight Auditor & Merkle Attestation (`src/butterclaw/skill_guard.py`):**
+  - Parses `SKILL.md` YAML frontmatter capabilities (`allowed_tools`, `allow_network`, `allow_env_access`) using pure Python stdlib.
+  - Detects zero-width and Unicode tag-block steganography, hidden HTML comment prompt injections, stealth policy-override directives, undeclared outbound URLs, and credential/vault scraping instructions across `SKILL.md` and `references/`.
+  - Runs static Python AST analysis across bundled `scripts/*.py` to flag restricted imports (`socket`, `urllib.request`, `subprocess`, `http.client`, `ctypes`), `os.environ` harvesting, and dynamic execution (`eval()`, `exec()`, `__import__()`).
+  - Computes deterministic per-file SHA-256 digests and a package-wide **SHA-256 Merkle Root**, persisting `APPROVED` or `QUARANTINED` verdicts into the new `skill_attestations` SQLite table.
+- **Gate M5 Runtime Anti-TOCTOU & Capability Enforcement (`src/butterclaw/butterclaw_mcp.py`):**
+  - Recomputes the live Merkle root on every Stage 2 (`SKILL.md` body) and Stage 3 (`references/` / `scripts/`) skill load and MCP tool invocation, immediately blocking post-audit file tampering (`TOCTOU MERKLE MISMATCH`).
+  - Enforces per-skill tool allowlists and network/env capability boundaries; unauthorized or tampered skill execution taints the active session and triggers kinetic fallback (`execute_gibson_kill` + `rotate_keys`).
+  - Expands the dynamically discovered MCP execution registry from 5 to **7 armed tools**.
+- **Gate M10 Path Containment (`skill_guard.py`, `butterclaw_mcp.py`, `server.py`):** Resolves canonical real paths (`Path.resolve()`) and rejects symlinks, `..` traversal, and out-of-root package references outside `cfg.SKILL_ROOT`.
+- **SkillGuard Web API & Dashboard Panel (`server.py`, `index.html`, `routing.html`):**
+  - `GET /api/skills` (role: `viewer`) — Returns all attested packages, risk scores, Merkle roots, static findings, and live Gate M5 `TAMPERED (TOCTOU)` status checks.
+  - `POST /api/skills/audit` (role: `admin`) — Scans subdirectories inside `cfg.SKILL_ROOT` (`Gate M10` jailed) and updates SQLite attestations on demand (total API surface: **80 routes**).
+  - Added the **SkillGuard Supply-Chain Registry** card to `index.html` with live `Approved` / `Quarantined` / `Tampered` status pills, findings tooltips, SSE auto-refresh, and an admin-only `Scan Skills Dir` trigger.
+  - Synced `routing.html` sidebar navigation and auto-populated the Event Ledger tool filter dropdown with all 7 discovered MCP tools.
+- **CLI Package Auditor & Containerized Operator Harnesses (`setup_wizard.py`, `dash.bat`, `dash.sh`):**
+  - Added `--audit-skill <path>`, `--list-skills`, `--db`, and `--strict` (exit code `2` on quarantine for CI/CD pipelines) to `python -m butterclaw.setup_wizard`.
+  - Extended `dash.bat` and `dash.sh` with strictly container-bound `skills`, `audit`, and `test` subcommands so operator workflows never pollute the host OS with stray SQLite files.
+- **TUI Supply-Chain Telemetry (`tui_dashboard.py`):** Added live `[Skills: X OK / Y QUAR]` badges to the top metrics bar (highlighting quarantined skills in bold red and incrementing `[Blocked]`) alongside unified `SkillGuard (Gate M5)` event stream rows.
+- **Synthetic Supply-Chain Test Suite (`scripts/seed_test_skills.py`, `tests/test_skill_guard.py`):** Added a 7-test automated verification suite and deterministic fixture generator (`log-summarizer` benign baseline + `stealth-exfiltrator` 10-finding Trojan package).
+- **Unified Web UI Branding (`favicon.png`, `server.py`, `index.html`, `routing.html`):** Added `/favicon.png` and `/favicon.ico` routes (CSP `'self'` compliant) and replaced stock lobster emojis across browser tabs, sidebar brand headers, and authentication modals.
+
+### Changed
+- **12-Factor SkillGuard Configuration (`config.py`, `Dockerfile`):**
+  - Added `SKILL_ROOT` (`BUTTERCLAW_SKILL_ROOT`, default `/data/skills` in POSIX containers or `<root>/skills` locally), `SKILL_RISK_THRESHOLD` (default `25`, validated `1–100`), and `SKILL_STRICT_TOCTOU` (default `True`).
+  - Exported `"skill_guard"` configuration in `cfg.to_dict()` and `cfg.to_flat_dict()`, expanding the `config.py` self-test suite from 21 to **23 diagnostic assertions**.
+- **Read-Only Container Skill Mount (`docker-compose.yml`, `Dockerfile`):** Mounted `./skills:/data/skills:ro` inside `butterclaw-server` to enforce kernel-level filesystem immutability (`[Errno 30] Read-only file system`) against in-container tampering, pre-created `/data/skills` with non-root `butterclaw` ownership, and aligned `Dockerfile` healthcheck `start-period` to `60s`.
+- **Repository Hygiene (`.gitignore`, `.dockerignore`):** Ignored SQLite WAL/SHM journals (`*.db-wal`, `*.db-shm`), `.env.*` wizard backups, and synthetic `skills/*` payloads (`!skills/.gitkeep`), while whitelisting `!favicon.png` in `.dockerignore`.
+
+### Fixed
+- **Windows Host `/data` Drive Pollution (`config.py`, `setup_wizard.py`):** Guarded `/data` auto-detection with `_IN_DOCKER_DATA = os.name != "nt" and Path("/data").exists()` and added `_guard_windows_docker_path()` in `setup_wizard.py` so Windows hosts never mistake `C:\data` for a Linux container volume.
+- **TUI Resize & ConPTY Line-Wrap Artifacts (`tui_dashboard.py`):** Disabled terminal auto-wrap (`\033[?7l`) during TUI rendering, clamped visible line widths via ANSI-aware `_fit_line()`, removed the stray newline after `\033[H`, and added `0.2s` terminal geometry polling to clear border artifacts immediately on window resize.
+- **ANSI Column Alignment & Python 3.11 f-Strings (`setup_wizard.py`):** Fixed string padding inside ANSI color wrappers in `cli_list_skills()` and replaced a PEP-701 backslash-in-f-string expression in `print_next_steps()` for strict Python 3.11 container compatibility.
+
+---
+---
+
+## [0.9.2] - The Fleet Layer, Package Architecture & Research Paper on Zenodo - 2026-10-06 - (Summary, detailed further below)
 
 ButterClaw v0.9.2 is a consolidated "Mega Release" that formally bridges the gap from the v0.8.x memory engines into a publish-ready academic repository. This release introduces a massive multi-agent "Fleet Layer" expansion, deploys a resilient memory maturation watchdog, and formally locks the architecture in place with a 19-page LaTeX-compiled whitepaper.
 
@@ -68,7 +132,6 @@ ButterClaw v0.9.2 is a consolidated "Mega Release" that formally bridges the gap
 - Hardened `.gitignore` with strict cryptographic key quarantine blocks.
 
 ---
-
 ---
 
 ## [0.9.2] (Last-Minute Polish)
