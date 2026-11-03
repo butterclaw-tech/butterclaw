@@ -56,7 +56,7 @@ Local LLM reasoning. SkillGuard supply-chain defense. Persistent memory. Fleet c
 
 ---
 
-## What Is ButterClaw Tech?
+## What is ButterClaw Tech?
 
 Local-first kinetic response system for autonomous AI. ButterClaw uses a localized reasoning engine to catch obfuscated prompt injections. Featuring the **ButterVault**: a zero-trust credential locker that physically shreds your API keys, OAuth tokens, and API key hashes into cryptographic garbage if a breach is detected. With **SkillGuard supply-chain attestation** (`SKILL.md` AST/steganography scanning + SHA-256 Merkle anti-TOCTOU), a **Positive Security Capability Matrix**, a **Physical STDIO Firewall**, **persistent three-tier memory** that accumulates institutional knowledge across sessions, and **fleet-scale multi-agent threat detection** — the Sentinel ships anywhere. **Evaluation before Execution.**
 
@@ -335,7 +335,6 @@ python scripts/seed_test_skills.py
   fleet.db:      PASS (integrity_check → ok)
   I-07-fleet:    PASS (distinct inodes confirmed)
 =================================================================
-
 ```
 
 25 attack variants across all 7 Arsenal signatures plus 7 supply-chain / anti-TOCTOU assertions in `tests/test_skill_guard.py`. CI-compatible — exits non-zero on failure.
