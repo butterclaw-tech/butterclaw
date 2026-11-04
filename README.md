@@ -42,13 +42,13 @@ Local LLM reasoning. SkillGuard supply-chain defense. Persistent memory. Fleet c
   <img src="assets/skill_guard-panel.png" alt="ButterClaw's SkillGuard">
 </p>
 
-<p align="center">The ButterClaw WebUI - SkillGuard</p>
+<p align="center"><i>The ButterClaw WebUI - SkillGuard</i></p>
 
 <p align="center">
   <img src="assets/skill_guard.png" alt="ButterClaw's WebUI Home">
 </p>
 
-<p align="center">The ButterClaw ENV Setup Wizard</p>
+<p align="center"><i>The ButterClaw ENV Setup Wizard</i></p>
 
 <p align="center">
   <img src="assets/setup_wizard.png" alt="ButterClaw Setup Wizard CLI">
@@ -428,12 +428,12 @@ Run `python -m butterclaw.setup_wizard` for interactive configuration (10 sectio
 
 ## Contributing & Co-Maintainers
 
-ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and is actively seeking security-focused co-maintainers — particularly those working with the **Model Context Protocol (MCP)** and **multi-agent orchestration frameworks** — to help scale the fleet trust graph and federation layer. Grab a `good first issue` or read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
+ButterClaw is applying for the **Agentic AI Foundation (AAIF) Growth Stage** and is actively seeking security-focused co-maintainers. Particularly those working with the **Model Context Protocol (MCP)** and **multi-agent orchestration frameworks** — to help scale the fleet trust graph and federation layer. Grab a `good first issue` or read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`GOVERNANCE.md`](GOVERNANCE.md).
 
 ## 🤝 Community Contributors
 Contributors who ship features get credited here — not just in the git log.
 
-**Telegram Alert Channel** — Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement.
+**Telegram Alert Channel**: Native Telegram Bot API support added to the Alert Dispatcher. Operators can route SOC alerts to mobile with 🔴/🟡/🟢 severity formatting and automatic 4096-char payload enforcement.
 <p align="center">
 (Contributed by @huanghaiyss)<br></p><br>
 
