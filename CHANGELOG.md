@@ -41,18 +41,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [0.9.3] - SkillGuard Supply-Chain Defense (Gate M5 & Gate M10) - Last Minute Polish - 2026-11-03
 
-`docs/ARCHITECTURE.md` is updated below to **v0.9.3** (aligned to **80 routes**), incorporating SkillGuard, the `v0.9.2` Memory Watchdog, and several drift fixes from the `v0.9.2` baseline:
-
 * **Layered Defense & Mermaid Data Flow:** Added the `SkillGuard Supply-Chain Layer (v0.9.3)` to the Exoskeleton stack, wired Gate M5/M10 into the MCP execution node, and added a dedicated GitHub-safe Mermaid diagram (with quoted labels to avoid Mermaid parenthesis crashes) plus **Flow G** covering pre-flight attestation and runtime anti-TOCTOU enforcement.
-
 
 * **Component & Source Code Maps Reconciled:** Updated `config.py` from the stale `26 fields across 9 categories` to its actual **36 exported fields across 11 categories (23 self-tests)**, bumped `memory_api.py` from `12` to **13 routes** (reflecting `GET /api/memory/status` from `v0.9.2` R3), updated `tui_dashboard.py` and `setup_wizard.py`, and added `skill_guard.py`, `seed_test_skills.py`, and `test_skill_guard.py`.
 
-
 * **Trust Zones, Invariants & Design Decisions:** Reconciled the trust-zone count to **eleven trust zones** (adding the `Skill Supply-Chain Plane` mounted `:ro` at `/data/skills` and the `Fleet Plane`), added **SkillGuard Invariants (`I-01-skill` → `I-05-skill`)**, and documented **Design Decisions `D-27` → `D-30**`.
 
-
-* **Fixed Broken Relative `docs/` Links:** All five footer links in `ARCHITECTURE.md` previously pointed to `(docs/...)` from inside `docs/` (which resolves to `docs/docs/...` and 404s on GitHub) and stated `77 routes`; all five now use clean sibling paths and reference **80 routes**. (Quick tip: in `docs/API.md`, make sure the `GET /api/memory/status` row is also listed in the Memory table so `7 + 8 + 13 + 5 + 7 + 10 + 1 + 13 + 14 + 2 = 80`.)
+* **Fixed Broken Relative `docs/` Links:** All five footer links in `ARCHITECTURE.md` previously pointed to `(docs/...)` from inside `docs/` (which resolves to `docs/docs/...` and 404s on GitHub) and stated `77 routes`; all five now use clean sibling paths and reference **80 routes**.
 
 ---
 
